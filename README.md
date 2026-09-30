@@ -59,20 +59,22 @@ you saved it to:
 |---|---|---|
 | Fedora, Nobara | the one ending in `.rpm` | `sudo dnf install ./weir-*.rpm` |
 | Ubuntu 24.04 and newer, Linux Mint 22, Pop!_OS 24.04, Debian 13 | the one ending in `.deb` | `sudo apt install ./weir_*.deb` |
+| Arch Linux, CachyOS, EndeavourOS | the one ending in `.pkg.tar.zst` | `sudo pacman -U ./weir-*.pkg.tar.zst` |
 
 GitHub builds the packages from the code here and signs a record of it.
 To check that a download is exactly what GitHub built, use the
 [GitHub command-line tool](https://cli.github.com/), signed in with
 `gh auth login`: `gh attestation verify weir_*.deb --repo Mourty/Weir`
-(or the `.rpm`).
+(or whichever file you downloaded).
 
 A downloaded package does not update itself. To hear about new releases,
 choose **Watch → Custom → Releases** at the top of Weir's GitHub page.
-To remove Weir, run `sudo dnf remove weir` or `sudo apt remove weir`.
+To remove Weir, run `sudo dnf remove weir`, `sudo apt remove weir` or
+`sudo pacman -R weir`.
 
 ### Or build it yourself
 
-For Arch and CachyOS, other systems, or the newest changes. It takes five
+For other systems, or the newest changes. It takes five
 to fifteen minutes, and has been tested on each of the systems below.
 Open a terminal and follow the steps for yours:
 

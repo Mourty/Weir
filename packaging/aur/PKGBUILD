@@ -17,10 +17,13 @@ pkgdesc='Voicemeeter-style audio mixer for PipeWire'
 arch=('x86_64')
 url='https://github.com/Mourty/Weir'
 license=('MIT')
+# namcap calls some of these unneeded: the window loads libglvnd's EGL and
+# libxkbcommon while it runs, and PipeWire and WirePlumber are the services
+# Weir talks to rather than libraries it links.
 depends=(
-  'gcc-libs'
   'glibc'
   'hicolor-icon-theme'
+  'libgcc'
   'libglvnd'
   'libpipewire'
   'libxkbcommon'
@@ -29,8 +32,9 @@ depends=(
 )
 makedepends=('cargo' 'clang')
 # libspa compiles a little C with cc, and with makepkg's link-time
-# optimization on, those objects do not link into a Rust program.
-options=('!lto')
+# optimization on, those objects do not link into a Rust program. The build
+# keeps no debug info (see _cargo_env), so a debug package would be empty.
+options=('!lto' '!debug')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('c1ea3b247cc587cfc75405c249ac3d05efdf342e3cdb9ba71c7bef309dc558e0')
 

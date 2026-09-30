@@ -66,6 +66,17 @@
   </provides>
 
   <releases>
+    <release version="1.0.2" date="2026-09-30">
+      <description>
+        <p>Fixes for starting Weir when you log in:</p>
+        <ul>
+          <li>The tray icon appears even when Weir starts before the desktop's panel.</li>
+          <li>The mixer window opens at login.</li>
+          <li>Only one mixer window opens. Starting Weir again brings the open one to the front.</li>
+          <li>The window no longer freezes while it is minimized, which kept it from closing at shutdown.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.0.1" date="2026-09-30">
       <description>
         <p>Weir is now also packaged for Arch Linux and the systems built on it, and for Fedora and Nobara on COPR. Weir itself is unchanged.</p>

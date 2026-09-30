@@ -29,7 +29,7 @@
 %global cargo_flags --release --locked
 
 Name:           weir
-Version:        1.0.1
+Version:        1.0.2
 Release:        %{?_release}%{!?_release:1}%{?dist}
 Summary:        Voicemeeter-style audio mixer for PipeWire
 
@@ -95,6 +95,13 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/io.github.mour
 %doc %{_datadir}/doc/%{name}/docs/
 
 %changelog
+* Wed Sep 30 2026 Mourty <Mourt2@proton.me> - 1.0.2-1
+- Show the tray icon and open the window when Weir starts at login before
+  the desktop is ready.
+- Keep the window from freezing while it is minimized, which stopped it
+  closing at shutdown.
+- Keep to one mixer window: starting Weir again brings the open one forward.
+
 * Wed Sep 30 2026 Mourty <Mourt2@proton.me> - 1.0.1-1
 - Add a package for Arch Linux and builds on COPR for Fedora and Nobara.
   Weir itself is unchanged.

@@ -69,14 +69,19 @@ jobs:
             git-core make rpm-build cargo rust clang pipewire-devel \
             pkgconf-pkg-config desktop-file-utils libappstream-glib
       - uses: actions/checkout@v4
+      # The RPM is copied out of its architecture folder: upload-artifact
+      # keeps any folders after a wildcard, and the release job needs the
+      # packages side by side.
       - name: Build the package
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           make rpm RPM_RELEASE=1 RPMTOP="$GITHUB_WORKSPACE/rpmbuild"
+          mkdir -p dist
+          cp rpmbuild/RPMS/*/weir-*.rpm dist/
       - uses: actions/upload-artifact@v4
         with:
           name: rpm
-          path: rpmbuild/RPMS/*/weir-*.rpm
+          path: dist/*.rpm
           if-no-files-found: error
           retention-days: 14
 
@@ -126,7 +131,7 @@ jobs:
           path: dist
           merge-multiple: true
       - name: Write checksums
-        run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+        run: cd dist && sha256sum -- *.rpm *.deb > SHA256SUMS && cat SHA256SUMS
       - name: Upload to the release
         env:
           GH_TOKEN: ${{ github.token }}

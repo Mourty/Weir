@@ -133,6 +133,11 @@ fn strip_patch(a: StripArgs, m: &MixerState) -> Result<StripPatch> {
         enabled: flag(a.denoise.as_deref())?,
         amount: a.denoise_amount.map(|p| p / 100.0),
     };
+    let insert = insert_patch(
+        a.external_effects.as_deref(),
+        a.external_effects_at.as_deref(),
+        a.external_effects_fallback.as_deref(),
+    )?;
     Ok(StripPatch {
         id: find_strip(m, &a.strip)?,
         name: a.name,
@@ -153,6 +158,7 @@ fn strip_patch(a: StripArgs, m: &MixerState) -> Result<StripPatch> {
         ducking: some_unless_default(ducking),
         gate: some_unless_default(gate),
         denoise: some_unless_default(denoise),
+        insert: some_unless_default(insert),
     })
 }
 
@@ -177,6 +183,11 @@ pub fn bus(c: &mut Client, a: BusArgs, json: bool) -> Result<()> {
         surround_db,
         lfe: flag(a.keep_lfe.as_deref())?,
     };
+    let insert = insert_patch(
+        a.external_effects.as_deref(),
+        a.external_effects_at.as_deref(),
+        a.external_effects_fallback.as_deref(),
+    )?;
     let patch = BusPatch {
         id: find_bus(&st.mixer, &a.bus)?,
         name: a.name,
@@ -190,10 +201,21 @@ pub fn bus(c: &mut Client, a: BusArgs, json: bool) -> Result<()> {
         eq: eq_switch(a.eq.as_deref())?,
         limiter: some_unless_default(limiter),
         downmix: some_unless_default(downmix),
+        insert: some_unless_default(insert),
     };
     call(c, &Request::SetBus(patch), json, |b: Bus| {
-        show::bus(&b);
+        show::bus(&b, &st);
         Ok(())
+    })
+}
+
+/// An external effects update from `--external-effects`, `-at` and
+/// `-fallback`.
+fn insert_patch(on: Option<&str>, at: Option<&str>, fallback: Option<&str>) -> Result<InsertPatch> {
+    Ok(InsertPatch {
+        enabled: flag(on)?,
+        position: at.map(parse_insert_point).transpose()?,
+        fallback: fallback.map(parse_insert_fallback).transpose()?,
     })
 }
 

@@ -1,14 +1,19 @@
 //! Weir's virtual devices: a playback device for each virtual strip, which
 //! applications choose as their output, and a microphone for each virtual
-//! bus, which applications record from.
+//! bus, which applications record from. Each strip and bus with external
+//! effects on has two more: "to effects", a microphone the effects program
+//! records from, and "back from effects", a playback device it plays into.
 //!
 //! Each is a `support.null-audio-sink` adapter the runner creates and
 //! destroys as strips and buses come and go. Renaming a strip or changing
 //! its layout means remaking its device, so the applications playing into
-//! it are noted first and moved back once the new one appears.
+//! it are noted first and moved back once the new one appears; the links
+//! to external effects' devices are noted and made again the same way.
 
-use super::{Owner, Runner};
-use crate::pw::{virtual_input_node_name, virtual_output_node_name};
+use super::{with_effects, Owner, Runner};
+use crate::pw::{
+    from_effects_node_name, to_effects_node_name, virtual_input_node_name, virtual_output_node_name,
+};
 use pipewire::node::Node;
 use pipewire::properties::PropertiesBox;
 use std::time::{Duration, Instant};
@@ -18,6 +23,15 @@ use weir_protocol::{BusKind, ChannelPosition, StripId, StripKind};
 /// How long to wait for a recreated device before giving up on moving its
 /// applications back.
 const PENDING_MOVE_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Which of Weir's virtual devices: a virtual strip's or bus's own, or
+/// one of the two a strip's or bus's external effects use.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(super) enum DeviceKey {
+    Own(Owner),
+    ToEffects(Owner),
+    FromEffects(Owner),
+}
 
 /// A virtual device this program created.
 pub(super) struct VirtualNode {
@@ -41,12 +55,13 @@ pub(super) struct PendingMove {
 
 /// A virtual device the mixer state calls for.
 struct Wanted {
-    owner: Owner,
+    key: DeviceKey,
     /// `node.name`, such as `weir.input.2`.
     name: String,
     /// What the system shows, such as "Music (Weir)".
     description: String,
-    /// `Audio/Sink` for a strip, `Audio/Source/Virtual` for a bus.
+    /// `Audio/Sink` for a strip or "back from effects",
+    /// `Audio/Source/Virtual` for a bus or "to effects".
     class: &'static str,
     positions: Vec<ChannelPosition>,
 }
@@ -60,7 +75,7 @@ impl Runner {
             .iter()
             .filter(|s| s.kind == StripKind::Virtual)
             .map(|s| Wanted {
-                owner: Owner::Strip(s.id),
+                key: DeviceKey::Own(Owner::Strip(s.id)),
                 name: virtual_input_node_name(s.id),
                 description: format!("{} (Weir)", s.name),
                 class: "Audio/Sink",
@@ -72,23 +87,42 @@ impl Runner {
             .iter()
             .filter(|b| b.kind == BusKind::Virtual)
             .map(|b| Wanted {
-                owner: Owner::Bus(b.id),
+                key: DeviceKey::Own(Owner::Bus(b.id)),
                 name: virtual_output_node_name(b.id),
                 description: format!("{} (Weir)", b.name),
                 class: "Audio/Source/Virtual",
                 positions: b.layout.positions(),
             });
-        strips.chain(buses).collect()
+        let effects = with_effects(&self.state).into_iter().flat_map(|w| {
+            let target = w.owner.target();
+            [
+                Wanted {
+                    key: DeviceKey::ToEffects(w.owner),
+                    name: to_effects_node_name(target),
+                    description: format!("{}: to effects (Weir)", w.name),
+                    class: "Audio/Source/Virtual",
+                    positions: w.positions.clone(),
+                },
+                Wanted {
+                    key: DeviceKey::FromEffects(w.owner),
+                    name: from_effects_node_name(target),
+                    description: format!("{}: back from effects (Weir)", w.name),
+                    class: "Audio/Sink",
+                    positions: w.positions,
+                },
+            ]
+        });
+        strips.chain(buses).chain(effects).collect()
     }
 
     /// Create, remake or destroy virtual devices until there is exactly one
     /// for each virtual strip and bus, with its current name and layout.
     pub(super) fn ensure_virtual_nodes(&mut self) {
         let wanted = self.wanted_devices();
-        let stale: Vec<Owner> = self
+        let stale: Vec<DeviceKey> = self
             .virtual_nodes
             .keys()
-            .filter(|k| !wanted.iter().any(|w| w.owner == **k))
+            .filter(|k| !wanted.iter().any(|w| w.key == **k))
             .copied()
             .collect();
         for k in stale {
@@ -98,19 +132,23 @@ impl Runner {
             }
         }
         for w in wanted {
-            let up_to_date = self.virtual_nodes.get(&w.owner).is_some_and(|n| {
+            let up_to_date = self.virtual_nodes.get(&w.key).is_some_and(|n| {
                 n.name == w.name && n.description == w.description && n.positions == w.positions
             });
             if up_to_date {
                 continue;
             }
-            if let Some(n) = self.virtual_nodes.remove(&w.owner) {
+            if let Some(n) = self.virtual_nodes.remove(&w.key) {
                 info!(
                     "recreating virtual device {} ({} -> {})",
                     n.name, n.description, w.description
                 );
-                if let Owner::Strip(id) = w.owner {
-                    self.move_back_later(id, &n.name);
+                match w.key {
+                    DeviceKey::Own(Owner::Strip(id)) => self.move_back_later(id, &n.name),
+                    DeviceKey::ToEffects(_) | DeviceKey::FromEffects(_) => {
+                        self.relink_later(&n.name)
+                    }
+                    DeviceKey::Own(Owner::Bus(_)) => {}
                 }
                 let _ = self.core.destroy_object(n.proxy);
             }
@@ -155,7 +193,7 @@ impl Runner {
                     w.name, w.description, w.class
                 );
                 self.virtual_nodes.insert(
-                    w.owner,
+                    w.key,
                     VirtualNode {
                         proxy,
                         name: w.name,

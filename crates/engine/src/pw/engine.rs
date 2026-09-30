@@ -11,8 +11,8 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use tracing::{error, warn};
 use weir_protocol::{
-    AppStream, DeviceInfo, EngineStatus, Meters, MixerState, SoloMode, Spectrum, StripId,
-    StripOrBus, SystemVolumes,
+    AppStream, DeviceInfo, EngineStatus, InsertStatus, Meters, MixerState, SoloMode, Spectrum,
+    StripId, StripOrBus, SystemVolumes,
 };
 
 /// Something the engine could not do.
@@ -73,6 +73,9 @@ pub enum EngineEvent {
     Apps(Vec<AppStream>),
     /// The system volumes of Weir's own virtual devices.
     SystemVolumes(SystemVolumes),
+    /// Whether the external effects of each strip and bus that has them on
+    /// are connected.
+    Inserts(Vec<InsertStatus>),
 }
 
 /// Handle used by the daemon to drive the engine from any thread.

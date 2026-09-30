@@ -2,19 +2,23 @@
 //!
 //! One cycle, for `n` samples:
 //!
-//! 1. Every bus output is zeroed.
+//! 1. Every bus output, and every output to external effects, is zeroed.
 //! 2. Each strip ramps its level, runs its effects, and adds each of its
 //!    channels into every bus through that bus's send matrix, with its
 //!    subwoofer and surround feeds when it has them. Its meter reads here,
 //!    after the fader.
 //! 3. Each bus folds to mono if asked, runs its equalizer, applies its
 //!    fader, then its limiter, and meters what comes out.
+//!
+//! External effects go out and come back wherever they sit in a strip's or
+//! bus's chain.
 
 use super::fx::{self, FxScratch, StripFx};
-use super::params::{RtBus, RtParams, RtSend, RtStrip, MAX_QUANTUM};
+use super::params::{RtBus, RtInsert, RtParams, RtSend, RtStrip, MAX_QUANTUM};
 use nnnoiseless::DenoiseState;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use weir_protocol::InsertPoint;
 
 /// Scratch buffers used inside one process call.
 struct Scratch {
@@ -33,6 +37,8 @@ struct Scratch {
     /// A strip's level with its ducking applied, for the mixes it is ducked
     /// in.
     ducked: Vec<f32>,
+    /// All ones: the level of a strip whose fader has been applied already.
+    unity: Vec<f32>,
 }
 
 /// Real-time thread state: remembers the last snapshot it ran so ramp state
@@ -68,6 +74,7 @@ impl Processor {
                 sub: vec![0.0; MAX_QUANTUM],
                 surround: vec![0.0; MAX_QUANTUM],
                 ducked: vec![0.0; MAX_QUANTUM],
+                unity: vec![1.0; MAX_QUANTUM],
             },
             fx_scratch: FxScratch::new(),
             warm_up: fx::new_warm_up_state(),
@@ -128,6 +135,13 @@ impl Processor {
                 }
             }
         }
+        // PipeWire's output buffers hold whatever was in them last, so an
+        // external effects output nothing writes to this cycle must not
+        // send that again.
+        let inserts = p.strips.iter().map(|s| &s.insert);
+        for ins in inserts.chain(p.buses.iter().map(|b| &b.insert)) {
+            clear_sends(ins, n);
+        }
         for (si, strip) in p.strips.iter().enumerate() {
             self.mix_strip(p, strip, n, &|c| input(si, c), output, ramp, rate);
         }
@@ -158,8 +172,12 @@ impl Processor {
         fill_ramp(lvl_buf, &mut lvl, strip.level_target, ramp);
         strip.level.set(lvl);
         let steady_level = lvl == strip.level_target;
+        // External effects always hear the strip, even when it is silent
+        // in every mix.
+        let insert_busy = strip.fx.insert_busy(&strip.insert);
         if steady_level
             && lvl == 0.0
+            && !insert_busy
             && strip.sends.iter().all(|s| is_all_zero(s.current.get_mut()))
         {
             // Fully silent and settled: nothing to mix, meters read zero.
@@ -177,9 +195,13 @@ impl Processor {
                 let trigger = &p.strips[t];
                 trigger.fx.heard(duck.threshold, trigger.gate.enabled)
             });
+        // External effects after the fader get the strip with its fader
+        // applied, and what comes back goes into the mixes as it is.
+        let faded = insert_busy && strip.insert.position == InsertPoint::AfterFader;
+        let fader: &[f32] = lvl_buf;
+        let lvl_buf: &[f32] = if faded { &scratch.unity[..n] } else { fader };
         let ducked_buf = &mut scratch.ducked[..n];
         let ducking = strip.fx.duck(duck, heard, rate, lvl_buf, ducked_buf);
-        let lvl_buf: &[f32] = lvl_buf;
         let ducked_buf: &[f32] = ducked_buf;
         let level_for = |bi: usize| {
             if ducking && strip.duck_mask[bi] {
@@ -211,11 +233,15 @@ impl Processor {
             denoise: &strip.denoise,
             denoise_bank: strip.denoise_bank.as_deref(),
             compressor: &strip.compressor,
+            insert: &strip.insert,
+            insert_busy,
+            level: fader,
         };
         let processed = effects.process(n, rate, ramp, input, &mut self.fx_scratch);
+        debug_assert_eq!(processed.as_ref().is_some_and(|p| p.faded), faded);
         let channel = |c: usize| -> Option<&[f32]> {
-            match processed {
-                Some(bufs) => Some(&bufs[c][..n]),
+            match &processed {
+                Some(p) => Some(&p.channels[c][..n]),
                 None => {
                     let inp = input(c);
                     (!inp.is_null()).then(|| std::slice::from_raw_parts(inp, n))
@@ -303,6 +329,10 @@ impl Processor {
             fold_to_mono(bus, n, output, mono_buf, &mut scratch.avg[..n]);
         }
 
+        let insert = |at, fx_scratch: &mut FxScratch| {
+            fx::process_bus_insert(&bus.fx, &bus.insert, at, n, ramp, output, fx_scratch);
+        };
+        insert(InsertPoint::BeforeEq, &mut self.fx_scratch);
         fx::process_bus_eq(
             &bus.fx,
             &bus.eq,
@@ -313,6 +343,7 @@ impl Processor {
             &mut self.fx_scratch,
         );
 
+        insert(InsertPoint::BeforeFader, &mut self.fx_scratch);
         for o in 0..bus.ports.len() {
             let out = output(o);
             if out.is_null() {
@@ -325,8 +356,10 @@ impl Processor {
         }
 
         // The limiter goes last, after the fader, so nothing can push the
-        // output past its ceiling.
+        // output past its ceiling, unless external effects come after it.
+        insert(InsertPoint::BeforeLimiter, &mut self.fx_scratch);
         fx::process_bus_limiter(&bus.fx, &bus.limiter, n, rate, ramp, output);
+        insert(InsertPoint::AfterLimiter, &mut self.fx_scratch);
 
         for (o, meter) in bus.peaks.iter().enumerate() {
             let out = output(o);
@@ -379,6 +412,20 @@ unsafe fn fold_to_mono(
         for k in 0..n {
             let m = mono_buf[k];
             out[k] = out[k] * (1.0 - m) + avg[k] * m;
+        }
+    }
+}
+
+/// Silence `ins`'s outputs to external effects for `n` samples.
+///
+/// # Safety
+/// As for [`Processor::process`]: its send buffers must be valid for `n`
+/// floats, or null.
+unsafe fn clear_sends(ins: &RtInsert, n: usize) {
+    for buf in &ins.send_bufs {
+        let out = buf.get();
+        if !out.is_null() {
+            std::ptr::write_bytes(out, 0, n);
         }
     }
 }
@@ -508,36 +555,67 @@ unsafe fn migrate(new: &RtParams, old: &RtParams) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsp::params::{build_rt_params, NoPorts};
+    use crate::dsp::params::{build_rt_params, NoPorts, PortPtr, PortResolver};
     use weir_protocol::*;
 
     /// Test harness: owns buffers and drives the processor.
     struct Rig {
         inputs: Vec<Vec<Vec<f32>>>,  // [strip][ch][k]
         outputs: Vec<Vec<Vec<f32>>>, // [bus][ch][k]
+        /// What each strip's and bus's external effects are sent, and what
+        /// they give back, like `inputs` and `outputs`.
+        strip_sends: Vec<Vec<Vec<f32>>>,
+        strip_returns: Vec<Vec<Vec<f32>>>,
+        bus_sends: Vec<Vec<Vec<f32>>>,
+        bus_returns: Vec<Vec<Vec<f32>>>,
         n: usize,
         proc_: Processor,
     }
 
     impl Rig {
         fn new(state: &MixerState, n: usize) -> Self {
-            Self {
-                inputs: state
+            let strips = || {
+                state
                     .strips
                     .iter()
                     .map(|s| vec![vec![0.0; n]; s.layout.channel_count()])
-                    .collect(),
-                outputs: state
+                    .collect()
+            };
+            let buses = || {
+                state
                     .buses
                     .iter()
                     .map(|b| vec![vec![0.0; n]; b.layout.channel_count()])
-                    .collect(),
+                    .collect()
+            };
+            Self {
+                inputs: strips(),
+                outputs: buses(),
+                strip_sends: strips(),
+                strip_returns: strips(),
+                bus_sends: buses(),
+                bus_returns: buses(),
                 n,
                 proc_: Processor::new(),
             }
         }
 
         fn run(&mut self, params: &Arc<RtParams>, ramp: usize) {
+            // As the process callback does with PipeWire's buffers.
+            let wire = |ins: &RtInsert, sends: &[Vec<f32>], returns: &[Vec<f32>]| unsafe {
+                for (cell, buf) in ins.send_bufs.iter().zip(sends) {
+                    cell.set(buf.as_ptr() as *mut f32);
+                }
+                for (cell, buf) in ins.return_bufs.iter().zip(returns) {
+                    cell.set(buf.as_ptr());
+                }
+            };
+            for (i, s) in params.strips.iter().enumerate() {
+                wire(&s.insert, &self.strip_sends[i], &self.strip_returns[i]);
+            }
+            for (i, b) in params.buses.iter().enumerate() {
+                wire(&b.insert, &self.bus_sends[i], &self.bus_returns[i]);
+            }
             let inputs = &self.inputs;
             let outputs = &self.outputs;
             let inp = |s: usize, c: usize| inputs[s][c].as_ptr();
@@ -1449,5 +1527,188 @@ mod tests {
         rig.inputs[1][0].iter_mut().for_each(|v| *v = 0.5);
         rig.settle(&params);
         assert!(close(rig.outputs[1][0][63], 0.1));
+    }
+
+    /// Says whether external effects are connected, everywhere. It has no
+    /// ports: the rig wires the buffers itself.
+    struct Effects(bool);
+
+    impl PortResolver for Effects {
+        fn strip_port(&self, _: StripId, _: usize) -> PortPtr {
+            std::ptr::null_mut()
+        }
+        fn bus_port(&self, _: BusId, _: usize) -> PortPtr {
+            std::ptr::null_mut()
+        }
+        fn insert_connected(&self, _: StripOrBus) -> bool {
+            self.0
+        }
+    }
+
+    /// `mic_only`, its fader at -6 dB, with external effects at `position`.
+    fn mic_with_effects(position: InsertPoint, fallback: InsertFallback) -> MixerState {
+        let mut st = mic_only();
+        st.strips[0].gain_db = -6.0;
+        st.strips[0].insert = Insert {
+            enabled: true,
+            position,
+            fallback,
+        };
+        st
+    }
+
+    #[test]
+    fn external_effects_before_the_fader_replace_the_sound() {
+        let st = mic_with_effects(InsertPoint::BeforeFader, InsertFallback::PassThrough);
+        let params = build_rt_params(&st, SoloMode::Exclusive, &Effects(true), None);
+        let mut rig = Rig::new(&st, 64);
+        rig.inputs[0][0].fill(1.0);
+        rig.strip_returns[0][0].fill(0.5);
+        rig.settle(&params);
+        let g = db_to_linear(-6.0);
+        // The effects hear the strip before its fader, and what they give
+        // back goes on through it into the mix and the meter.
+        assert!(close(rig.strip_sends[0][0][63], 1.0));
+        assert!(close(rig.outputs[0][0][63], 0.5 * g));
+        let (strips, _) = params.take_peaks();
+        assert!(close(strips[0].1[0], linear_to_db(0.5 * g)));
+    }
+
+    #[test]
+    fn external_effects_after_the_fader_hear_it() {
+        let st = mic_with_effects(InsertPoint::AfterFader, InsertFallback::PassThrough);
+        let params = build_rt_params(&st, SoloMode::Exclusive, &Effects(true), None);
+        let mut rig = Rig::new(&st, 64);
+        rig.inputs[0][0].fill(1.0);
+        rig.strip_returns[0][0].fill(0.5);
+        rig.settle(&params);
+        assert!(close(rig.strip_sends[0][0][63], db_to_linear(-6.0)));
+        assert!(close(rig.outputs[0][0][63], 0.5));
+        let (strips, _) = params.take_peaks();
+        assert!(close(strips[0].1[0], linear_to_db(0.5)));
+    }
+
+    #[test]
+    fn unconnected_external_effects_fall_back() {
+        let g = db_to_linear(-6.0);
+        for (fallback, expected) in [
+            (InsertFallback::PassThrough, g),
+            (InsertFallback::Silence, 0.0),
+        ] {
+            let st = mic_with_effects(InsertPoint::BeforeFader, fallback);
+            let params = build_rt_params(&st, SoloMode::Exclusive, &Effects(false), None);
+            let mut rig = Rig::new(&st, 64);
+            rig.inputs[0][0].fill(1.0);
+            // Nothing is connected, so whatever the buffer holds is unused.
+            rig.strip_returns[0][0].fill(0.5);
+            rig.settle(&params);
+            assert!(close(rig.outputs[0][0][63], expected), "{fallback:?}");
+            // The sound still goes out, for a program about to connect.
+            assert!(close(rig.strip_sends[0][0][63], 1.0));
+        }
+    }
+
+    #[test]
+    fn external_effects_connecting_crossfade() {
+        let mut st = mic_with_effects(InsertPoint::BeforeFader, InsertFallback::PassThrough);
+        st.strips[0].gain_db = 0.0;
+        let p1 = build_rt_params(&st, SoloMode::Exclusive, &Effects(false), None);
+        let mut rig = Rig::new(&st, 64);
+        rig.inputs[0][0].fill(1.0);
+        rig.settle(&p1);
+        assert!(close(rig.outputs[0][0][63], 1.0));
+        // A program connects and gives back silence: the strip fades from
+        // its own sound to that over the ramp, rather than cutting out.
+        let p2 = build_rt_params(&st, SoloMode::Exclusive, &Effects(true), Some(&p1));
+        rig.run(&p2, 32);
+        let out = &rig.outputs[0][0];
+        assert!(out[0] > 0.95 && out[0] < 1.0, "{}", out[0]);
+        assert!(out.windows(2).all(|w| w[1] <= w[0]));
+        assert!(out[16] > 0.3 && out[16] < 0.7, "{}", out[16]);
+        assert!(close(out[63], 0.0));
+    }
+
+    #[test]
+    fn external_effects_hear_a_strip_heard_nowhere() {
+        let mut st = mic_with_effects(InsertPoint::BeforeFader, InsertFallback::PassThrough);
+        st.strips[0].mute = true;
+        st.strips[0].routes.clear();
+        let params = build_rt_params(&st, SoloMode::Exclusive, &Effects(true), None);
+        let mut rig = Rig::new(&st, 64);
+        rig.inputs[0][0].fill(1.0);
+        rig.settle(&params);
+        assert!(close(rig.strip_sends[0][0][63], 1.0));
+    }
+
+    #[test]
+    fn what_comes_back_goes_through_the_rest_of_the_chain() {
+        let gated = |position| {
+            let mut st = mic_with_effects(position, InsertFallback::PassThrough);
+            st.strips[0].gain_db = 0.0;
+            st.strips[0].gate = Gate {
+                enabled: true,
+                threshold_db: -40.0,
+                range_db: -90.0,
+                attack_ms: 1.0,
+                hold_ms: 10.0,
+                release_ms: 10.0,
+            };
+            let params = build_rt_params(&st, SoloMode::Exclusive, &Effects(true), None);
+            let mut rig = Rig::new(&st, 480);
+            let mut seed = 3;
+            // Someone talks, and the effects give back only quiet noise.
+            for block in 0..40 {
+                sine(&mut rig.inputs[0][0], block * 480, 300.0, 0.25);
+                noise(&mut rig.strip_returns[0][0], &mut seed, 0.001);
+                rig.run(&params, 480);
+            }
+            peak(&rig.outputs[0][0])
+        };
+        // Before the gate, the gate hears the noise and shuts it out.
+        assert!(gated(InsertPoint::BeforeGate) < 1e-5);
+        // After it, the gate heard the talking and stays open for the noise.
+        let after = gated(InsertPoint::BeforeEq);
+        assert!(after > 5e-4 && after <= 0.001, "{after}");
+    }
+
+    #[test]
+    fn bus_external_effects_sit_where_they_are_put() {
+        let g = db_to_linear(-6.0);
+        // (where, what the effects hear, what comes out)
+        for (position, sent, out) in [
+            (InsertPoint::BeforeFader, 1.0, 0.5 * g),
+            (InsertPoint::AfterLimiter, g, 0.5),
+        ] {
+            let mut st = mic_only();
+            st.buses[0].gain_db = -6.0;
+            st.buses[0].limiter = Limiter::default();
+            st.buses[0].insert = Insert {
+                enabled: true,
+                position,
+                fallback: InsertFallback::PassThrough,
+            };
+            let params = build_rt_params(&st, SoloMode::Exclusive, &Effects(true), None);
+            let mut rig = Rig::new(&st, 64);
+            rig.inputs[0][0].fill(1.0);
+            rig.bus_returns[0][0].fill(0.5);
+            rig.settle(&params);
+            assert!(close(rig.bus_sends[0][0][63], sent), "{position:?}");
+            assert!(close(rig.outputs[0][0][63], out), "{position:?}");
+        }
+    }
+
+    #[test]
+    fn external_effects_switched_off_stop_sending() {
+        let mut st = mic_with_effects(InsertPoint::BeforeFader, InsertFallback::PassThrough);
+        let p1 = build_rt_params(&st, SoloMode::Exclusive, &Effects(true), None);
+        let mut rig = Rig::new(&st, 64);
+        rig.inputs[0][0].fill(1.0);
+        rig.strip_returns[0][0].fill(0.5);
+        rig.settle(&p1);
+        st.strips[0].insert.enabled = false;
+        let p2 = build_rt_params(&st, SoloMode::Exclusive, &Effects(true), Some(&p1));
+        rig.settle(&p2);
+        assert!(close(rig.outputs[0][0][63], db_to_linear(-6.0)));
+        assert!(rig.strip_sends[0][0].iter().all(|&v| v == 0.0));
     }
 }

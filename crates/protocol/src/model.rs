@@ -11,7 +11,7 @@
 //! and application streams PipeWire reports, the engine's status, meters,
 //! and the daemon's own [`Settings`].
 
-use crate::fx::{Compressor, Denoise, Ducking, EqPreset, Equalizer, Gate, Limiter};
+use crate::fx::{Compressor, Denoise, Ducking, EqPreset, Equalizer, Gate, Insert, Limiter};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -664,6 +664,10 @@ pub struct Strip {
     /// fader, in some or all of its mixes.
     #[serde(default, skip_serializing_if = "Ducking::is_default")]
     pub ducking: Ducking,
+    /// External effects: its sound out to another program and back, at a
+    /// point of its chain.
+    #[serde(default, skip_serializing_if = "Insert::is_default")]
+    pub insert: Insert,
 }
 
 impl Strip {
@@ -694,6 +698,7 @@ impl Strip {
             eq: Equalizer::default(),
             compressor: Compressor::default(),
             ducking: Ducking::default(),
+            insert: Insert::default(),
         }
     }
 
@@ -764,6 +769,13 @@ impl Strip {
             "was ducked by or in strips or buses that are gone",
         );
         fix(d.normalize(), "had ducking settings out of range");
+
+        let at = self.insert.position.for_strip();
+        fix(
+            at != self.insert.position,
+            "had its external effects at a place only buses have",
+        );
+        self.insert.position = at;
     }
 }
 
@@ -810,6 +822,10 @@ pub struct Bus {
     /// How it plays channels of a strip it has no speaker for.
     #[serde(default, skip_serializing_if = "Downmix::is_default")]
     pub downmix: Downmix,
+    /// External effects: its mix out to another program and back, at a
+    /// point of its chain.
+    #[serde(default, skip_serializing_if = "Insert::is_default")]
+    pub insert: Insert,
 }
 
 impl Bus {
@@ -833,6 +849,7 @@ impl Bus {
                 BusKind::Hardware => Limiter::default(),
             },
             downmix: Downmix::default(),
+            insert: Insert::default(),
         }
     }
 
@@ -861,6 +878,12 @@ impl Bus {
             "had limiter settings out of range",
         );
         fix(self.downmix.normalize(), "had downmix levels out of range");
+        let at = self.insert.position.for_bus();
+        fix(
+            at != self.insert.position,
+            "had its external effects at a place only strips have",
+        );
+        self.insert.position = at;
     }
 }
 
@@ -1346,6 +1369,21 @@ pub struct FullState {
     /// The volumes the system has set on Weir's virtual devices.
     #[serde(default)]
     pub system_volumes: SystemVolumes,
+    /// Whether the external effects of each strip and bus that has them
+    /// on are connected.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub inserts: Vec<InsertStatus>,
+}
+
+/// Whether a strip's or bus's external effects are connected: whether any
+/// program plays into its "back from effects" device. While nothing does,
+/// its sound carries on as [`Insert::fallback`] says.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct InsertStatus {
+    /// The strip or bus.
+    pub target: StripOrBus,
+    /// Whether something plays into its "back from effects" device.
+    pub connected: bool,
 }
 
 /// The volume the system has set on one of Weir's own virtual
@@ -1439,6 +1477,7 @@ pub fn linear_to_db(lin: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fx::InsertPoint;
 
     #[test]
     fn send_levels_travel_as_json() {
@@ -1502,6 +1541,58 @@ mod tests {
         assert_eq!(m.strips[0].gain_db, GAIN_MAX_DB);
         assert_eq!(m.strips[0].pan, -1.0);
         assert_eq!(m.strips[0].routes.len(), 1);
+    }
+
+    #[test]
+    fn external_effects_move_to_a_place_the_strip_or_bus_has() {
+        let insert = |position| Insert {
+            enabled: true,
+            position,
+            ..Insert::default()
+        };
+        let mut m = MixerState {
+            strips: vec![Strip {
+                insert: insert(InsertPoint::AfterLimiter),
+                ..Strip::new(1, "a", StripKind::Virtual, ChannelLayout::Stereo)
+            }],
+            buses: vec![Bus {
+                insert: insert(InsertPoint::BeforeGate),
+                ..Bus::new(1, "b", BusKind::Hardware, ChannelLayout::Stereo)
+            }],
+        };
+        assert_eq!(m.normalize().len(), 2);
+        assert_eq!(m.strips[0].insert.position, InsertPoint::AfterFader);
+        assert_eq!(m.buses[0].insert.position, InsertPoint::BeforeEq);
+        // Every place maps onto one the other has.
+        for p in InsertPoint::STRIP {
+            assert!(InsertPoint::BUS.contains(&p.for_bus()), "{p:?}");
+            assert_eq!(p.for_strip(), p);
+        }
+        for p in InsertPoint::BUS {
+            assert!(InsertPoint::STRIP.contains(&p.for_strip()), "{p:?}");
+            assert_eq!(p.for_bus(), p);
+        }
+    }
+
+    #[test]
+    fn external_effects_stay_out_of_the_json_until_changed() {
+        let s = Strip::new(1, "Mic", StripKind::Hardware, ChannelLayout::Mono);
+        let json = serde_json::to_string(&s).unwrap();
+        assert!(!json.contains("insert"), "{json}");
+        let on = Strip {
+            insert: Insert {
+                enabled: true,
+                ..Insert::default()
+            },
+            ..s
+        };
+        let json = serde_json::to_string(&on).unwrap();
+        assert!(
+            json.contains(
+                r#""insert":{"enabled":true,"position":"before_fader","fallback":"pass_through"}"#
+            ),
+            "{json}"
+        );
     }
 
     #[test]

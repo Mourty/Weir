@@ -96,6 +96,7 @@ pub(super) fn undo_step(req: &Request, m: &MixerState) -> Option<Step> {
                 ["denoise"] => format!("{name} noise suppression"),
                 ["compressor"] => format!("{name} compressor"),
                 ["ducking"] => format!("{name} ducking"),
+                ["insert"] => format!("{name} external effects"),
                 _ => format!("Change {name}"),
             };
             Step::new(label, format!("strip/{}/{}", p.id, paths.join(",")))
@@ -118,6 +119,7 @@ pub(super) fn undo_step(req: &Request, m: &MixerState) -> Option<Step> {
                 ["eq"] => format!("{name} equalizer"),
                 ["limiter"] => format!("{name} limiter"),
                 ["downmix"] => format!("{name} downmix"),
+                ["insert"] => format!("{name} external effects"),
                 _ => format!("Change {name}"),
             };
             Step::new(label, format!("bus/{}/{}", p.id, paths.join(",")))

@@ -34,6 +34,26 @@ pub fn virtual_output_node_name(bus: weir_protocol::BusId) -> String {
     format!("{VIRTUAL_PREFIX}output.{bus}")
 }
 
+/// `node.name` of the device `target`'s external effects record from:
+/// "*name*: to effects (Weir)".
+pub fn to_effects_node_name(target: weir_protocol::StripOrBus) -> String {
+    format!("{VIRTUAL_PREFIX}to-effects.{}", owner_suffix(target))
+}
+
+/// `node.name` of the device `target`'s external effects play back into:
+/// "*name*: back from effects (Weir)".
+pub fn from_effects_node_name(target: weir_protocol::StripOrBus) -> String {
+    format!("{VIRTUAL_PREFIX}from-effects.{}", owner_suffix(target))
+}
+
+/// `strip.3` or `bus.2`, for the names of external effects' devices.
+fn owner_suffix(target: weir_protocol::StripOrBus) -> String {
+    match target {
+        weir_protocol::StripOrBus::Strip(id) => format!("strip.{id}"),
+        weir_protocol::StripOrBus::Bus(id) => format!("bus.{id}"),
+    }
+}
+
 /// Parse a strip id out of a virtual input node name.
 pub fn strip_of_virtual_input(node_name: &str) -> Option<weir_protocol::StripId> {
     node_name

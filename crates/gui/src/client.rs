@@ -292,6 +292,7 @@ fn read_loop(
                 Notification::AppRulesChanged(r) => sh.state.app_rules = r,
                 Notification::LibraryChanged(l) => sh.state.library = l,
                 Notification::SystemVolumesChanged(v) => sh.state.system_volumes = v,
+                Notification::InsertsChanged(v) => sh.state.inserts = v,
             },
             ServerMessage::Response(r) => {
                 let answer =

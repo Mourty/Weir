@@ -1,11 +1,13 @@
 //! Wrapper over `pw_filter`: the engine node.
 //!
 //! One `pw_filter` does all of Weir's mixing. It has an input port for every
-//! strip channel and an output port for every bus channel, and PipeWire
-//! calls [`on_process`] on its real-time thread once per cycle with a
-//! buffer for each.
+//! strip channel and an output port for every bus channel, and one of each
+//! more for every channel of a strip or bus with external effects on.
+//! PipeWire calls [`on_process`] on its real-time thread once per cycle
+//! with a buffer for each.
 
-use crate::dsp::{build_rt_params, params::NoPorts, PortPtr, Processor, RtParams};
+use crate::dsp::params::{NoPorts, RtInsert};
+use crate::dsp::{build_rt_params, PortPtr, Processor, RtParams};
 use arc_swap::ArcSwap;
 use libspa_sys as spa_sys;
 use pipewire::properties::PropertiesBox;
@@ -24,9 +26,10 @@ const RAMP_MS: u32 = 10;
 /// Which way a port carries audio.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Direction {
-    /// Into the engine: a strip channel.
+    /// Into the engine: a strip channel, or one coming back from external
+    /// effects.
     Input,
-    /// Out of the engine: a bus channel.
+    /// Out of the engine: a bus channel, or one going to external effects.
     Output,
 }
 
@@ -163,25 +166,36 @@ unsafe extern "C" fn on_process(data: *mut c_void, position: *mut spa_sys::spa_i
     let guard = shared.params.load();
     let params: &Arc<RtParams> = &guard;
 
+    let buffer = |port: PortPtr| -> *mut f32 {
+        if port.is_null() {
+            std::ptr::null_mut()
+        } else {
+            pw_sys::pw_filter_get_dsp_buffer(port, n as u32) as *mut f32
+        }
+    };
+    let resolve_insert = |ins: &RtInsert| {
+        for (c, &port) in ins.send_ports.iter().enumerate() {
+            ins.send_bufs[c].set(buffer(port));
+        }
+        for (c, &port) in ins.return_ports.iter().enumerate() {
+            ins.return_bufs[c].set(buffer(port));
+        }
+    };
     for strip in &params.strips {
         for (c, &port) in strip.ports.iter().enumerate() {
-            let buf = if port.is_null() {
-                std::ptr::null()
-            } else {
-                pw_sys::pw_filter_get_dsp_buffer(port, n as u32) as *const f32
-            };
-            strip.in_bufs[c].set(buf);
+            strip.in_bufs[c].set(buffer(port));
         }
+        resolve_insert(&strip.insert);
     }
     for bus in &params.buses {
         for (c, &port) in bus.ports.iter().enumerate() {
-            let buf = if port.is_null() {
-                std::ptr::null_mut()
-            } else {
-                pw_sys::pw_filter_get_dsp_buffer(port, n as u32) as *mut f32
-            };
-            bus.out_bufs[c].set(buf);
+            bus.out_bufs[c].set(buffer(port));
         }
+        resolve_insert(&bus.insert);
+    }
+    let silent = buffer(params.effects_loop);
+    if !silent.is_null() {
+        std::ptr::write_bytes(silent, 0, n);
     }
 
     let input = |si: usize, c: usize| -> *const f32 { params.strips[si].in_bufs[c].get() };

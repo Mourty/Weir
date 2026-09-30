@@ -62,7 +62,7 @@ command) lists its options.
 | Command | Shows |
 |---|---|
 | `weirctl status` | Whether the engine is running, at what rate and buffer size, and how many strips, buses, devices and applications there are. |
-| `weirctl state` | Every strip and bus: level, mute, solo, pan, effects, routes and device. |
+| `weirctl state` | Every strip and bus: level, mute, solo, pan, effects, routes and device, and whether external effects are connected. |
 | `weirctl devices` | The devices strips and buses can use, with the names `--device` takes. |
 | `weirctl apps` | The applications playing, where, and at what volume. |
 
@@ -123,6 +123,19 @@ are. It prints the strip as it is afterwards.
 | `--duck-in BUSES` | The buses whose mixes it happens in, separated by commas, or `all`. |
 | `--duck-threshold DB` | How loud a strip in `--duck-when` must be to count as heard. |
 
+**External effects**
+
+The strip's sound can go out to another program, such as Carla or
+EasyEffects, and come back, at any point of its chain. While on, the strip
+has two more devices: "*name*: to effects (Weir)", which the program
+records from, and "*name*: back from effects (Weir)", which it plays into.
+
+| Option | |
+|---|---|
+| `--external-effects on\|off\|toggle` | Send the sound out and take it back. |
+| `--external-effects-at PLACE` | Where: `before-denoise`, `before-gate`, `before-eq`, `before-compressor`, `before-fader` (the default) or `after-fader`. |
+| `--external-effects-fallback pass\|silence` | What the strip plays while nothing comes back: its sound as if they were off (`pass`, the default), or nothing. |
+
 ```sh
 weirctl strip Music --gain -6
 weirctl strip Music --gain-by 2
@@ -134,6 +147,7 @@ weirctl strip Mic --denoise on --gate on --gate-threshold -40
 weirctl strip Mic --comp on --comp-threshold -24 --comp-ratio 4 --comp-lift auto
 weirctl strip Music --duck on --duck-when Mic --duck-in B1 --duck-by 12
 weirctl strip Music --layout 5.1 --upmix all --subwoofer on
+weirctl strip Mic --external-effects on --external-effects-at before-compressor
 ```
 
 ## Buses
@@ -156,6 +170,9 @@ Changes a bus, and prints it as it is afterwards.
 | `--center-level DB` | The center channel's level in the downmix: `0`, `-3` (standard), `-4.5` or `-6`. |
 | `--surround-level DB\|off` | The surround channels' level: `0`, `-3` (standard), `-6` or `off`. |
 | `--keep-lfe on\|off` | Keep the subwoofer channel in the downmix. |
+| `--external-effects on\|off\|toggle` | Send the mix out to another program and take it back, as for strips. |
+| `--external-effects-at PLACE` | Where: `before-eq` (straight after the mix), `before-fader` (the default), `before-limiter` or `after-limiter`. |
+| `--external-effects-fallback pass\|silence` | What the bus plays while nothing comes back. |
 
 ```sh
 weirctl bus A1 --gain -3
@@ -163,6 +180,7 @@ weirctl bus Speakers --mute toggle
 weirctl bus "Stream Mic" --limiter on --limiter-ceiling -1
 weirctl bus A1 --downmix matrix --center-level -6
 weirctl bus A2 --device alsa_output.pci-0000_00_1f.3.analog-stereo
+weirctl bus "Stream Mic" --external-effects on --external-effects-at before-limiter
 ```
 
 ## Routing

@@ -1,9 +1,12 @@
 //! Links between the engine node and devices: each strip's source into the
-//! strip's input ports, and each bus's output ports into its device.
+//! strip's input ports, each bus's output ports into its device, and each
+//! external effects' ports to and from their two devices.
 
-use super::{Owner, Runner};
+use super::{with_effects, Owner, PortKey, Runner};
 use crate::pw::graph::{PortDirection, PortEntry};
-use crate::pw::{virtual_input_node_name, virtual_output_node_name};
+use crate::pw::{
+    from_effects_node_name, to_effects_node_name, virtual_input_node_name, virtual_output_node_name,
+};
 use pipewire::link::Link;
 use pipewire::properties::PropertiesBox;
 use std::collections::HashMap;
@@ -73,18 +76,18 @@ impl Runner {
             .collect()
     }
 
-    /// `owner`'s ports on the engine node that PipeWire knows about yet, as
-    /// `(position, global id)`, given its `n` channels and the node's ports
+    /// The engine node's ports `port(0)` to `port(n - 1)` that PipeWire
+    /// knows about yet, as `(position, global id)`, given the node's ports
     /// by name.
     fn ours(
         &self,
-        owner: Owner,
+        port: impl Fn(usize) -> PortKey,
         n: usize,
         by_name: &HashMap<String, u32>,
     ) -> Vec<(ChannelPosition, u32)> {
         (0..n)
             .filter_map(|c| {
-                let lp = self.ports.get(&owner.port(c))?;
+                let lp = self.ports.get(&port(c))?;
                 Some((lp.position, *by_name.get(&lp.name)?))
             })
             .collect()
@@ -98,7 +101,8 @@ impl Runner {
         };
         let mut desired = Vec::new();
         for s in &self.state.strips {
-            let ours = self.ours(Owner::Strip(s.id), s.layout.channel_count(), &by_name);
+            let owner = Owner::Strip(s.id);
+            let ours = self.ours(|c| owner.port(c), s.layout.channel_count(), &by_name);
             let source = match s.kind {
                 StripKind::Hardware => s
                     .device
@@ -124,7 +128,8 @@ impl Runner {
             }
         }
         for b in &self.state.buses {
-            let ours = self.ours(Owner::Bus(b.id), b.layout.channel_count(), &by_name);
+            let owner = Owner::Bus(b.id);
+            let ours = self.ours(|c| owner.port(c), b.layout.channel_count(), &by_name);
             let sink = match b.kind {
                 BusKind::Hardware => b.device.as_deref().and_then(|d| self.graph.resolve_sink(d)),
                 BusKind::Virtual => self
@@ -135,6 +140,40 @@ impl Runner {
             if let Some((_, dev_ports)) = sink {
                 for (our_out, dev_in) in pair(&ours, &theirs(dev_ports), true) {
                     desired.push((our_out, dev_in));
+                }
+            }
+        }
+        // External effects: out into "to effects", which is made like a
+        // virtual bus's microphone, and back from the monitor of "back from
+        // effects", which is made like a virtual strip's playback device.
+        // Coming back waits for the silent link into "back from effects"
+        // (see `effects`), so that it is the link that closes the loop.
+        let silent = self
+            .ports
+            .get(&PortKey::EffectsLoop)
+            .and_then(|p| by_name.get(&p.name).copied());
+        for w in with_effects(&self.state) {
+            let (owner, n, target) = (w.owner, w.positions.len(), w.owner.target());
+            if let Some(dev) = self.graph.node_by_name(&to_effects_node_name(target)) {
+                let ours = self.ours(|c| PortKey::ToEffects(owner, c), n, &by_name);
+                let dev_ports = self.graph.ports_of(dev.id, PortDirection::In, None);
+                for (our_out, dev_in) in pair(&ours, &theirs(dev_ports), true) {
+                    desired.push((our_out, dev_in));
+                }
+            }
+            let Some(dev) = self.graph.node_by_name(&from_effects_node_name(target)) else {
+                continue;
+            };
+            let dev_in = self.graph.ports_of(dev.id, PortDirection::In, None);
+            let (Some(silent), Some(first)) = (silent, dev_in.first()) else {
+                continue;
+            };
+            desired.push((silent, first.id));
+            if self.graph.has_link(silent, first.id) {
+                let ours = self.ours(|c| PortKey::FromEffects(owner, c), n, &by_name);
+                let dev_ports = self.graph.ports_of(dev.id, PortDirection::Out, Some(true));
+                for (our_in, dev_out) in pair(&ours, &theirs(dev_ports), false) {
+                    desired.push((dev_out, our_in));
                 }
             }
         }
@@ -149,6 +188,20 @@ impl Runner {
         };
         let desired = self.desired_links(engine.id);
 
+        // Unlinking first: links coming back from external effects must be
+        // gone before their silent link is made (see `effects`).
+        let unwanted: Vec<(u32, u32)> = self
+            .links
+            .keys()
+            .filter(|k| !desired.contains(k))
+            .copied()
+            .collect();
+        for key in unwanted {
+            if let Some(link) = self.links.remove(&key) {
+                debug!("unlinking {} -> {}", key.0, key.1);
+                let _ = self.core.destroy_object(link);
+            }
+        }
         for &(out_port, in_port) in &desired {
             if self.links.contains_key(&(out_port, in_port))
                 || self.graph.has_link(out_port, in_port)
@@ -176,18 +229,6 @@ impl Runner {
                     self.links.insert((out_port, in_port), link);
                 }
                 Err(e) => warn!("could not link ports {out_port} -> {in_port}: {e}"),
-            }
-        }
-        let unwanted: Vec<(u32, u32)> = self
-            .links
-            .keys()
-            .filter(|k| !desired.contains(k))
-            .copied()
-            .collect();
-        for key in unwanted {
-            if let Some(link) = self.links.remove(&key) {
-                debug!("unlinking {} -> {}", key.0, key.1);
-                let _ = self.core.destroy_object(link);
             }
         }
     }

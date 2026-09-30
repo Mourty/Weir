@@ -37,6 +37,15 @@ cargo test --workspace                     # needs no PipeWire
 docs/check_examples.py --socket ...        # see below, when the protocol or CLI changed
 ```
 
+GitHub runs the first three on every pull request, together with the
+checks below, and shows the result on the pull request.
+
+After adding or updating a dependency, run `make licenses` (it needs
+`cargo install cargo-about --features cli`) and commit
+`packaging/licenses/THIRD-PARTY-LICENSES.txt`. Packages carry that file,
+because the libraries' licenses ask for their notices to go with every
+copy of Weir, and the checks fail when it is out of date.
+
 Weir builds on Rust 1.88 (`rust-version` in `Cargo.toml`), the oldest its
 window library, egui, supports, so standard library methods newer than
 that are not available. Updating a dependency can raise the minimum; check
@@ -176,9 +185,32 @@ docs/check_examples.py --socket /tmp/weir-docs/c.sock
 
 `make install` installs into `~/.local`, and `make uninstall` removes
 exactly that. `make rpm` builds an RPM from the last commit into
-`~/rpmbuild/RPMS`, and `make rpm-install` installs it with dnf; the spec in
-`packaging/weir.spec` lists the same files the Makefile installs, so change
-both together.
+`~/rpmbuild/RPMS`, and `make rpm-install` installs it with dnf. `make deb`
+builds a `.deb` from the working tree into `target/deb` (it needs
+`dpkg-dev`). Both packages hold what `make install` puts down; the RPM spec
+in `packaging/weir.spec` also lists those files, so change it with the
+Makefile.
+
+GitHub builds both packages whenever a pull request changes the
+packaging, and on demand from **Actions → Packages → Run workflow**. Each
+run keeps them as downloads on its page for two weeks, for trying before a
+release.
+
+## Making a release
+
+1. Choose the new version number, such as `1.1.0`, and put it in three
+   places: `version` in `Cargo.toml`, `Version:` and a new `%changelog`
+   entry in `packaging/weir.spec`, and a new `<release>` in
+   `packaging/io.github.mourty.weir.metainfo.xml`, which software centers
+   show as the release notes.
+2. Merge that to `main` and wait for the checks to pass.
+3. On GitHub, open **Releases → Draft a new release**. Under **Choose a
+   tag**, type `v1.1.0` (the version with a `v` in front) and pick
+   **Create new tag on publish**. Give it a title, write what changed (or
+   press **Generate release notes**), and press **Publish release**.
+4. The **Packages** workflow builds the RPM and the `.deb` and attaches
+   them to the release, with a `SHA256SUMS` file, in about twenty minutes.
+   It refuses to start if the tag and the version numbers disagree.
 
 By contributing you agree that your work is released under the
 [MIT license](LICENSE), like the rest of Weir.

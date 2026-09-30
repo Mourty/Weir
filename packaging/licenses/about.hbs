@@ -1,0 +1,20 @@
+Third-party licenses
+====================
+
+Weir is built from these open-source libraries. Their licenses ask that
+their notices travel with every copy of Weir, so here they are. Weir's own
+license is in LICENSE.
+
+{{#each overview}}
+{{{name}}}: {{count}} {{#if (eq count 1)}}library{{else}}libraries{{/if}}
+{{/each}}
+{{#each licenses}}
+
+--------------------------------------------------------------------------
+{{{name}}}
+
+Used by: {{#each used_by}}{{crate.name}} {{crate.version}}{{#unless @last}}, {{/unless}}{{/each}}
+--------------------------------------------------------------------------
+
+{{{text}}}
+{{/each}}

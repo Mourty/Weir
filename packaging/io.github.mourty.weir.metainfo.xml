@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  What software centers such as Discover and GNOME Software show about Weir:
+  its description, screenshots, links and releases. Installed into
+  share/metainfo by `make install` and by the packages. Add a <release> for
+  each new version; CI checks there is one for the version in Cargo.toml.
+-->
+<component type="desktop-application">
+  <id>io.github.mourty.weir</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+
+  <name>Weir</name>
+  <summary>Mix and route microphones and applications</summary>
+  <developer id="io.github.mourty">
+    <name>Mourty</name>
+  </developer>
+
+  <description>
+    <p>
+      Weir puts the sound on your computer on a mixing desk, in the style of
+      Voicemeeter. Your microphone, your music, your browser and your game
+      each get a strip with a fader. Your headphones, your speakers and a
+      virtual microphone for Discord or OBS each get a bus. A row of buttons
+      beside every fader decides who hears what.
+    </p>
+    <ul>
+      <li>As many strips and buses as you need, each a device other programs can choose</li>
+      <li>A separate mix for every output, so a strip can be louder in your headphones than on your stream</li>
+      <li>Noise suppression, a noise gate, a compressor and a 16-band equalizer for voices</li>
+      <li>Ducking, which turns the music down while you talk, and a safety limiter on every output</li>
+      <li>Surround sound up to 7.1</li>
+      <li>Scenes, setups, rules for where applications go, and undo</li>
+      <li>A command line and a documented protocol, for scripts and stream decks</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">weir.desktop</launchable>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Audio</category>
+  </categories>
+
+  <url type="homepage">https://github.com/Mourty/Weir</url>
+  <url type="bugtracker">https://github.com/Mourty/Weir/issues</url>
+  <url type="vcs-browser">https://github.com/Mourty/Weir</url>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>The mixer: strips on the left, buses on the right</caption>
+      <image>https://raw.githubusercontent.com/Mourty/Weir/main/docs/images/mixer.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>A strip's noise gate, compressor and equalizer</caption>
+      <image>https://raw.githubusercontent.com/Mourty/Weir/main/docs/images/settings.png</image>
+    </screenshot>
+  </screenshots>
+
+  <update_contact>Mourt2@proton.me</update_contact>
+  <content_rating type="oars-1.1"/>
+
+  <provides>
+    <binary>weir</binary>
+    <binary>weir-daemon</binary>
+    <binary>weirctl</binary>
+  </provides>
+
+  <releases>
+    <release version="1.0.0" date="2026-09-30">
+      <description>
+        <p>The first release.</p>
+      </description>
+    </release>
+  </releases>
+</component>

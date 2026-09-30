@@ -48,15 +48,33 @@ lets the rest flow on.*
 
 ## Install
 
-Weir is built from source for now, which takes five to fifteen minutes;
-ready-made packages are planned. It has been tested on each of the
-systems below. Open a terminal and follow the steps for yours:
+### Download a package
+
+The easiest way. On the [latest release](https://github.com/Mourty/Weir/releases/latest),
+under **Assets**, download the file for your system and open it: your
+software center installs it. Or install it from a terminal, in the folder
+you saved it to:
+
+| System | File | In a terminal |
+|---|---|---|
+| Fedora, Nobara | the one ending in `.rpm` | `sudo dnf install ./weir-*.rpm` |
+| Ubuntu 24.04 and newer, Linux Mint 22, Pop!_OS 24.04, Debian 13 | the one ending in `.deb` | `sudo apt install ./weir_*.deb` |
+
+A downloaded package does not update itself. To hear about new releases,
+choose **Watch → Custom → Releases** at the top of Weir's GitHub page.
+To remove Weir, run `sudo dnf remove weir` or `sudo apt remove weir`.
+
+### Or build it yourself
+
+For Arch and CachyOS, other systems, or the newest changes. It takes five
+to fifteen minutes, and has been tested on each of the systems below.
+Open a terminal and follow the steps for yours:
 
 <details>
 <summary><b>Fedora and Nobara</b></summary>
 
 ```sh
-sudo dnf install git-core cargo rust clang make pipewire-devel pkgconf-pkg-config rpm-build rpmdevtools desktop-file-utils
+sudo dnf install git-core cargo rust clang make pipewire-devel pkgconf-pkg-config rpm-build rpmdevtools desktop-file-utils libappstream-glib
 git clone https://github.com/Mourty/Weir
 cd Weir
 make rpm-install
@@ -137,16 +155,17 @@ WirePlumber. Install Rust 1.88 or newer, clang, a C compiler, `make`,
 `pkg-config` and PipeWire's development files, then run `make install`
 from the `Weir` folder.
 
-When it has finished, open **Weir** from your application menu. To have
-it ready whenever you log in, tick **Start Weir when I log in** in
-Preferences, in the **…** menu at the top right.
-
 After `make install`, the `weirctl` command works from your next login.
+To update, run `git pull` in the `Weir` folder, then the last line you
+installed with again. To remove it, `sudo dnf remove weir` on Fedora and
+Nobara, or `make uninstall` in the `Weir` folder elsewhere.
 
-**Updating**: run `git pull` in the `Weir` folder, then the last line
-you installed with again. **Removing**: `sudo dnf remove weir` on Fedora
-and Nobara, or `make uninstall` in the `Weir` folder elsewhere. Your
-settings stay in `~/.config/weir` until you delete that folder.
+### Then
+
+Open **Weir** from your application menu. To have it ready whenever you
+log in, tick **Start Weir when I log in** in Preferences, in the **…**
+menu at the top right. Your settings stay in `~/.config/weir`, even if
+you remove Weir, until you delete that folder.
 
 ## First steps
 

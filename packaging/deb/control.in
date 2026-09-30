@@ -1,0 +1,19 @@
+Package: weir
+Version: @VERSION@
+Architecture: @ARCH@
+Maintainer: Mourty <Mourt2@proton.me>
+Installed-Size: @SIZE@
+Depends: @DEPENDS@, pipewire, wireplumber, libxkbcommon0, libegl1
+Section: sound
+Priority: optional
+Homepage: https://github.com/Mourty/Weir
+Description: Voicemeeter-style audio mixer for PipeWire
+ Weir puts the sound on your computer on a mixing desk. Your microphone,
+ your music, your browser and your game each get a strip with a fader.
+ Your headphones, your speakers and a virtual microphone for Discord or OBS
+ each get a bus, and a row of buttons beside every fader decides who hears
+ what.
+ .
+ It installs three programs: weir-daemon, the background service that does
+ the mixing; weir, the mixer window; and weirctl, a command line for
+ scripts and stream decks.

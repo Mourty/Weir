@@ -9,19 +9,21 @@
 # installing it, run `make rpm`.
 #
 # Note: this builds with plain cargo, so it downloads crates from the network
-# during the build. That works with rpmbuild on your own machine. Offline
-# build services such as COPR need a `cargo vendor` tarball as a second Source
-# or the %%cargo_* macros from rust-packaging.
+# during the build. That works with rpmbuild on your own machine, in GitHub's
+# build containers, and on COPR with "internet access during builds" on.
+# Offline build services need a `cargo vendor` tarball as a second Source.
 
-# Fall back gracefully when systemd-rpm-macros is not installed.
+# Fall back gracefully when systemd-rpm-macros or the AppStream macros are
+# not installed.
 %{!?_userunitdir: %global _userunitdir %{_prefix}/lib/systemd/user}
+%{!?_metainfodir: %global _metainfodir %{_datadir}/metainfo}
 
 # The release profile is built without debug info, so there is no debuginfo to
 # extract into a subpackage. Fedora's own rpm macros export RUSTFLAGS
-# containing -Cdebuginfo=2, so this has to be set explicitly, and %build and
-# %install must pass exactly the same cargo settings. If they differ, cargo
-# sees a different fingerprint and rebuilds the whole tree a second time
-# during %install.
+# containing -Cdebuginfo=2, so this has to be set explicitly, and %build,
+# %install and %check must pass exactly the same cargo settings. If they
+# differ, cargo sees a different fingerprint and rebuilds the whole tree
+# again, which on GitHub's builders costs a quarter of an hour.
 %global debug_package %{nil}
 %global cargo_env CARGO_PROFILE_RELEASE_DEBUG=false
 %global cargo_flags --release --locked
@@ -31,6 +33,8 @@ Version:        1.0.0
 Release:        %{?_release}%{!?_release:1}%{?dist}
 Summary:        Voicemeeter-style audio mixer for PipeWire
 
+# Weir's own license. The libraries built into it are listed, with their
+# licenses, in THIRD-PARTY-LICENSES.txt.
 License:        MIT
 URL:            https://github.com/Mourty/Weir
 Source0:        %{name}-%{version}.tar.gz
@@ -41,6 +45,7 @@ BuildRequires:  clang
 BuildRequires:  make
 BuildRequires:  pkgconfig(libpipewire-0.3)
 BuildRequires:  desktop-file-utils
+BuildRequires:  libappstream-glib
 
 Requires:       pipewire
 Requires:       wireplumber
@@ -70,17 +75,20 @@ for scripts and stream decks).
 
 %check
 desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
-cargo test --workspace --release --locked
+appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/io.github.mourty.weir.metainfo.xml
+%{cargo_env} cargo test --workspace %{cargo_flags}
 
 %files
 %license %{_datadir}/licenses/weir/LICENSE
 %license %{_datadir}/licenses/weir/nnnoiseless-BSD-3-Clause.txt
+%license %{_datadir}/licenses/weir/THIRD-PARTY-LICENSES.txt
 %{_bindir}/weir
 %{_bindir}/weir-daemon
 %{_bindir}/weirctl
 %{_datadir}/applications/%{name}.desktop
 %{_datadir}/icons/hicolor/scalable/apps/%{name}.svg
 %{_datadir}/icons/hicolor/symbolic/apps/%{name}-symbolic.svg
+%{_metainfodir}/io.github.mourty.weir.metainfo.xml
 %{_userunitdir}/weir.service
 %dir %{_datadir}/doc/%{name}
 %doc %{_datadir}/doc/%{name}/README.md

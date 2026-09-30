@@ -5,6 +5,9 @@
 #   make uninstall    remove every file install put down
 #   make test         run the unit tests
 #   make icons        redraw the window icon from packaging/weir.svg
+#   make licenses     gather the libraries' license notices (cargo-about)
+#   make rpm          build an RPM package (Fedora, Nobara)
+#   make deb          build a .deb package (Ubuntu, Mint, Pop!_OS, Debian)
 #
 # The default prefix is ~/.local, which needs no root and whose bin directory
 # is already on PATH on Fedora and Nobara. For a system-wide install:
@@ -21,7 +24,10 @@ DATADIR := $(PREFIX)/share
 APPDIR := $(DATADIR)/applications
 ICONDIR := $(DATADIR)/icons/hicolor/scalable/apps
 SYMBOLIC_ICONDIR := $(DATADIR)/icons/hicolor/symbolic/apps
+METAINFODIR := $(DATADIR)/metainfo
+METAINFO := io.github.mourty.weir.metainfo.xml
 DOCDIR := $(DATADIR)/doc/weir
+LICENSEDIR := $(DATADIR)/licenses/weir
 
 # systemd reads user units from ~/.local/share/systemd/user and from
 # /usr/lib/systemd/user, so a system prefix needs this overridden:
@@ -45,7 +51,7 @@ CARGO ?= cargo
 CARGO_FLAGS ?= --release
 BINARIES := weir-daemon weir weirctl
 
-.PHONY: all build test install uninstall clean help rpm rpm-install icons
+.PHONY: all build test install uninstall clean help rpm rpm-install deb icons licenses
 
 all: build
 
@@ -57,7 +63,9 @@ help:
 	@echo "make clean      delete the build directory"
 	@echo "make rpm        build an RPM package into $(RPMTOP)/RPMS"
 	@echo "make rpm-install  build the RPM and install it with dnf"
+	@echo "make deb        build a .deb package into target/deb"
 	@echo "make icons      redraw the window icon (needs rsvg-convert)"
+	@echo "make licenses   gather the libraries' license notices (needs cargo-about)"
 
 build:
 	$(CARGO) build $(CARGO_FLAGS)
@@ -73,6 +81,14 @@ clean:
 icons:
 	rsvg-convert -w 256 packaging/weir.svg -o crates/gui/assets/weir.png
 
+# The licenses of the libraries built into Weir ask that their notices go
+# with every copy, so packages carry this file. Run it after changing
+# dependencies; CI fails when it is out of date.
+licenses:
+	cargo about generate --workspace --locked --fail \
+		-c packaging/licenses/about.toml packaging/licenses/about.hbs \
+		-o packaging/licenses/THIRD-PARTY-LICENSES.txt
+
 install: build
 	install -d $(DESTDIR)$(BINDIR)
 	for b in $(BINARIES); do install -m755 target/release/$$b $(DESTDIR)$(BINDIR)/$$b; done
@@ -82,10 +98,13 @@ install: build
 	chmod 644 $(DESTDIR)$(APPDIR)/weir.desktop
 	install -Dm644 packaging/weir.svg $(DESTDIR)$(ICONDIR)/weir.svg
 	install -Dm644 packaging/weir-symbolic.svg $(DESTDIR)$(SYMBOLIC_ICONDIR)/weir-symbolic.svg
+	install -Dm644 packaging/$(METAINFO) $(DESTDIR)$(METAINFODIR)/$(METAINFO)
 	install -Dm644 README.md $(DESTDIR)$(DOCDIR)/README.md
-	install -Dm644 LICENSE $(DESTDIR)$(DATADIR)/licenses/weir/LICENSE
+	install -Dm644 LICENSE $(DESTDIR)$(LICENSEDIR)/LICENSE
 	install -Dm644 packaging/licenses/nnnoiseless-BSD-3-Clause.txt \
-		$(DESTDIR)$(DATADIR)/licenses/weir/nnnoiseless-BSD-3-Clause.txt
+		$(DESTDIR)$(LICENSEDIR)/nnnoiseless-BSD-3-Clause.txt
+	install -Dm644 packaging/licenses/THIRD-PARTY-LICENSES.txt \
+		$(DESTDIR)$(LICENSEDIR)/THIRD-PARTY-LICENSES.txt
 	for d in USER_GUIDE CLI API ARCHITECTURE; do \
 		install -Dm644 docs/$$d.md $(DESTDIR)$(DOCDIR)/docs/$$d.md; done
 	install -d $(DESTDIR)$(DOCDIR)/docs/images
@@ -125,9 +144,10 @@ uninstall:
 	rm -f $(DESTDIR)$(APPDIR)/weir.desktop
 	rm -f $(DESTDIR)$(ICONDIR)/weir.svg
 	rm -f $(DESTDIR)$(SYMBOLIC_ICONDIR)/weir-symbolic.svg
+	rm -f $(DESTDIR)$(METAINFODIR)/$(METAINFO)
 	rm -f $(DESTDIR)$(SYSTEMD_USER_DIR)/weir.service
 	rm -rf $(DESTDIR)$(DOCDIR)
-	rm -rf $(DESTDIR)$(DATADIR)/licenses/weir
+	rm -rf $(DESTDIR)$(LICENSEDIR)
 	@if [ -z "$(DESTDIR)" ]; then \
 		update-desktop-database "$(APPDIR)" 2>/dev/null || true; \
 		systemctl --user daemon-reload 2>/dev/null || true; \
@@ -178,3 +198,44 @@ rpm-install: rpm
 	@echo "  rpm -q weir        show the installed version"
 	@echo "  rpm -ql weir       list every file it owns"
 	@echo "  sudo dnf remove weir   uninstall it"
+
+# --- Debian and Ubuntu packaging ---------------------------------------
+# `make deb` builds a .deb from the working tree: the files `make install`
+# puts down, laid out under /usr. Its library dependencies are worked out
+# from the programs themselves, so a package built on the oldest system it
+# should support (Ubuntu 24.04) installs on the newer ones too.
+
+DEB_REVISION ?= 1
+DEB_ARCH := $(shell dpkg --print-architecture 2>/dev/null)
+DEBDIR := target/deb
+DEBROOT := $(DEBDIR)/root
+DEB := $(DEBDIR)/weir_$(VERSION)-$(DEB_REVISION)_$(DEB_ARCH).deb
+
+deb:
+	@command -v dpkg-shlibdeps >/dev/null 2>&1 || { \
+		echo "dpkg-shlibdeps not found. Install the packaging tools with:"; \
+		echo "  sudo apt install dpkg-dev"; \
+		exit 1; }
+	rm -rf $(DEBDIR)
+	$(MAKE) install DESTDIR=$(CURDIR)/$(DEBROOT) PREFIX=/usr \
+		SYSTEMD_USER_DIR=/usr/lib/systemd/user
+	@# The release build keeps line numbers for crash reports from builds of
+	@# your own; a package leaves them out, which makes it about a fifth the size.
+	strip --strip-unneeded $(addprefix $(DEBROOT)/usr/bin/,$(BINARIES))
+	@# Debian looks for the license here.
+	install -m644 LICENSE $(DEBROOT)/usr/share/doc/weir/copyright
+	@# dpkg-shlibdeps insists on a debian/control, even a minimal one.
+	mkdir -p $(DEBDIR)/debian $(DEBROOT)/DEBIAN
+	printf 'Source: weir\n\nPackage: weir\nArchitecture: any\n' > $(DEBDIR)/debian/control
+	cd $(DEBDIR) && dpkg-shlibdeps -O $(addprefix root/usr/bin/,$(BINARIES)) \
+		| sed -n 's/^shlibs:Depends=//p' > depends
+	test -s $(DEBDIR)/depends
+	sed -e 's|@VERSION@|$(VERSION)-$(DEB_REVISION)|' \
+		-e 's|@ARCH@|$(DEB_ARCH)|' \
+		-e "s|@SIZE@|$$(du -sk $(DEBROOT)/usr | cut -f1)|" \
+		-e "s|@DEPENDS@|$$(cat $(DEBDIR)/depends)|" \
+		packaging/deb/control.in > $(DEBROOT)/DEBIAN/control
+	cd $(DEBROOT) && find usr -type f -exec md5sum {} + | sort -k2 > DEBIAN/md5sums
+	dpkg-deb --root-owner-group -Zxz --build $(DEBROOT) $(DEB)
+	@echo ""
+	@echo "Package built: $(DEB)"

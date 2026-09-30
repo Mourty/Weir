@@ -14,6 +14,8 @@ edition = "2021"
 rust-version = "1.88"
 license = "MIT"
 repository = "https://github.com/Mourty/Weir"
+# Weir ships as programs, not as libraries on crates.io.
+publish = false
 
 [workspace.dependencies]
 weir-protocol = { path = "crates/protocol" }

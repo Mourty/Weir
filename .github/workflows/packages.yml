@@ -1,0 +1,135 @@
+# Builds Weir's packages: an RPM for Fedora and Nobara, and a .deb for
+# Ubuntu, Linux Mint, Pop!_OS and Debian.
+#
+# * Publishing a release on GitHub builds them and attaches them to the
+#   release, with a SHA256SUMS file.
+# * A pull request that changes the packaging builds them as a test.
+# * "Run workflow" on the Actions tab builds them on demand.
+#
+# The last two keep the packages as downloads on the run's own page, for
+# trying them before a release.
+
+name: Packages
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - Makefile
+      - Cargo.toml
+      - Cargo.lock
+      - packaging/**
+      - .github/workflows/packages.yml
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    name: Version numbers agree
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: read
+        name: Compare Cargo.toml, the RPM spec, AppStream and the tag
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          fail() { echo "::error::$1"; exit 1; }
+          spec=$(sed -n 's/^Version:[[:space:]]*//p' packaging/weir.spec)
+          [ "$spec" = "$version" ] ||
+            fail "Cargo.toml says $version but packaging/weir.spec says $spec."
+          grep -q -- "- $version-" packaging/weir.spec ||
+            fail "packaging/weir.spec has no %changelog entry for $version."
+          grep -q "<release version=\"$version\"" packaging/io.github.mourty.weir.metainfo.xml ||
+            fail "packaging/io.github.mourty.weir.metainfo.xml has no <release> for $version."
+          if [ "${{ github.event_name }}" = release ]; then
+            tag="${{ github.event.release.tag_name }}"
+            [ "$tag" = "v$version" ] ||
+              fail "The release's tag is $tag, but Cargo.toml says $version, so it should be v$version."
+          fi
+
+  rpm:
+    name: RPM (Fedora, Nobara)
+    needs: version
+    runs-on: ubuntu-24.04
+    # Like the .deb, built on the oldest release it is for, so it installs
+    # on newer ones too.
+    container: fedora:44
+    steps:
+      # git before checkout, so the checkout is a real repository:
+      # `make rpm` packages the last commit with `git archive`.
+      - name: Install the build tools
+        run: |
+          dnf install -y --setopt=install_weak_deps=False \
+            git-core make rpm-build cargo rust clang pipewire-devel \
+            pkgconf-pkg-config desktop-file-utils libappstream-glib
+      - uses: actions/checkout@v4
+      - name: Build the package
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          make rpm RPM_RELEASE=1 RPMTOP="$GITHUB_WORKSPACE/rpmbuild"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rpm
+          path: rpmbuild/RPMS/*/weir-*.rpm
+          if-no-files-found: error
+          retention-days: 14
+
+  deb:
+    name: .deb (Ubuntu, Mint, Pop!_OS, Debian)
+    needs: version
+    # The oldest system the package is for. Built here, it asks for no
+    # newer libraries than Ubuntu 24.04 has, so it installs on the newer
+    # ones too.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang pkg-config libpipewire-0.3-dev dpkg-dev desktop-file-utils appstream
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - name: Build the package
+        run: make deb
+      - name: Check the package
+        run: |
+          dpkg-deb --info target/deb/*.deb
+          root=target/deb/root
+          desktop-file-validate $root/usr/share/applications/weir.desktop
+          appstreamcli validate --no-net $root/usr/share/metainfo/io.github.mourty.weir.metainfo.xml
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb
+          path: target/deb/*.deb
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Attach to the release
+    if: github.event_name == 'release'
+    needs: [rpm, deb]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Write checksums
+        run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" dist/* \
+            --repo "${{ github.repository }}" --clobber

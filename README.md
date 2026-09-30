@@ -64,11 +64,6 @@ A downloaded package does not update itself. To hear about new releases,
 choose **Watch → Custom → Releases** at the top of Weir's GitHub page.
 To remove Weir, run `sudo dnf remove weir` or `sudo apt remove weir`.
 
-If you built Weir yourself before, remove that copy first:
-`sudo dnf remove weir` on Fedora and Nobara, where your own build would
-otherwise count as newer, or `make uninstall` in its `Weir` folder
-elsewhere. Your settings are kept either way.
-
 ### Or build it yourself
 
 For Arch and CachyOS, other systems, or the newest changes. It takes five

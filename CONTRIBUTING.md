@@ -189,7 +189,9 @@ exactly that. `make rpm` builds an RPM from the last commit into
 builds a `.deb` from the working tree into `target/deb` (it needs
 `dpkg-dev`). Both packages hold what `make install` puts down; the RPM spec
 in `packaging/weir.spec` also lists those files, so change it with the
-Makefile.
+Makefile. `make rpm-install` numbers its package by date and time, so dnf
+counts it as newer than a released package of the same version: run
+`sudo dnf remove weir` before installing a downloaded one.
 
 GitHub builds both packages whenever a pull request changes the
 packaging, and on demand from **Actions → Packages → Run workflow**. Each

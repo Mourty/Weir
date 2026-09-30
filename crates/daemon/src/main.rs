@@ -8,10 +8,12 @@
 //! * [`history`]: undo and redo.
 //! * [`tray`]: the system tray icon.
 //! * [`defaults`]: the mixer a first run starts with.
+//! * [`display`]: finding the desktop to show the window on.
 
 mod config;
 mod controller;
 mod defaults;
+mod display;
 mod history;
 mod login;
 mod server;
@@ -68,6 +70,10 @@ const SHUTDOWN_LIMIT: Duration = Duration::from_secs(5);
 
 /// How often the configuration is saved, when something changed.
 const SAVE_INTERVAL: Duration = Duration::from_millis(500);
+
+/// How long to wait at startup for a desktop to open the window on. Started
+/// at login, the daemon usually comes up a few seconds before the desktop.
+const WINDOW_WAIT: Duration = Duration::from_secs(120);
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -126,12 +132,8 @@ async fn main() -> Result<()> {
 
     if !args.no_window {
         match controller.settings().startup {
-            Startup::Window => {
-                spawn_window(&socket_path, false);
-            }
-            Startup::Minimized => {
-                spawn_window(&socket_path, true);
-            }
+            Startup::Window => open_window_when_ready(socket_path.clone(), false),
+            Startup::Minimized => open_window_when_ready(socket_path.clone(), true),
             startup @ Startup::TrayOnly => {
                 info!("starting without a window ({})", startup.label())
             }
@@ -400,7 +402,13 @@ async fn run(
                         debug!("a window is already open, asking it to come forward");
                         controller.show_window();
                     } else {
-                        spawn_window(socket_path, false);
+                        // By now there is a desktop: the tray is on it.
+                        let env = tokio::task::spawn_blocking(display::window_env)
+                            .await
+                            .ok()
+                            .flatten()
+                            .unwrap_or_default();
+                        spawn_window(socket_path, false, &env);
                     }
                 }
                 Some(TrayCommand::SetStartup(mode)) => set_startup(controller, mode),
@@ -493,9 +501,39 @@ fn restart() -> Result<()> {
     anyhow::bail!("could not restart {}: {error}", exe.display());
 }
 
-/// Start the mixer window. Returns false when the binary cannot be found,
-/// which is not fatal: the daemon is perfectly usable without it.
-fn spawn_window(socket: &Path, minimized: bool) -> bool {
+/// Open the window as the daemon starts, once there is a desktop to show it
+/// on: at login the daemon comes up before the desktop, and a window
+/// started then would find no screen and quit.
+fn open_window_when_ready(socket: PathBuf, minimized: bool) {
+    tokio::spawn(async move {
+        let deadline = tokio::time::Instant::now() + WINDOW_WAIT;
+        let mut waiting = false;
+        loop {
+            let env = tokio::task::spawn_blocking(display::window_env)
+                .await
+                .ok()
+                .flatten();
+            if let Some(env) = env {
+                spawn_window(&socket, minimized, &env);
+                return;
+            }
+            if tokio::time::Instant::now() >= deadline {
+                warn!("no desktop appeared within {WINDOW_WAIT:?}, so the mixer window was not opened");
+                return;
+            }
+            if !waiting {
+                info!("waiting for the desktop before opening the mixer window");
+                waiting = true;
+            }
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+    });
+}
+
+/// Start the mixer window, with `env` added to its environment. Returns
+/// false when the binary cannot be found, which is not fatal: the daemon is
+/// perfectly usable without it.
+fn spawn_window(socket: &Path, minimized: bool, env: &[(String, String)]) -> bool {
     let mut candidates: Vec<PathBuf> = Vec::new();
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
@@ -516,6 +554,7 @@ fn spawn_window(socket: &Path, minimized: bool) -> bool {
         if minimized {
             cmd.arg("--minimized");
         }
+        cmd.envs(env.iter().map(|(key, value)| (key, value)));
         match cmd
             .stdin(std::process::Stdio::null())
             .kill_on_drop(false)

@@ -29,7 +29,7 @@
 %global cargo_flags --release --locked
 
 Name:           weir
-Version:        1.0.0
+Version:        1.0.1
 Release:        %{?_release}%{!?_release:1}%{?dist}
 Summary:        Voicemeeter-style audio mixer for PipeWire
 
@@ -95,5 +95,9 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/io.github.mour
 %doc %{_datadir}/doc/%{name}/docs/
 
 %changelog
+* Wed Sep 30 2026 Mourty <Mourt2@proton.me> - 1.0.1-1
+- Add a package for Arch Linux and builds on COPR for Fedora and Nobara.
+  Weir itself is unchanged.
+
 * Wed Sep 30 2026 Mourty <Mourt2@proton.me> - 1.0.0-1
 - First release.

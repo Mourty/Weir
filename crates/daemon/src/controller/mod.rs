@@ -216,9 +216,14 @@ impl Controller {
         self.window_clients.load(Ordering::Acquire) > 0
     }
 
-    /// A connection claimed to be the mixer window.
-    pub fn add_window_client(&self) {
-        self.window_clients.fetch_add(1, Ordering::AcqRel);
+    /// A connection claims to be the mixer window. There is only ever one:
+    /// the claim fails, returning false, while another window is attached.
+    /// Checking and claiming in one step means two windows starting at the
+    /// same moment cannot both win.
+    pub fn claim_window(&self) -> bool {
+        self.window_clients
+            .compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
     }
 
     /// A connection that claimed to be the mixer window stopped being one.

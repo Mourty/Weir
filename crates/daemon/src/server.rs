@@ -76,6 +76,9 @@ async fn handle_conn(stream: UnixStream, controller: Arc<Controller>) -> Result<
     // the tray can tell an open window from none. The guard makes sure the
     // count comes back down however the connection ends.
     let mut window = WindowClient::new(controller.clone());
+    // Set when this connection wanted to be the window while another one
+    // already was: it was told to close, and hears nothing more for windows.
+    let mut surplus_window = false;
     // Likewise for the spectra this connection watches.
     let mut spectra = SpectrumWatch::new(controller.clone());
     let mut meters = MeterThrottle::default();
@@ -88,7 +91,17 @@ async fn handle_conn(stream: UnixStream, controller: Arc<Controller>) -> Result<
                             w.write_all(resp.as_bytes()).await?;
                             w.write_all(b"\n").await?;
                         }
-                        window.set(subs.topics.contains(&Topic::Window));
+                        let wants_window = subs.topics.contains(&Topic::Window);
+                        if !window.set(wants_window && !surplus_window) {
+                            // A second window, from the menu while one is
+                            // open or from the desktop reopening it at login:
+                            // close it and bring the first one forward.
+                            info!("a mixer window is already open, so closing the new one");
+                            surplus_window = true;
+                            w.write_all(Notification::Quit.to_wire().as_bytes()).await?;
+                            w.write_all(b"\n").await?;
+                            controller.show_window();
+                        }
                         spectra.set(&subs.spectrum);
                     }
                     None => break,
@@ -99,6 +112,7 @@ async fn handle_conn(stream: UnixStream, controller: Arc<Controller>) -> Result<
                     Ok(n) => {
                         let wanted = match &n {
                             Notification::Spectrum(s) => subs.spectrum.contains(&s.target),
+                            n if n.topic() == Topic::Window && surplus_window => false,
                             n => subs.topics.contains(&n.topic()),
                         };
                         if !wanted {
@@ -232,16 +246,21 @@ impl WindowClient {
         }
     }
 
-    fn set(&mut self, attached: bool) {
+    /// Claim or release the window. Returns false when the claim failed
+    /// because another connection is the window.
+    fn set(&mut self, attached: bool) -> bool {
         if attached == self.attached {
-            return;
+            return true;
         }
-        self.attached = attached;
         if attached {
-            self.controller.add_window_client();
+            if !self.controller.claim_window() {
+                return false;
+            }
         } else {
             self.controller.remove_window_client();
         }
+        self.attached = attached;
+        true
     }
 }
 

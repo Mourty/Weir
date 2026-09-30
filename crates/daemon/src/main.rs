@@ -132,8 +132,8 @@ async fn main() -> Result<()> {
 
     if !args.no_window {
         match controller.settings().startup {
-            Startup::Window => open_window_when_ready(socket_path.clone(), false),
-            Startup::Minimized => open_window_when_ready(socket_path.clone(), true),
+            Startup::Window => open_window_when_ready(&controller, socket_path.clone(), false),
+            Startup::Minimized => open_window_when_ready(&controller, socket_path.clone(), true),
             startup @ Startup::TrayOnly => {
                 info!("starting without a window ({})", startup.label())
             }
@@ -503,8 +503,11 @@ fn restart() -> Result<()> {
 
 /// Open the window as the daemon starts, once there is a desktop to show it
 /// on: at login the daemon comes up before the desktop, and a window
-/// started then would find no screen and quit.
-fn open_window_when_ready(socket: PathBuf, minimized: bool) {
+/// started then would find no screen and quit. By then the desktop may have
+/// opened one itself, reopening what was open at logout; then there is no
+/// need for another.
+fn open_window_when_ready(controller: &Arc<Controller>, socket: PathBuf, minimized: bool) {
+    let controller = controller.clone();
     tokio::spawn(async move {
         let deadline = tokio::time::Instant::now() + WINDOW_WAIT;
         let mut waiting = false;
@@ -513,6 +516,10 @@ fn open_window_when_ready(socket: PathBuf, minimized: bool) {
                 .await
                 .ok()
                 .flatten();
+            if controller.window_attached() {
+                info!("a mixer window is already open");
+                return;
+            }
             if let Some(env) = env {
                 spawn_window(&socket, minimized, &env);
                 return;

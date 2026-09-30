@@ -204,8 +204,10 @@ for the [AUR](https://aur.archlinux.org/packages/weir).
 build service, also builds the RPM for every current Fedora release and
 keeps it in a repository that Fedora and Nobara users can subscribe to.
 It makes the source RPM with `.copr/Makefile` and builds only tags: a
-GitHub webhook tells it when a tag is created, and pushes to `main` never
-start a build.
+GitHub webhook (**Settings → Webhooks**, sending only **Branch or tag
+creation**) tells it when a tag is created. `.copr/Makefile` also refuses
+any commit that is not tagged with the spec's version, so a build of a
+branch fails instead of publishing unreleased code as a release.
 
 ## Making a release
 
@@ -230,9 +232,9 @@ start a build.
    publish again.
 5. At the same time COPR builds the new tag for each Fedora release; its
    **Builds** tab shows the progress. To repeat a failed build, use
-   **Resubmit** on that build, which keeps its tag. A new build started
-   without a tag builds `main` under the last release's version number,
-   and dnf would never offer it to anyone who already has that version.
+   **Resubmit** on that build, which keeps its tag. To start one by hand,
+   use **Rebuild** on the package with the tag, such as `v1.1.0`, as
+   **Committish**; anything that is not a release tag is refused.
 6. The Arch package is built from the release's source as GitHub serves
    it, and its recipe goes to the AUR, with the version and checksum set
    by the workflow. If only the PKGBUILD changes between releases, raise

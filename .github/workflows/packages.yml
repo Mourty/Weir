@@ -2,7 +2,9 @@
 # Ubuntu, Linux Mint, Pop!_OS and Debian.
 #
 # * Publishing a release on GitHub builds them and attaches them to the
-#   release, with a SHA256SUMS file.
+#   release, with a SHA256SUMS file. GitHub also signs a record that this
+#   workflow built them from the release's commit (an attestation), which
+#   `gh attestation verify` checks.
 # * A pull request that changes the packaging builds them as a test.
 # * "Run workflow" on the Actions tab builds them on demand.
 #
@@ -69,14 +71,19 @@ jobs:
             git-core make rpm-build cargo rust clang pipewire-devel \
             pkgconf-pkg-config desktop-file-utils libappstream-glib
       - uses: actions/checkout@v4
+      # The RPM is copied out of its architecture folder: upload-artifact
+      # keeps any folders after a wildcard, and the release job needs the
+      # packages side by side.
       - name: Build the package
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           make rpm RPM_RELEASE=1 RPMTOP="$GITHUB_WORKSPACE/rpmbuild"
+          mkdir -p dist
+          cp rpmbuild/RPMS/*/weir-*.rpm dist/
       - uses: actions/upload-artifact@v4
         with:
           name: rpm
-          path: rpmbuild/RPMS/*/weir-*.rpm
+          path: dist/*.rpm
           if-no-files-found: error
           retention-days: 14
 
@@ -119,14 +126,25 @@ jobs:
     needs: [rpm, deb]
     runs-on: ubuntu-24.04
     permissions:
-      contents: write
+      contents: write # attach the files to the release
+      id-token: write # get a signing certificate for the attestation
+      attestations: write # store the attestation with the repository
     steps:
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
       - name: Write checksums
-        run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+        run: cd dist && sha256sum -- *.rpm *.deb > SHA256SUMS && cat SHA256SUMS
+      # Signed in the same run that built the packages, so it vouches for
+      # exactly these files; a file swapped on the release later fails the
+      # check. Attestations need a public repository (or GitHub Enterprise).
+      - name: Sign a record of how the packages were built
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            dist/*.rpm
+            dist/*.deb
       - name: Upload to the release
         env:
           GH_TOKEN: ${{ github.token }}

@@ -292,8 +292,13 @@ fn spawn_background_tasks(
     });
 }
 
-/// Show the tray icon. Failing to is not fatal: there may be no tray, no
-/// session bus, or no desktop at all when running headless.
+/// Show the tray icon. Failing to is not fatal: there may be no session bus,
+/// or no desktop at all when running headless.
+///
+/// A missing tray is not a failure, only a wait. Started at login, the
+/// daemon often comes up before the desktop's panel, and without
+/// `assume_sni_available` ksni gives up on the icon for good the moment it
+/// finds no tray. With it, the icon appears once the panel does.
 async fn start_tray(
     controller: &Controller,
     tx: UnboundedSender<TrayCommand>,
@@ -302,9 +307,9 @@ async fn start_tray(
     let mut tray = MixerTray::new(tx, settings.startup, settings.tray_icon);
     let mixer = controller.mixer();
     (tray.strips, tray.buses) = (mixer.strips.len(), mixer.buses.len());
-    match tray.spawn().await {
+    match tray.assume_sni_available(true).spawn().await {
         Ok(h) => {
-            info!("tray icon registered");
+            info!("tray icon started");
             Some(h)
         }
         Err(e) => {

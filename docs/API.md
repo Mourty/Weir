@@ -358,7 +358,7 @@ stop when the connection closes.
 | `apps` | `apps_changed` |
 | `engine` | `engine_changed` |
 | `settings` | `settings_changed` |
-| `window` | `show_window`, `quit`. Only for a mixer window: subscribing to it tells the daemon this connection *is* one. |
+| `window` | `show_window`, `quit`. Only for a mixer window: subscribing to it tells the daemon this connection *is* one. There is one window at a time: while one is open, a second connection subscribing to `window` gets `quit` at once, and the open window gets `show_window`. |
 
 Returns the list of topics now active on this connection.
 
@@ -1265,7 +1265,7 @@ replace its copy.
 | `settings_changed` | `settings` | [Settings](#settings) | A setting changed. |
 | `spectrum` | see [`watch_spectrum`](#watch_spectrum) | [Spectrum](#spectrum) | 30 times a second for each strip or bus watched. |
 | `show_window` | `window` | none | The mixer window should come to the front. |
-| `quit` | `window` | none | The daemon is stopping; the window should close. |
+| `quit` | `window` | none | The daemon is stopping, or another window is already open; the window should close. |
 
 For example, after someone mutes the Mic strip:
 

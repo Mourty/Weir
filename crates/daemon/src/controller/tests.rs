@@ -386,6 +386,18 @@ fn subscribing_to_nothing_in_particular_means_everything_but_the_window() {
 }
 
 #[test]
+fn there_is_only_ever_one_window() {
+    let r = Rig::new("one-window");
+    assert!(!r.c.window_attached());
+    assert!(r.c.claim_window(), "the first window gets it");
+    assert!(!r.c.claim_window(), "a second one does not");
+    assert!(r.c.window_attached());
+    r.c.remove_window_client();
+    assert!(!r.c.window_attached());
+    assert!(r.c.claim_window(), "the next window after it closed does");
+}
+
+#[test]
 fn strips_and_buses_can_be_named_instead_of_numbered() {
     let m = mixer();
     let mut p = json!({"id": "music", "gain_delta_db": 3, "sends": {"B1": -6, "1": 0},

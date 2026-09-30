@@ -9,8 +9,9 @@
 //! run on the tray's own task, so they must not touch the mixer directly.
 
 use ksni::menu::{RadioGroup, RadioItem, StandardItem, SubMenu};
-use ksni::{MenuItem, Status, ToolTip, Tray};
+use ksni::{MenuItem, OfflineReason, Status, ToolTip, Tray};
 use tokio::sync::mpsc::UnboundedSender;
+use tracing::{debug, info};
 use weir_protocol::{Startup, TrayIcon};
 
 /// What the user picked from the tray.
@@ -86,6 +87,19 @@ impl Tray for MixerTray {
 
     fn status(&self) -> Status {
         Status::Active
+    }
+
+    /// The desktop has no tray right now: at login before the panel is up,
+    /// or while the panel restarts. Keep waiting rather than give up, so
+    /// the icon shows up with the panel.
+    fn watcher_offline(&self, reason: OfflineReason) -> bool {
+        info!("waiting for the desktop's tray to appear");
+        debug!("tray unavailable: {reason:?}");
+        true
+    }
+
+    fn watcher_online(&self) {
+        info!("the desktop's tray is there; showing the tray icon");
     }
 
     fn tool_tip(&self) -> ToolTip {

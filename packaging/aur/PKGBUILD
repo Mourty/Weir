@@ -1,0 +1,68 @@
+# Maintainer: Mourty <Mourt2@proton.me>
+#
+# Weir's package in the Arch User Repository (AUR), for Arch Linux and the
+# systems built on it, such as CachyOS, EndeavourOS and Manjaro. It builds
+# a release from its source code on the user's machine.
+#
+# .github/workflows/packages.yml builds this on Arch for every pull request
+# that changes the packaging. For each release it sets pkgver and the
+# checksum, builds it again and publishes it to the AUR, so here those two
+# may lag behind. Raise pkgrel for a change to this file alone, and set it
+# back to 1 with the next version.
+
+pkgname=weir
+pkgver=1.0.0
+pkgrel=1
+pkgdesc='Voicemeeter-style audio mixer for PipeWire'
+arch=('x86_64')
+url='https://github.com/Mourty/Weir'
+license=('MIT')
+depends=(
+  'gcc-libs'
+  'glibc'
+  'hicolor-icon-theme'
+  'libglvnd'
+  'libpipewire'
+  'libxkbcommon'
+  'pipewire'
+  'wireplumber'
+)
+makedepends=('cargo' 'clang')
+# libspa compiles a little C with cc, and with makepkg's link-time
+# optimization on, those objects do not link into a Rust program.
+options=('!lto')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('c1ea3b247cc587cfc75405c249ac3d05efdf342e3cdb9ba71c7bef309dc558e0')
+
+# Every step needs the same cargo settings, or cargo builds everything
+# again. Like the other packages, the release build keeps no debug info.
+_cargo_env() {
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR=target
+  export CARGO_PROFILE_RELEASE_DEBUG=false
+}
+
+prepare() {
+  cd "Weir-$pkgver"
+  _cargo_env
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+  cd "Weir-$pkgver"
+  _cargo_env
+  make CARGO_FLAGS='--frozen --release'
+}
+
+check() {
+  cd "Weir-$pkgver"
+  _cargo_env
+  cargo test --workspace --frozen --release
+}
+
+package() {
+  cd "Weir-$pkgver"
+  _cargo_env
+  make install CARGO_FLAGS='--frozen --release' DESTDIR="$pkgdir" \
+    PREFIX=/usr SYSTEMD_USER_DIR=/usr/lib/systemd/user
+}

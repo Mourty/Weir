@@ -196,7 +196,9 @@ counts it as newer than a released package of the same version: run
 GitHub builds both packages whenever a pull request changes the
 packaging, and on demand from **Actions → Packages → Run workflow**. Each
 run keeps them as downloads on its page for two weeks, for trying before a
-release.
+release. The same runs build `packaging/aur/PKGBUILD`, the recipe for the
+[AUR](https://aur.archlinux.org/packages/weir) (Arch Linux and the
+systems built on it), in an Arch container.
 
 [COPR](https://copr.fedorainfracloud.org/coprs/mourt/Weir/), Fedora's
 build service, also builds the RPM for every current Fedora release and
@@ -230,6 +232,25 @@ start a build.
    **Resubmit** on that build, which keeps its tag. A new build started
    without a tag builds `main` under the last release's version number,
    and dnf would never offer it to anyone who already has that version.
+6. The **Packages** workflow also builds the AUR package from the
+   release's source and publishes it to the AUR, setting its version and
+   checksum itself. If only the PKGBUILD changes between releases, raise
+   `pkgrel` in it, merge, and run **Actions → Packages → Run workflow**
+   with **Publish the current version's release to the AUR** ticked; set
+   `pkgrel` back to 1 with the next version.
+
+Publishing to the AUR needs an SSH key: the public half on the
+maintainer's AUR account (**My Account → SSH Public Key**), the private
+half in the repository's secret `AUR_SSH_KEY` (**Settings → Secrets and
+variables → Actions**). Make one just for this, without a passphrase:
+
+```sh
+ssh-keygen -t ed25519 -N "" -C "Weir AUR releases" -f weir-aur
+```
+
+`weir-aur.pub` is the public half and `weir-aur` the private one. Delete
+both files once they are pasted in. Without the secret, the workflow
+builds the AUR package but skips publishing it, with a warning.
 
 By contributing you agree that your work is released under the
 [MIT license](LICENSE), like the rest of Weir.

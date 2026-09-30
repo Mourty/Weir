@@ -1,12 +1,16 @@
-# Builds Weir's packages: an RPM for Fedora and Nobara, and a .deb for
-# Ubuntu, Linux Mint, Pop!_OS and Debian.
+# Builds Weir's packages: an RPM for Fedora and Nobara, a .deb for
+# Ubuntu, Linux Mint, Pop!_OS and Debian, and the AUR package for Arch
+# and the systems built on it.
 #
-# * Publishing a release on GitHub builds them and attaches them to the
-#   release, with a SHA256SUMS file. GitHub also signs a record that this
-#   workflow built them from the release's commit (an attestation), which
-#   `gh attestation verify` checks.
+# * Publishing a release on GitHub builds them and attaches the RPM and the
+#   .deb to the release, with a SHA256SUMS file. GitHub also signs a record
+#   that this workflow built them from the release's commit (an
+#   attestation), which `gh attestation verify` checks. The AUR package is
+#   built from the release's source and published to the AUR.
 # * A pull request that changes the packaging builds them as a test.
-# * "Run workflow" on the Actions tab builds them on demand.
+# * "Run workflow" on the Actions tab builds them on demand. Ticking its
+#   AUR box publishes the current version's release to the AUR again, for
+#   a first upload or after a change to the PKGBUILD alone.
 #
 # The last two keep the packages as downloads on the run's own page, for
 # trying them before a release.
@@ -17,6 +21,11 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      aur:
+        description: Publish the current version's release to the AUR
+        type: boolean
+        default: false
   pull_request:
     paths:
       - Makefile
@@ -120,6 +129,98 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  aur:
+    name: Arch Linux (AUR)
+    needs: version
+    runs-on: ubuntu-24.04
+    container: archlinux:latest
+    steps:
+      # git before checkout, so the checkout is a real repository: pull
+      # requests build their own code, packed with `git archive`.
+      - name: Install the build tools
+        run: pacman -Syu --noconfirm --needed base-devel git openssh pacman-contrib namcap
+      - uses: actions/checkout@v4
+      - id: prep
+        name: Prepare the PKGBUILD
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          # A release, or "Run workflow" with the AUR box ticked, builds the
+          # release's source as GitHub serves it, which is what AUR users
+          # download. Anything else builds this checkout instead.
+          RELEASE: ${{ github.event_name == 'release' || inputs.aur == true }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          # makepkg refuses to run as root. It uses sudo to install the
+          # PKGBUILD's dependencies, which also checks that they are enough.
+          useradd -m builder
+          echo 'builder ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/builder
+          dir=/home/builder/weir
+          mkdir "$dir"
+          sed "s/^pkgver=.*/pkgver=$VERSION/" packaging/aur/PKGBUILD > "$dir/PKGBUILD"
+          if [ "$RELEASE" != true ]; then
+            tarball="$dir/weir-$VERSION.tar.gz"
+            git archive --format=tar.gz --prefix="Weir-$VERSION/" -o "$tarball" HEAD
+            sum=$(sha256sum "$tarball" | cut -d' ' -f1)
+            sed -i "s/^sha256sums=.*/sha256sums=('$sum')/" "$dir/PKGBUILD"
+          fi
+          chown -R builder: "$dir"
+          echo "release=$RELEASE" >> "$GITHUB_OUTPUT"
+      - name: Fill in the checksum of the release's source
+        if: steps.prep.outputs.release == 'true'
+        run: su builder -c 'cd /home/builder/weir && updpkgsums'
+      - name: Build and test the package
+        run: su builder -c 'cd /home/builder/weir && makepkg --syncdeps --noconfirm'
+      # namcap is Arch's packaging linter. Its findings are advice to read
+      # in the log, some of them wrong for Rust programs, so they do not
+      # fail the job. .SRCINFO is the PKGBUILD's summary the AUR reads.
+      - name: Check the package and write .SRCINFO
+        run: |
+          cd /home/builder/weir
+          su builder -c 'namcap PKGBUILD weir-*.pkg.tar.zst' || true
+          su builder -c 'makepkg --printsrcinfo > .SRCINFO'
+          cat .SRCINFO
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aur
+          path: |
+            /home/builder/weir/PKGBUILD
+            /home/builder/weir/.SRCINFO
+            /home/builder/weir/weir-*.pkg.tar.zst
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+      # Needs the AUR_SSH_KEY secret: the private half of an SSH key whose
+      # public half is on the maintainer's AUR account. CONTRIBUTING.md
+      # says how to make one.
+      - name: Publish to the AUR
+        if: steps.prep.outputs.release == 'true'
+        env:
+          AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
+        run: |
+          if [ -z "$AUR_SSH_KEY" ]; then
+            echo "::warning::The AUR was not updated: there is no AUR_SSH_KEY secret. See CONTRIBUTING.md."
+            exit 0
+          fi
+          # ssh reads root's files from /root, not the container's $HOME,
+          # so every path is given explicitly.
+          keys=$(mktemp -d)
+          printf '%s\n' "$AUR_SSH_KEY" > "$keys/aur"
+          chmod 600 "$keys/aur"
+          ssh-keyscan -t ed25519 aur.archlinux.org > "$keys/known_hosts"
+          export GIT_SSH_COMMAND="ssh -i $keys/aur -o IdentitiesOnly=yes -o UserKnownHostsFile=$keys/known_hosts"
+          git clone ssh://aur@aur.archlinux.org/weir.git aur
+          cp /home/builder/weir/PKGBUILD /home/builder/weir/.SRCINFO aur/
+          cd aur
+          git add PKGBUILD .SRCINFO
+          if git diff --cached --quiet; then
+            echo "The AUR already has this PKGBUILD."
+            exit 0
+          fi
+          version=$(sed -n 's/^\tpkgver = //p' .SRCINFO)-$(sed -n 's/^\tpkgrel = //p' .SRCINFO)
+          git -c user.name=Mourty -c user.email=Mourt2@proton.me \
+            commit -m "Update to $version"
+          git push origin HEAD:master
+
   publish:
     name: Attach to the release
     if: github.event_name == 'release'
@@ -130,10 +231,15 @@ jobs:
       id-token: write # get a signing certificate for the attestation
       attestations: write # store the attestation with the repository
     steps:
+      # Only these two: the AUR job's files are not for the release page.
       - uses: actions/download-artifact@v4
         with:
+          name: rpm
           path: dist
-          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: deb
+          path: dist
       - name: Write checksums
         run: cd dist && sha256sum -- *.rpm *.deb > SHA256SUMS && cat SHA256SUMS
       # Signed in the same run that built the packages, so it vouches for

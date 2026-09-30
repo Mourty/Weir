@@ -84,8 +84,9 @@ mirror of PipeWire's registry, and whenever anything changes, on either
 side, it **reconciles**: it brings the engine's ports, the real-time
 parameters, the virtual devices and the links in line with the mixer state
 the daemon wants, in that order. So a device unplugged and plugged back in
-is simply linked again, and a strip added in the window gets its device,
-ports and links from the same code that set everything up at the start.
+is simply linked again, a link of Weir's removed in a patchbay is made
+again, and a strip added in the window gets its device, ports and links
+from the same code that set everything up at the start.
 
 Two things about PipeWire shape that code. It **reuses ids**, both of nodes
 and of application streams, so nodes are told apart by `object.serial` and

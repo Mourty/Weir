@@ -204,6 +204,9 @@ struct Runner {
     virtual_nodes: HashMap<DeviceKey, VirtualNode>,
     /// Links this program made, by (output port, input port) global id.
     links: HashMap<(u32, u32), Link>,
+    /// The global ids of those links, once PipeWire has announced them, to
+    /// notice when one is removed from outside.
+    link_ids: HashMap<u32, (u32, u32)>,
     /// Bound proxies for application streams, kept alive so their parameter
     /// listeners keep firing.
     app_nodes: HashMap<u32, (Node, NodeListener)>,
@@ -285,6 +288,7 @@ pub(super) fn run(
         stale_ports: Vec::new(),
         virtual_nodes: HashMap::new(),
         links: HashMap::new(),
+        link_ids: HashMap::new(),
         app_nodes: HashMap::new(),
         app_volumes: Rc::new(RefCell::new(BTreeMap::new())),
         self_tx: self_tx.clone(),
@@ -366,6 +370,12 @@ impl Runner {
         obj: &pipewire::registry::GlobalObject<P>,
     ) {
         let tracked = self.graph.add_global(obj);
+        if let Some(l) = self.graph.links.get(&obj.id) {
+            let key = (l.out_port, l.in_port);
+            if self.links.contains_key(&key) {
+                self.link_ids.insert(obj.id, key);
+            }
+        }
         if obj.type_ == ObjectType::Metadata && self.graph.default_metadata == Some(obj.id) {
             match self.registry.bind::<Metadata, _>(obj) {
                 Ok(m) => self.metadata = Some(m),
@@ -391,6 +401,13 @@ impl Runner {
         self.app_nodes.remove(&id);
         self.app_volumes.borrow_mut().remove(&id);
         if self.graph.remove_global(id) {
+            // Whether it went with a device or was removed by someone else
+            // is only clear once the removals that came with it are in.
+            if let Some((out_port, in_port)) = self.link_ids.remove(&id) {
+                let _ = self
+                    .self_tx
+                    .send(EngineCommand::LinkGone(out_port, in_port));
+            }
             let Runner { links, graph, .. } = &mut *self;
             links.retain(|(o, i), _| graph.ports.contains_key(o) && graph.ports.contains_key(i));
             self.reconcile();
@@ -429,8 +446,23 @@ impl Runner {
             } => self.set_app_volume(app, volume_db, mute),
             EngineCommand::AppsDirty => self.emit_devices_apps(),
             EngineCommand::FilterStateChanged => self.emit_status(),
+            EngineCommand::LinkGone(out_port, in_port) => self.link_gone(out_port, in_port),
             // Handled by the command loop, which owns the main loop.
             EngineCommand::Shutdown => {}
+        }
+    }
+
+    /// One of our links was removed while both its ports are still there:
+    /// someone removed it, in a patchbay perhaps, so it is made again.
+    fn link_gone(&mut self, out_port: u32, in_port: u32) {
+        let ports_there =
+            self.graph.ports.contains_key(&out_port) && self.graph.ports.contains_key(&in_port);
+        if ports_there
+            && !self.graph.has_link(out_port, in_port)
+            && self.links.remove(&(out_port, in_port)).is_some()
+        {
+            info!("link {out_port} -> {in_port} was removed; making it again");
+            self.reconcile();
         }
     }
 

@@ -199,6 +199,7 @@ impl Runner {
         for key in unwanted {
             if let Some(link) = self.links.remove(&key) {
                 debug!("unlinking {} -> {}", key.0, key.1);
+                self.link_ids.retain(|_, k| *k != key);
                 let _ = self.core.destroy_object(link);
             }
         }

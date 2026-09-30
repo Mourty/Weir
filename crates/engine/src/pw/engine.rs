@@ -57,6 +57,10 @@ pub(super) enum EngineCommand {
     /// Filter state changed (sent by the filter callback to itself so the
     /// handler runs outside any other callback).
     FilterStateChanged,
+    /// A link this program made, between these output and input ports, was
+    /// removed. Sent by the registry callback to itself, so the handler
+    /// runs after the rest of the removals that came with it.
+    LinkGone(u32, u32),
     /// Stop the main loop.
     Shutdown,
 }

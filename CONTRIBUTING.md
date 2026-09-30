@@ -193,12 +193,12 @@ Makefile. `make rpm-install` numbers its package by date and time, so dnf
 counts it as newer than a released package of the same version: run
 `sudo dnf remove weir` before installing a downloaded one.
 
-GitHub builds both packages whenever a pull request changes the
+GitHub builds the packages whenever a pull request changes the
 packaging, and on demand from **Actions → Packages → Run workflow**. Each
 run keeps them as downloads on its page for two weeks, for trying before a
-release. The same runs build `packaging/aur/PKGBUILD`, the recipe for the
-[AUR](https://aur.archlinux.org/packages/weir) (Arch Linux and the
-systems built on it), in an Arch container.
+release. Besides the RPM and the `.deb`, it builds an Arch Linux package in
+an Arch container, from `packaging/aur/PKGBUILD`, which is also the recipe
+for the [AUR](https://aur.archlinux.org/packages/weir).
 
 [COPR](https://copr.fedorainfracloud.org/coprs/mourt/Weir/), Fedora's
 build service, also builds the RPM for every current Fedora release and
@@ -219,8 +219,9 @@ start a build.
    tag**, type `v1.1.0` (the version with a `v` in front) and pick
    **Create new tag on publish**. Give it a title, write what changed (or
    press **Generate release notes**), and press **Publish release**.
-4. The **Packages** workflow builds the RPM and the `.deb` and attaches
-   them to the release, with a `SHA256SUMS` file, in about twenty minutes.
+4. The **Packages** workflow builds the RPM, the `.deb` and the Arch
+   package and attaches them to the release, with a `SHA256SUMS` file, in
+   about twenty minutes.
    It refuses to start if the tag and the version numbers disagree.
    It also signs an attestation for each package (listed on the
    **Actions** tab under **Attestations**). Only files the workflow built
@@ -232,9 +233,9 @@ start a build.
    **Resubmit** on that build, which keeps its tag. A new build started
    without a tag builds `main` under the last release's version number,
    and dnf would never offer it to anyone who already has that version.
-6. The **Packages** workflow also builds the AUR package from the
-   release's source and publishes it to the AUR, setting its version and
-   checksum itself. If only the PKGBUILD changes between releases, raise
+6. The Arch package is built from the release's source as GitHub serves
+   it, and its recipe goes to the AUR, with the version and checksum set
+   by the workflow. If only the PKGBUILD changes between releases, raise
    `pkgrel` in it, merge, and run **Actions → Packages → Run workflow**
    with **Publish the current version's release to the AUR** ticked; set
    `pkgrel` back to 1 with the next version.
@@ -250,7 +251,7 @@ ssh-keygen -t ed25519 -N "" -C "Weir AUR releases" -f weir-aur
 
 `weir-aur.pub` is the public half and `weir-aur` the private one. Delete
 both files once they are pasted in. Without the secret, the workflow
-builds the AUR package but skips publishing it, with a warning.
+still builds the Arch package but skips the AUR, with a warning.
 
 By contributing you agree that your work is released under the
 [MIT license](LICENSE), like the rest of Weir.

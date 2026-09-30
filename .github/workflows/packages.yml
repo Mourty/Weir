@@ -1,12 +1,12 @@
 # Builds Weir's packages: an RPM for Fedora and Nobara, a .deb for
-# Ubuntu, Linux Mint, Pop!_OS and Debian, and the AUR package for Arch
-# and the systems built on it.
+# Ubuntu, Linux Mint, Pop!_OS and Debian, and a package for Arch Linux and
+# the systems built on it, whose recipe also goes to the AUR.
 #
-# * Publishing a release on GitHub builds them and attaches the RPM and the
-#   .deb to the release, with a SHA256SUMS file. GitHub also signs a record
-#   that this workflow built them from the release's commit (an
-#   attestation), which `gh attestation verify` checks. The AUR package is
-#   built from the release's source and published to the AUR.
+# * Publishing a release on GitHub builds them and attaches them to the
+#   release, with a SHA256SUMS file. GitHub also signs a record that this
+#   workflow built them from the release's commit (an attestation), which
+#   `gh attestation verify` checks. The Arch package's recipe is published
+#   to the AUR.
 # * A pull request that changes the packaging builds them as a test.
 # * "Run workflow" on the Actions tab builds them on demand. Ticking its
 #   AUR box publishes the current version's release to the AUR again, for
@@ -129,8 +129,8 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  aur:
-    name: Arch Linux (AUR)
+  arch:
+    name: Arch Linux
     needs: version
     runs-on: ubuntu-24.04
     container: archlinux:latest
@@ -179,21 +179,41 @@ jobs:
           su builder -c 'namcap PKGBUILD weir-*.pkg.tar.zst' || true
           su builder -c 'makepkg --printsrcinfo > .SRCINFO'
           cat .SRCINFO
+      # The package, for the release page. The pattern leaves out the
+      # weir-debug package that makepkg's debug option may add.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arch
+          path: /home/builder/weir/weir-[0-9]*.pkg.tar.zst
+          if-no-files-found: error
+          retention-days: 14
+      # The recipe, for the AUR.
       - uses: actions/upload-artifact@v4
         with:
           name: aur
           path: |
             /home/builder/weir/PKGBUILD
             /home/builder/weir/.SRCINFO
-            /home/builder/weir/weir-*.pkg.tar.zst
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 14
+
+  # Its own job, so that a problem with the AUR never holds up the
+  # release page.
+  aur:
+    name: Publish to the AUR
+    if: github.event_name == 'release' || inputs.aur == true
+    needs: arch
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: aur
+          path: recipe
       # Needs the AUR_SSH_KEY secret: the private half of an SSH key whose
       # public half is on the maintainer's AUR account. CONTRIBUTING.md
       # says how to make one.
-      - name: Publish to the AUR
-        if: steps.prep.outputs.release == 'true'
+      - name: Push the recipe to the AUR
         env:
           AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
         run: |
@@ -201,15 +221,13 @@ jobs:
             echo "::warning::The AUR was not updated: there is no AUR_SSH_KEY secret. See CONTRIBUTING.md."
             exit 0
           fi
-          # ssh reads root's files from /root, not the container's $HOME,
-          # so every path is given explicitly.
           keys=$(mktemp -d)
           printf '%s\n' "$AUR_SSH_KEY" > "$keys/aur"
           chmod 600 "$keys/aur"
           ssh-keyscan -t ed25519 aur.archlinux.org > "$keys/known_hosts"
           export GIT_SSH_COMMAND="ssh -i $keys/aur -o IdentitiesOnly=yes -o UserKnownHostsFile=$keys/known_hosts"
           git clone ssh://aur@aur.archlinux.org/weir.git aur
-          cp /home/builder/weir/PKGBUILD /home/builder/weir/.SRCINFO aur/
+          cp recipe/PKGBUILD recipe/.SRCINFO aur/
           cd aur
           git add PKGBUILD .SRCINFO
           if git diff --cached --quiet; then
@@ -224,14 +242,14 @@ jobs:
   publish:
     name: Attach to the release
     if: github.event_name == 'release'
-    needs: [rpm, deb]
+    needs: [rpm, deb, arch]
     runs-on: ubuntu-24.04
     permissions:
       contents: write # attach the files to the release
       id-token: write # get a signing certificate for the attestation
       attestations: write # store the attestation with the repository
     steps:
-      # Only these two: the AUR job's files are not for the release page.
+      # By name: the AUR recipe is not for the release page.
       - uses: actions/download-artifact@v4
         with:
           name: rpm
@@ -240,8 +258,12 @@ jobs:
         with:
           name: deb
           path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: arch
+          path: dist
       - name: Write checksums
-        run: cd dist && sha256sum -- *.rpm *.deb > SHA256SUMS && cat SHA256SUMS
+        run: cd dist && sha256sum -- *.rpm *.deb *.pkg.tar.zst > SHA256SUMS && cat SHA256SUMS
       # Signed in the same run that built the packages, so it vouches for
       # exactly these files; a file swapped on the release later fails the
       # check. Attestations need a public repository (or GitHub Enterprise).
@@ -251,6 +273,7 @@ jobs:
           subject-path: |
             dist/*.rpm
             dist/*.deb
+            dist/*.pkg.tar.zst
       - name: Upload to the release
         env:
           GH_TOKEN: ${{ github.token }}

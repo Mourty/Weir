@@ -65,6 +65,13 @@ fn main() -> eframe::Result {
             .with_icon(icon())
             .with_inner_size([1180.0, 680.0])
             .with_min_inner_size([520.0, 420.0]),
+        // With vsync on, showing a frame waits for the desktop to say it is
+        // ready for the next one, which on Wayland it never does while the
+        // window is minimized or on another desktop. The window then hung
+        // until it was shown again: it could not even close at logout, and
+        // was killed. Weir paces its own redraws (about 30 a second, see
+        // `App::update`), so it does not need vsync to keep from spinning.
+        vsync: false,
         ..Default::default()
     };
     eframe::run_native(

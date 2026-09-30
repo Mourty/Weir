@@ -1,0 +1,285 @@
+# How Weir works
+
+This is for people who want to change Weir, or just see how it is put
+together. It explains the parts, how sound gets through them, and why they
+are built the way they are. The code's own comments go into the detail;
+this is the map.
+
+## The parts
+
+```
+          weir (window)     weirctl     your scripts, a Stream Deck plugin ...
+                 \             |              /
+                  JSON-RPC over a Unix socket, one message per line
+                                |
+                          weir-daemon
+          state, config, undo history, app rules, tray icon
+                                |
+                          weir-engine
+       the PipeWire thread, and the real-time mixer in one pw_filter
+                                |
+                             PipeWire
+```
+
+Weir is a **daemon** that does the work and **thin clients** that talk to
+it. The window has no special access: everything it does goes through the
+same [control protocol](API.md) as `weirctl` or anyone's script, so that
+protocol is complete by construction and exercised every time someone moves
+a fader. It also means the audio devices stay put while the window is
+closed, and the tray icon can live in the process that keeps running.
+
+The code is a Cargo workspace of five crates:
+
+| Crate | Builds | What it is |
+|---|---|---|
+| `crates/protocol` | a library | The data model, every request and notification, and the maths clients must agree with the engine on (equalizer curves, the compressor's curve, scenes). No PipeWire, no UI. |
+| `crates/engine` | a library | The PipeWire side and the real-time mixer. `dsp` is pure Rust and testable without PipeWire; `pw` owns the PipeWire connection. |
+| `crates/daemon` | `weir-daemon` | The state, the configuration files, undo, application rules, scenes and setups, the socket server and the tray icon. |
+| `crates/cli` | `weirctl` | The command line client. |
+| `crates/gui` | `weir` | The window, in egui. |
+
+## Sound through PipeWire
+
+Every bit of mixing happens in **one PipeWire node**, a `pw_filter` called
+"Weir", with an input port for each strip channel and an output port for
+each bus channel. PipeWire calls it once per cycle, on its real-time
+thread, with a buffer for every port; the filter mixes them all in that one
+callback. Nothing is added to PipeWire's own latency.
+
+Around it, the daemon creates **virtual devices** and **links**:
+
+```
+ Firefox ──▶ [weir.input.3 "Browser (Weir)"] ──monitor──▶ ┌─────────────┐ ──▶ [headset]              A1
+ Spotify ──▶ [weir.input.2 "Music (Weir)"]   ──monitor──▶ │ Weir engine │
+ [microphone] ──────────────────────────────────────────▶ │  pw_filter  │ ──▶ [weir.output.3 "Stream Mic (Weir)"] ──▶ Discord   B1
+                                                          └─────────────┘
+```
+
+* A **virtual strip** is a `support.null-audio-sink` adapter with
+  `media.class = Audio/Sink`: a playback device applications can choose.
+  Its monitor ports feed the engine's inputs for that strip.
+* A **virtual bus** is the same adapter as `Audio/Source/Virtual`: a
+  microphone applications can record from, fed by the engine's outputs.
+* A **hardware** strip or bus links the engine's ports straight to the
+  device's.
+* The engine and Weir's devices share a `node.group`, so one clock drives
+  them all, and the engine has `node.autoconnect = false`, so the session
+  manager leaves its wiring to Weir.
+
+The PipeWire side runs on a thread of its own (`pw/runner`). It keeps a
+mirror of PipeWire's registry, and whenever anything changes, on either
+side, it **reconciles**: it brings the engine's ports, the real-time
+parameters, the virtual devices and the links in line with the mixer state
+the daemon wants, in that order. So a device unplugged and plugged back in
+is simply linked again, and a strip added in the window gets its device,
+ports and links from the same code that set everything up at the start.
+
+Two things about PipeWire shape that code. It **reuses ids**, both of nodes
+and of application streams, so nodes are told apart by `object.serial` and
+applications by id and name together. And a strip's device has to be
+**recreated** when the strip is renamed or its layout changes; the runner
+remembers which applications were playing into it (`pending_moves`) and
+moves them back once the new device is there.
+
+## The real-time mixer
+
+The rules on PipeWire's real-time thread are strict: **no allocation, no
+locks, no system calls, no logging**, because any of them can stall the
+audio. The whole design of `engine/src/dsp` follows from that.
+
+**Parameters arrive as snapshots.** The daemon's thread turns the mixer
+state into an immutable `RtParams`: every level as a linear gain, every
+route as a matrix of coefficients from the strip's channels to the bus's
+speakers, every effect's settings in the form the real-time code wants.
+Every buffer the real-time code will need is allocated here. The snapshot
+is published through an `ArcSwap`, and the real-time thread picks up the
+newest one at the start of each cycle, with one atomic load.
+
+**Changes never click.** Every level, pan, mute and route ramps linearly
+over 10 ms, and a new snapshot takes over the ramps where the old one left
+them. Effects switched on or off crossfade, and an equalizer whose bands
+change crossfades from the old filters to the new ones.
+
+**Effect state outlives snapshots.** Filter memories, envelopes and the
+noise suppressor's frames must carry on across a change of settings, and
+some of them are too big to copy. They live in an `FxState` per strip and
+bus, which each new snapshot shares by `Arc` with the one before, and which
+only the real-time thread touches.
+
+**One cycle**, for each block of samples:
+
+1. Every bus output is cleared.
+2. Each strip runs its chain: **noise suppression**, **gate**,
+   **equalizer**, **compressor**, then its **fader**, mute and pan. Its
+   meter reads here. It is then added into each bus it is routed to,
+   through that bus's matrix, at its level in that bus's mix, ducked in the
+   mixes its ducking covers, with its subwoofer and upmix feeds.
+3. Each bus folds to **mono** if asked, runs its **equalizer**, applies its
+   **fader**, then its **limiter**, and meters what comes out.
+
+**Meters** are atomics the real-time thread raises to each new peak; the
+daemon reads and resets them 30 times a second. The **spectrum** behind
+the equalizer curve works the same way in spirit: while a window watches a
+strip, the real-time thread copies its equalizer's input and output, mixed
+to mono, into a ring of atomics, and the daemon runs an 8192-point FFT over
+them 30 times a second and folds the result into 192 points for the window.
+Nothing is copied when nobody watches.
+
+### Channels
+
+Every strip and bus has its own layout, from mono to 7.1 or any list of
+speaker positions, and `dsp/mapping.rs` decides how each strip channel
+lands on each bus speaker: the same position goes to the same speaker; a
+mono strip goes to both fronts; what a bus has no speaker for is
+**downmixed** (the ITU-R BS.775 standard, a Pro Logic II matrix, or one
+part only); and speakers a strip has no channel for can be filled by
+**upmixing** (center fill, all-channel stereo, passive surround).
+
+### The effects
+
+| Effect | How it works |
+|---|---|
+| Equalizer | Up to 16 bands, each a trapezoidal state variable filter, the same shapes as the Audio EQ Cookbook's biquads but well behaved when changed quickly. The maths is in the protocol crate, so the window draws exactly the curve the engine applies. |
+| Noise suppression | RNNoise, through the pure Rust `nnnoiseless`, so there is no C library to package. It works on 10 ms frames at 48 kHz, which is why it needs that rate, and delays its strip by 20 ms. |
+| Gate | A peak detector with attack, hold and release, which closes 4 dB below its threshold so a level hovering around it does not make it flutter. |
+| Compressor | A feed-forward compressor with a 6 dB soft knee, and a lift that can be worked out from the threshold and ratio. Its curve is in the protocol crate, for the window's graph. |
+| Ducking | Each strip's level after its fader, gated by its gate, is compared with a threshold; the strips it ducks are turned down in the mixes their ducking names. |
+| Limiter | Looks 1.5 ms ahead, with the channels of a bus linked so the image does not shift. |
+
+`dsp/process.rs` has a test `Rig` that drives the processor without
+PipeWire, and the tests read like the behavior they check: a gate closes
+on noise and opens for speech, switching the equalizer on does not click,
+the limiter holds its ceiling without touching quieter audio.
+
+## The daemon
+
+**One source of truth.** `Controller` holds the mixer state, what the
+engine reports (devices, applications, the engine's status, system
+volumes), the settings and the undo history, behind one lock. Clients only
+ever send requests and mirror what they are told.
+
+**Every request** arrives on the socket (`server.rs`, one tokio task per
+connection), has the names in it resolved to ids (`controller/names.rs`),
+and is handled in `controller/handlers.rs`. **Every change to the mixer**
+goes through `Controller::mutate`, which:
+
+1. applies the change to a copy of the state, and **normalizes** it:
+   values into their ranges, references to strips and buses that are gone
+   removed;
+2. records the state from before for **undo** (a run of changes to the same
+   fields of the same thing within 1.5 s is one step; 100 steps are kept);
+3. hands the new state to the **engine**;
+4. marks the configuration to be **saved** (at most every half second,
+   written to a new file and renamed over the old one, so a crash cannot
+   leave half a file);
+5. and **notifies** every subscribed client.
+
+**Configuration** lives in `~/.config/weir` as TOML. The file carries a
+version; when a change would alter what an old file means, the version goes
+up and `config.rs` gains a migration step, with a test. At startup the
+daemon keeps a copy of the configuration in `backups/`, the last ten.
+
+**Application rules** are applied as applications appear: the first
+matching rule moves an application once, retrying a few times if the
+session manager moves it back, and then leaves it alone, so moving it by
+hand is respected.
+
+**The tray icon** is in the daemon, because the daemon is what keeps
+running when the window is closed. It talks to the rest through a channel,
+since its callbacks run on their own task.
+
+**Starting at login** is systemd's to keep, not the configuration's:
+Weir starts at login when its user unit, `weir.service`, is enabled. The
+daemon asks `systemctl --user is-enabled` when it starts and after
+changing it with `enable` or `disable` (in `login.rs`), so the setting
+cannot drift from what systemd will actually do. It never uses `--now`:
+the daemon asking is already running.
+
+## The protocol
+
+The protocol crate's types *are* the protocol. `describe` returns JSON
+Schemas generated from them, with their doc comments as descriptions, so
+the schemas and the Rust types cannot disagree. A few conventions keep it
+friendly and compatible:
+
+* New fields get `#[serde(default)]`, and usually
+  `skip_serializing_if`, so old configuration files and old clients keep
+  working, and messages stay small.
+* Changes are patches: every field an `Option`, absent meaning unchanged.
+  Fields that can be cleared use a double option, so `null` and absent
+  differ.
+* On/off fields in patches are a `Flag`, which also takes `"toggle"`, and
+  values that dials change have a `*_delta_*` twin.
+* Strips and buses can be named instead of numbered anywhere, resolved by
+  the daemon before the request is parsed.
+* Replies are built with `to_json`, which keeps 32-bit floats as short as
+  they are (`6.7`, not `6.699999809265137`).
+
+## The window
+
+The window (`crates/gui`) is an egui application and a client like any
+other. A connection thread sends its requests and a reader thread mirrors
+notifications into shared state; each frame, the window copies what it
+needs and draws.
+
+Two things keep it feeling immediate. A control being dragged keeps its own
+value for a moment after the last change, so an echo of an older value
+from the daemon cannot pull it back under the pointer, and it sends at most
+every 40 ms. And meters are animated in the window between the daemon's
+readings, falling smoothly and holding their peaks.
+
+Each strip's and bus's settings window is a separate native window (an
+egui viewport), so it can sit on another screen. Colors come from two
+palettes, dark and light, and the window follows the desktop's preference
+through the XDG desktop portal.
+
+## Testing
+
+* `cargo test --workspace` runs over 150 unit tests without PipeWire:
+  the real-time processor through its test rig, every effect,
+  the protocol's parsing and maths, the daemon's request handling, undo,
+  configuration migrations, and the window's logic.
+* A headless PipeWire runs everything but real devices; `CONTRIBUTING.md`
+  says how. The daemon, the window and `weirctl` all work against it.
+* `docs/check_examples.py` runs every example in the API and command line
+  references against a running daemon, so the documentation cannot drift
+  from the code.
+
+## Why it is built this way
+
+**Why not an existing tool?** pulsemeeter drives PulseAudio modules from
+Python with no real-time engine of its own; jack_mixer has strips and
+meters but JACK ports only, which applications cannot choose as an output;
+qpwgraph, Helvum and Sonusmix route but do not mix; PipeWire's own
+`module-loopback` and `filter-chain` are building blocks configured in
+files, with no live control. PipeWire's client API offers everything
+needed, so Weir uses it directly.
+
+**Why one engine node?** The alternative was a PipeWire stream per strip
+and bus, letting the session manager do the linking. That makes choosing
+devices simpler, but mixing across many nodes within one cycle depends on
+how PipeWire schedules them, and the safe way around that is a ring buffer
+that adds a cycle of latency, as `module-loopback` does. One node mixing
+everything in one callback is sample-aligned and adds nothing, and its
+correctness is easy to argue.
+
+**Why Rust and egui?** Real-time audio without a garbage collector, safe
+concurrency between the audio and control threads, and one language for
+all of it. The `pipewire` crate has no safe `pw_filter` wrapper, so the
+engine carries a small unsafe one (`pw/filter.rs`). egui makes custom
+controls such as faders and meters easy to draw, and the window a pure
+function of the state.
+
+**Why only a local socket?** It needs no password: only the user running
+Weir can open it. A TCP listener could be added in the server alone, if
+remote control is ever wanted.
+
+## What is next
+
+* Testing on more real hardware; most of the newer features have been
+  developed against a headless PipeWire.
+* A package in a repository, so installing needs no build: the RPM spec in
+  `packaging/` builds locally; a COPR build needs the crates vendored.
+* An OpenDeck plugin, as its own project on top of the protocol.
+* Perhaps: a routing matrix view for many strips, send and return ports for
+  external effects, and positioning sources in a sound field.

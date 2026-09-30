@@ -1,0 +1,27 @@
+[package]
+name = "weir-daemon"
+description = "Weir mixer daemon: owns the audio engine and the control socket"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "weir-daemon"
+path = "src/main.rs"
+
+[dependencies]
+weir-protocol.workspace = true
+weir-engine.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+clap.workspace = true
+toml.workspace = true
+tokio.workspace = true
+dirs.workspace = true
+ksni.workspace = true
+libc.workspace = true

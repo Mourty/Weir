@@ -1,0 +1,33 @@
+# systemd user unit for the Weir daemon.
+#
+# This is a template. `make install` substitutes @BINDIR@ with the directory
+# the binaries were installed into and writes the result to the systemd user
+# unit directory, so you do not normally install this file by hand.
+#
+# Enable it by ticking "Start Weir when I log in" in Weir's Preferences,
+# which runs `systemctl --user enable weir`, or from a terminal:
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now weir
+#
+# Running the daemon as a service keeps the virtual devices alive when the
+# mixer window is closed, so applications do not lose their device selection.
+
+[Unit]
+Description=Weir mixer daemon
+Documentation=https://github.com/Mourty/Weir
+After=pipewire.service wireplumber.service graphical-session.target
+Requires=pipewire.service
+
+[Service]
+Type=simple
+ExecStart=@BINDIR@/weir-daemon
+Restart=on-failure
+RestartSec=2
+# The daemon stops within a second or two. Should it ever fail to, systemd
+# ends it after 5 seconds instead of its default of 90, which would otherwise
+# hold up logging out and shutting down for that long.
+TimeoutStopSec=5
+Environment=RUST_LOG=info
+
+[Install]
+WantedBy=default.target

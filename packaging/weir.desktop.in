@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Weir
+GenericName=Audio Mixer
+Comment=Mix and route microphones and applications with PipeWire
+Exec=@BINDIR@/weir
+Icon=weir
+Terminal=false
+Categories=AudioVideo;Audio;Mixer;
+Keywords=audio;mixer;pipewire;routing;microphone;voicemeeter;streaming;
+StartupNotify=true
+StartupWMClass=weir

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <title>Weir</title>
+  <!-- A labyrinth weir seen from above: water held back behind a W-shaped
+       crest, ripples spreading out below it. Plain shapes only, so every
+       icon renderer draws it the same. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2b3039"/>
+      <stop offset="1" stop-color="#14171c"/>
+    </linearGradient>
+    <linearGradient id="water" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#74d8d2"/>
+      <stop offset="1" stop-color="#1d7a91"/>
+    </linearGradient>
+    <linearGradient id="stone" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f0f3f7"/>
+      <stop offset="1" stop-color="#a9b2bf"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="56" fill="url(#bg)"/>
+  <path fill="url(#water)" d="M0 74V56C0 25.07 25.07 0 56 0H200C230.93 0 256 25.07 256 56V74H222L172 172L128 100L84 172L34 74Z"/>
+  <path fill="none" stroke="#74d8d2" stroke-opacity=".75" stroke-width="8" stroke-linejoin="round" d="M-8 102L16.85 102L59.06 184.73C63.67 193.76 72.79 199.59 82.93 199.98C93.06 200.37 102.61 195.25 107.89 186.6L128 153.7L148.11 186.6C153.39 195.25 162.94 200.37 173.07 199.98C183.21 199.59 192.33 193.76 196.94 184.73L239.15 102L264 102"/>
+  <path fill="none" stroke="#74d8d2" stroke-opacity=".35" stroke-width="6" stroke-linejoin="round" d="M-8 125L2.77 125L38.57 195.18C46.96 211.63 63.59 222.25 82.04 222.96C100.49 223.67 117.89 214.35 127.52 198.59L128 197.8L128.48 198.59C138.11 214.35 155.51 223.67 173.96 222.96C192.41 222.25 209.04 211.63 217.43 195.18L253.23 125L264 125"/>
+  <path fill="none" stroke="url(#stone)" stroke-width="16" stroke-linejoin="round" stroke-linecap="round" d="M16 74L34 74L84 172L128 100L172 172L222 74L240 74"/>
+</svg>

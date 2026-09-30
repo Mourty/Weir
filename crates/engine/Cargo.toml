@@ -1,0 +1,20 @@
+[package]
+name = "weir-engine"
+description = "Real-time mixing engine and PipeWire integration for Weir"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+weir-protocol.workspace = true
+arc-swap.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+pipewire.workspace = true
+libspa.workspace = true
+libspa-sys.workspace = true
+pipewire-sys.workspace = true
+nnnoiseless = { version = "0.5.2", default-features = false }
+realfft = "3.5"

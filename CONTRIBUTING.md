@@ -213,6 +213,11 @@ release.
 4. The **Packages** workflow builds the RPM and the `.deb` and attaches
    them to the release, with a `SHA256SUMS` file, in about twenty minutes.
    It refuses to start if the tag and the version numbers disagree.
+   It also signs an attestation for each package (listed on the
+   **Actions** tab under **Attestations**). Only files the workflow built
+   carry one, so never attach packages to a release by hand: if a release
+   run fails, fix the workflow, delete the release and its tag, and
+   publish again.
 
 By contributing you agree that your work is released under the
 [MIT license](LICENSE), like the rest of Weir.

@@ -20,10 +20,10 @@
 
 # The release profile is built without debug info, so there is no debuginfo to
 # extract into a subpackage. Fedora's own rpm macros export RUSTFLAGS
-# containing -Cdebuginfo=2, so this has to be set explicitly, and %build and
-# %install must pass exactly the same cargo settings. If they differ, cargo
-# sees a different fingerprint and rebuilds the whole tree a second time
-# during %install.
+# containing -Cdebuginfo=2, so this has to be set explicitly, and %build,
+# %install and %check must pass exactly the same cargo settings. If they
+# differ, cargo sees a different fingerprint and rebuilds the whole tree
+# again, which on GitHub's builders costs a quarter of an hour.
 %global debug_package %{nil}
 %global cargo_env CARGO_PROFILE_RELEASE_DEBUG=false
 %global cargo_flags --release --locked
@@ -76,7 +76,7 @@ for scripts and stream decks).
 %check
 desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
 appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/io.github.mourty.weir.metainfo.xml
-cargo test --workspace --release --locked
+%{cargo_env} cargo test --workspace %{cargo_flags}
 
 %files
 %license %{_datadir}/licenses/weir/LICENSE

@@ -437,8 +437,8 @@ fn virtual_bus_note(ui: &mut Ui, state: &FullState, b: &Bus) {
             .color(theme::p().text_dim),
     )
     .on_hover_text(format!(
-        "Applications can capture from \"{} (Weir)\" as if it were a microphone.",
-        b.name
+        "Applications can capture from \"{}\" as if it were a microphone.",
+        device_description(&b.name)
     ));
     if let Some(v) = state
         .system_volumes
@@ -447,9 +447,9 @@ fn virtual_bus_note(ui: &mut Ui, state: &FullState, b: &Bus) {
         .filter(|v| v.is_reducing())
     {
         let explain = format!(
-            "The system's volume control has \"{} (Weir)\" at {}, so whatever records it \
+            "The system's volume control has \"{}\" at {}, so whatever records it \
              hears it that much quieter than this bus's meter shows.",
-            b.name,
+            device_description(&b.name),
             system_volume_text(v)
         );
         system_volume_note(ui, v, &explain);

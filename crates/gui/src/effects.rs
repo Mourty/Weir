@@ -7,7 +7,7 @@ use egui::{vec2, Color32, Response, RichText, Ui};
 use weir_protocol::{FullState, Insert, InsertFallback, InsertPatch, Request, StripOrBus};
 
 /// A strip's or bus's external effects, and whether anything plays into
-/// its "back from effects" device.
+/// its "from effects" device.
 #[derive(Debug, Clone, Copy)]
 pub struct Status {
     pub insert: Insert,
@@ -73,15 +73,12 @@ impl Status {
 /// use: the one the effects program records from, and the one it plays
 /// into.
 pub fn device_names(name: &str) -> (String, String) {
-    (
-        format!("{name}: to effects (Weir)"),
-        format!("{name}: back from effects (Weir)"),
-    )
+    Insert::device_names(name)
 }
 
 /// The name people know the device called `node` by, when it is one an
-/// effects program plays back into, such as "Music: back from effects
-/// (Weir)": an effects program's output shows among the applications.
+/// effects program plays back into, such as "Music from effects (Weir)":
+/// an effects program's output shows among the applications.
 /// The engine names the device `weir.from-effects.strip.2`.
 pub fn return_device(state: &FullState, node: &str) -> Option<String> {
     let (kind, id) = node.strip_prefix("weir.from-effects.")?.split_once('.')?;
@@ -163,9 +160,7 @@ mod tests {
         assert!(on.connected);
         let waiting = Status::of(&state(true, false), target).unwrap();
         assert_eq!(waiting.short(), "not connected, passing through");
-        assert!(waiting
-            .explain("Mic")
-            .contains("Mic: back from effects (Weir)"));
+        assert!(waiting.explain("Mic").contains("Mic from effects (Weir)"));
     }
 
     #[test]
@@ -173,7 +168,7 @@ mod tests {
         let st = state(true, true);
         assert_eq!(
             return_device(&st, "weir.from-effects.strip.1").as_deref(),
-            Some("Mic: back from effects (Weir)")
+            Some("Mic from effects (Weir)")
         );
         assert_eq!(return_device(&st, "weir.from-effects.strip.9"), None);
         assert_eq!(return_device(&st, "weir.input.1"), None);

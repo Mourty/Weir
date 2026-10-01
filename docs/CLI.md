@@ -127,8 +127,8 @@ are. It prints the strip as it is afterwards.
 
 The strip's sound can go out to another program, such as Carla or
 EasyEffects, and come back, at any point of its chain. While on, the strip
-has two more devices: "*name*: to effects (Weir)", which the program
-records from, and "*name*: back from effects (Weir)", which it plays into.
+has two more devices: "*name* to effects (Weir)", which the program
+records from, and "*name* from effects (Weir)", which it plays into.
 
 | Option | |
 |---|---|

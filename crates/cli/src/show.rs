@@ -93,9 +93,8 @@ fn external_effects(insert: &Insert, target: StripOrBus, st: &FullState) -> Stri
 
 /// The devices a strip's or bus's external effects use, named `name`.
 fn external_effects_devices(name: &str) -> String {
-    format!(
-        "out through '{name}: to effects (Weir)', back through '{name}: back from effects (Weir)'"
-    )
+    let (to, from) = Insert::device_names(name);
+    format!("out through '{to}', back through '{from}'")
 }
 
 /// A bus name with the strip's send level after it, when it is not 0 dB.

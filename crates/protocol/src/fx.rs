@@ -785,7 +785,7 @@ impl InsertPoint {
 }
 
 /// What a strip's or bus's external effects do while nothing plays into
-/// its "back from effects" device.
+/// its "from effects" device.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize, schemars::JsonSchema,
 )]
@@ -816,10 +816,10 @@ impl InsertFallback {
 /// leaves Weir for another program, such as Carla or EasyEffects, and comes
 /// back.
 ///
-/// While on, two devices exist for it: "*name*: to effects (Weir)", which
-/// that program records from, and "*name*: back from effects (Weir)", which
-/// it plays into. The round trip costs one PipeWire cycle, a few
-/// milliseconds, on top of whatever the effects take.
+/// While on, two devices exist for it: "*name* to effects (Weir)", which
+/// that program records from, and "*name* from effects (Weir)", which it
+/// plays into (see [`Insert::device_names`]). The round trip costs one
+/// PipeWire cycle, a few milliseconds, on top of whatever the effects take.
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default)]
 pub struct Insert {
@@ -828,7 +828,7 @@ pub struct Insert {
     pub enabled: bool,
     /// Where in the chain.
     pub position: InsertPoint,
-    /// What happens while nothing plays into "back from effects".
+    /// What happens while nothing plays into "from effects".
     pub fallback: InsertFallback,
 }
 
@@ -836,6 +836,18 @@ impl Insert {
     /// Whether every setting is at its default.
     pub fn is_default(&self) -> bool {
         *self == Self::default()
+    }
+
+    /// The two devices of the external effects of a strip or bus called
+    /// `name`: the one the effects program records from, "Music to effects
+    /// (Weir)", and the one it plays into, "Music from effects (Weir)".
+    /// Colons are left out, as in [`crate::device_description`].
+    pub fn device_names(name: &str) -> (String, String) {
+        let name = crate::model::without_colons(name);
+        (
+            format!("{name} to effects (Weir)"),
+            format!("{name} from effects (Weir)"),
+        )
     }
 }
 

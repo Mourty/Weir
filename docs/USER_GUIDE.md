@@ -383,12 +383,13 @@ Weir's version of its inserts.
 Switch on **External effects** in the strip's or bus's settings window.
 Weir then makes two devices for it, named after it:
 
-* **"Mic: to effects (Weir)"**, a microphone the effects program records
-  from;
-* **"Mic: back from effects (Weir)"**, an output it plays into.
+* **"Mic to effects (Weir)"**, a microphone the effects program records
+  from (**Out** in the settings window);
+* **"Mic from effects (Weir)"**, an output it plays into (**Back**).
 
 Connect the program to them in its own settings, or with a patchbay such
-as qpwgraph. What comes back carries on through the rest of the chain.
+as Carla's or qpwgraph. What comes back carries on through the rest of the
+chain.
 
 **Where they go.** **Ext FX** sits in the signal chain along the top of
 the settings window. Drag it to another gap to move it, or choose under
@@ -402,7 +403,7 @@ through, as if external effects were off, or stays silent, as you choose.
 Silence suits a voice that should never be heard without its effects.
 
 **At a glance**, a badge beside the name says whether they are working: a
-blue **EXT** while something plays into "back from effects", a yellow
+blue **EXT** while something plays into "from effects", a yellow
 **EXT !** while nothing does. Hover over it for what that means for the
 sound, and click it for the settings. **Ext FX** in the signal chain lights
 up in the same colors.
@@ -657,9 +658,9 @@ microphone, that Mic is sent to `B1`, and that neither is muted. The meters
 on the Mic strip and the Stream Mic bus show where the sound stops.
 
 **A strip shows a yellow EXT !, or is silent with external effects on.**
-Nothing plays into its "back from effects" device. Check that the effects
+Nothing plays into its "from effects" device. Check that the effects
 program is running, and that it records from "to effects" and plays into
-"back from effects". With **Silence** chosen for while nothing is
+"from effects". With **Silence** chosen for while nothing is
 connected, the strip stays silent until it does.
 
 **Known limitations.**

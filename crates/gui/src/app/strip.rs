@@ -103,9 +103,9 @@ impl App {
             .filter(|v| v.is_reducing())
         {
             let explain = format!(
-                "The system's volume control has \"{} (Weir)\" at {}, so everything playing \
+                "The system's volume control has \"{}\" at {}, so everything playing \
                  into it is turned down before it reaches this fader.",
-                s.name,
+                device_description(&s.name),
                 system_volume_text(v)
             );
             let r = system_volume_note(ui, v, &explain);
@@ -497,8 +497,8 @@ impl App {
                     .color(theme::p().text_dim),
             )
             .on_hover_text(format!(
-                "Applications can choose \"{} (Weir)\" as their output device.",
-                s.name
+                "Applications can choose \"{}\" as their output device.",
+                device_description(&s.name)
             ));
             return;
         }

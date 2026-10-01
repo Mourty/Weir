@@ -289,8 +289,8 @@ pub struct StripArgs {
     #[arg(long, allow_negative_numbers = true)]
     pub duck_threshold: Option<f32>,
     /// External effects on or off: the strip's sound goes out to another
-    /// program, such as Carla, through "NAME: to effects (Weir)", and comes
-    /// back through "NAME: back from effects (Weir)".
+    /// program, such as Carla, through "NAME to effects (Weir)", and comes
+    /// back through "NAME from effects (Weir)".
     #[arg(long)]
     pub external_effects: Option<String>,
     /// Where in the strip the external effects go: before-denoise,
@@ -356,8 +356,8 @@ pub struct BusArgs {
     #[arg(long)]
     pub keep_lfe: Option<String>,
     /// External effects on or off: the bus's mix goes out to another
-    /// program, such as Carla, through "NAME: to effects (Weir)", and comes
-    /// back through "NAME: back from effects (Weir)".
+    /// program, such as Carla, through "NAME to effects (Weir)", and comes
+    /// back through "NAME from effects (Weir)".
     #[arg(long)]
     pub external_effects: Option<String>,
     /// Where in the bus the external effects go: before-eq, before-fader,

@@ -391,6 +391,27 @@ Connect the program to them in its own settings, or with a patchbay such
 as Carla's or qpwgraph. What comes back carries on through the rest of the
 chain.
 
+**Connecting Carla, step by step.** Say you want a reverb on Music:
+
+1. Switch on **External effects** for Music. Its badge shows a yellow
+   **EXT !** until the effects are connected.
+2. In Carla, click **Add Plugin** and load your reverb.
+3. Open Carla's **Patchbay** tab. Each program and device is a block, with
+   its inputs on the left and its outputs on the right.
+4. Find **Music to effects (Weir)**. Drag a wire from each of its outputs,
+   left and right, to the reverb's inputs.
+5. Drag a wire from each of the reverb's outputs to the inputs of
+   **Music from effects (Weir)**.
+
+The badge turns into a blue **EXT**, and Music plays through the reverb.
+With Weir's own wires, the blocks make a line: Weir's engine, **Weir
+Engine**, into "Music to effects", through the reverb, into "Music from
+effects", and on into **Weir effects return**, where the sound comes back
+into Weir. Weir draws the wires to and from its own blocks itself, and
+draws them again if one is removed, so there is nothing else to connect. To keep the wiring
+for next time, save a project in Carla (**File › Save**) and open it again
+later.
+
 **Where they go.** **Ext FX** sits in the signal chain along the top of
 the settings window. Drag it to another gap to move it, or choose under
 **Where**. A strip's can go anywhere from before noise suppression to just

@@ -163,11 +163,21 @@ impl FxWindow {
                 actions.push(effects::request(self.target, patch));
             }
         }
+        // The one thing to do by hand, said in a patchbay's terms; the
+        // rows above name the devices.
+        let how = if insert.enabled {
+            "To connect them, in the effects program or a patchbay such as Carla's or \
+             qpwgraph, wire Out into the effects' inputs, and their outputs into Back. Weir \
+             draws the other wires itself. "
+        } else {
+            ""
+        };
         note(
             ui,
-            "Connect them in the effects program's settings, or in a patchbay such as \
-             qpwgraph. Drag Ext FX along the signal chain to move them. The trip out and \
-             back adds a few milliseconds of delay.",
+            &format!(
+                "{how}Drag Ext FX along the signal chain to move them. The trip out and back \
+                 adds a few milliseconds of delay."
+            ),
         );
     }
 }

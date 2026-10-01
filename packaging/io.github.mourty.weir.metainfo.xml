@@ -66,6 +66,17 @@
   </provides>
 
   <releases>
+    <release version="1.1.0" date="2026-10-01">
+      <description>
+        <p>External effects: a strip or bus can send its sound to another program, such as Carla or EasyEffects, for effects Weir does not have, and take it back to carry on through the mix.</p>
+        <ul>
+          <li>Switch them on in a strip's or bus's settings, and drag them to any point of its signal chain.</li>
+          <li>A badge beside the name shows at a glance whether the effects program is connected.</li>
+          <li>Choose whether the sound passes through unchanged or stays silent while nothing is connected.</li>
+          <li>Links of Weir's own that are removed in a patchbay are made again.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.0.2" date="2026-09-30">
       <description>
         <p>Fixes for starting Weir when you log in:</p>

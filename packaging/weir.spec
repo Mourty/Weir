@@ -29,7 +29,7 @@
 %global cargo_flags --release --locked
 
 Name:           weir
-Version:        1.0.2
+Version:        1.1.0
 Release:        %{?_release}%{!?_release:1}%{?dist}
 Summary:        Voicemeeter-style audio mixer for PipeWire
 
@@ -95,6 +95,12 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/io.github.mour
 %doc %{_datadir}/doc/%{name}/docs/
 
 %changelog
+* Thu Oct 01 2026 Mourty <Mourt2@proton.me> - 1.1.0-1
+- Add external effects: a strip's or bus's sound goes out to another
+  program, such as Carla or EasyEffects, and comes back, at any point of
+  its chain, with a badge showing whether the program is connected.
+- Make links of Weir's own again when they are removed in a patchbay.
+
 * Wed Sep 30 2026 Mourty <Mourt2@proton.me> - 1.0.2-1
 - Show the tray icon and open the window when Weir starts at login before
   the desktop is ready.

@@ -12,12 +12,15 @@
 //! * [`params`]: the snapshot and its builder.
 //! * [`mapping`]: how a strip's channels land on a bus's speakers.
 //! * [`fx`]: the effects, and the state they keep between snapshots.
+//! * [`handoff`]: what comes back from external effects, on its way to
+//!   the engine.
 //! * [`process`]: one cycle of mixing.
 //! * [`analyzer`]: the equalizer's spectrum, computed off the real-time
 //!   thread.
 
 pub mod analyzer;
 pub mod fx;
+pub mod handoff;
 pub mod mapping;
 pub mod params;
 pub mod process;

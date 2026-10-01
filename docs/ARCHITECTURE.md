@@ -62,22 +62,32 @@ Around it, the daemon creates **virtual devices** and **links**:
   microphone applications can record from, fed by the engine's outputs.
 * A **hardware** strip or bus links the engine's ports straight to the
   device's.
-* A strip or bus with **external effects** on gets two more adapters and a
-  pair of engine ports per channel: "*name*: to effects (Weir)"
-  (`weir.to-effects.strip.N`, like a virtual bus), fed from the engine,
-  which an effects program records from, and "*name*: back from effects
-  (Weir)" (`weir.from-effects.strip.N`, like a virtual strip), which it
-  plays into and whose monitor feeds the engine. The engine, the program
-  and back make a loop, which PipeWire runs by marking the link that closes
-  it as feedback, a cycle late. It only sees loops made of links, and many
-  effects programs, filter chains and `pw-loopback` among them, record and
-  play through two nodes with no link between them. So the engine's silent
-  `effects_loop` output is linked into each "back from effects" first, and
-  the links back into the engine come after it: those always close a loop
-  PipeWire can see (`runner/effects.rs`).
-* The engine and Weir's devices share a `node.group`, so one clock drives
-  them all, and the engine has `node.autoconnect = false`, so the session
-  manager leaves its wiring to Weir.
+* A strip or bus with **external effects** on gets two more adapters:
+  "*name* to effects (Weir)" (`weir.to-effects.strip.N`, like a virtual
+  bus), fed from the engine's `to_effects_*` ports, which an effects
+  program records from, and "*name* from effects (Weir)"
+  (`weir.from-effects.strip.N`, like a virtual strip), which it plays
+  into. The monitor of "from effects" does not go back into the engine but
+  into a second node, "Weir effects return" (`weir.effects-return`, also a
+  `pw_filter`), with a port per channel of each, which exists while any
+  external effects are on. Each cycle, the return node leaves what came
+  back in a lock-free hand-off (`dsp/handoff.rs`), and the engine takes it
+  on its next cycle. So there is no loop for PipeWire to see: the engine
+  coming back into itself would be one, which PipeWire runs only when
+  every step of it is a link, and many effects programs, filter chains and
+  `pw-loopback` among them, record and play through two nodes with no link
+  between them, which froze the engine. In a patchbay, it reads as a line,
+  out of Weir, through the effects and back into Weir, with no wire
+  doubling back (`runner/effects.rs`).
+* Device descriptions leave out colons ("Music - Chat (Weir)" for a strip
+  called "Music: Chat"): JACK programs such as Carla, which see PipeWire
+  through its JACK library, take everything before a colon for the
+  program's name, and would draw all devices of strips whose names begin
+  the same way as one block.
+* The engine and the return node share a `node.group`, so one clock always
+  drives both, and Weir's devices join them through their links. Both
+  have `node.autoconnect = false`, so the session manager leaves their
+  wiring to Weir.
 
 The PipeWire side runs on a thread of its own (`pw/runner`). It keeps a
 mirror of PipeWire's registry, and whenever anything changes, on either
@@ -98,8 +108,8 @@ are remade the same way, and the links other programs had with them are
 noted and made again (`pending_relinks`), as lingering links that belong
 to PipeWire, like the ones they replace.
 
-Whether anything plays into a "back from effects" device is read from the
-links in the registry mirror. It decides, in the snapshot, whether the
+Whether anything plays into a "from effects" device, or straight into the
+return node, is read from the links in the registry mirror. It decides, in the snapshot, whether the
 strip or bus carries on with what comes back or with its fallback, and the
 daemon passes it on so the window can warn about effects that are not
 connected.
@@ -142,8 +152,8 @@ only the real-time thread touches.
 
 **External effects** can sit between any two of those stages of a strip
 or bus, or after a strip's fader: there the sound is copied to the
-outputs to "to effects", and replaced by what the inputs from "back from
-effects" bring. After a strip's fader, the fader is applied before
+outputs to "to effects", and replaced by what came back through "from
+effects", taken from the return node's hand-off. After a strip's fader, the fader is applied before
 sending, and what comes back is mixed at unity, ducking and send levels
 still applying.
 

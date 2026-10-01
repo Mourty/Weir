@@ -1,11 +1,13 @@
-//! Links between the engine node and devices: each strip's source into the
+//! Links between Weir's nodes and devices: each strip's source into the
 //! strip's input ports, each bus's output ports into its device, and each
-//! external effects' ports to and from their two devices.
+//! external effects' ports out into their "to effects" device and, on the
+//! return node, back from their "from effects" device.
 
-use super::{with_effects, Owner, PortKey, Runner};
+use super::{with_effects, LocalPort, Owner, PortKey, Runner};
 use crate::pw::graph::{PortDirection, PortEntry};
 use crate::pw::{
-    from_effects_node_name, to_effects_node_name, virtual_input_node_name, virtual_output_node_name,
+    from_effects_node_name, to_effects_node_name, virtual_input_node_name,
+    virtual_output_node_name, RETURN_NODE_NAME,
 };
 use pipewire::link::Link;
 use pipewire::properties::PropertiesBox;
@@ -65,44 +67,49 @@ fn pair(
     out
 }
 
+/// Of one of our nodes' ports, `ports`, the ones `port(0)` to `port(n - 1)`
+/// that PipeWire knows about yet, as `(position, global id)`, given the
+/// node's ports by name.
+fn ours(
+    ports: &HashMap<PortKey, LocalPort>,
+    port: impl Fn(usize) -> PortKey,
+    n: usize,
+    by_name: &HashMap<String, u32>,
+) -> Vec<(ChannelPosition, u32)> {
+    (0..n)
+        .filter_map(|c| {
+            let lp = ports.get(&port(c))?;
+            Some((lp.position, *by_name.get(&lp.name)?))
+        })
+        .collect()
+}
+
 impl Runner {
-    /// Global ids of the engine node's ports, by name.
-    fn our_port_ids(&self, engine_id: u32) -> HashMap<String, u32> {
+    /// Global ids of node `node_id`'s ports, by name.
+    fn port_ids(&self, node_id: u32) -> HashMap<String, u32> {
         self.graph
             .ports
             .values()
-            .filter(|p| p.node_id == engine_id)
+            .filter(|p| p.node_id == node_id)
             .map(|p| (p.name.clone(), p.id))
-            .collect()
-    }
-
-    /// The engine node's ports `port(0)` to `port(n - 1)` that PipeWire
-    /// knows about yet, as `(position, global id)`, given the node's ports
-    /// by name.
-    fn ours(
-        &self,
-        port: impl Fn(usize) -> PortKey,
-        n: usize,
-        by_name: &HashMap<String, u32>,
-    ) -> Vec<(ChannelPosition, u32)> {
-        (0..n)
-            .filter_map(|c| {
-                let lp = self.ports.get(&port(c))?;
-                Some((lp.position, *by_name.get(&lp.name)?))
-            })
             .collect()
     }
 
     /// The links the mixer state calls for, as `(output port, input port)`.
     fn desired_links(&self, engine_id: u32) -> Vec<(u32, u32)> {
-        let by_name = self.our_port_ids(engine_id);
+        let by_name = self.port_ids(engine_id);
         let theirs = |ports: Vec<&PortEntry>| -> Vec<(Option<ChannelPosition>, u32)> {
             ports.iter().map(|p| (p.channel, p.id)).collect()
         };
         let mut desired = Vec::new();
         for s in &self.state.strips {
             let owner = Owner::Strip(s.id);
-            let ours = self.ours(|c| owner.port(c), s.layout.channel_count(), &by_name);
+            let ours = ours(
+                &self.ports,
+                |c| owner.port(c),
+                s.layout.channel_count(),
+                &by_name,
+            );
             let source = match s.kind {
                 StripKind::Hardware => s
                     .device
@@ -129,7 +136,12 @@ impl Runner {
         }
         for b in &self.state.buses {
             let owner = Owner::Bus(b.id);
-            let ours = self.ours(|c| owner.port(c), b.layout.channel_count(), &by_name);
+            let ours = ours(
+                &self.ports,
+                |c| owner.port(c),
+                b.layout.channel_count(),
+                &by_name,
+            );
             let sink = match b.kind {
                 BusKind::Hardware => b.device.as_deref().and_then(|d| self.graph.resolve_sink(d)),
                 BusKind::Virtual => self
@@ -144,37 +156,32 @@ impl Runner {
             }
         }
         // External effects: out into "to effects", which is made like a
-        // virtual bus's microphone, and back from the monitor of "back from
-        // effects", which is made like a virtual strip's playback device.
-        // Coming back waits for the silent link into "back from effects"
-        // (see `effects`), so that it is the link that closes the loop.
-        let silent = self
-            .ports
-            .get(&PortKey::EffectsLoop)
-            .and_then(|p| by_name.get(&p.name).copied());
+        // virtual bus's microphone, and back from the monitor of "from
+        // effects", which is made like a virtual strip's playback device,
+        // into the return node (see `effects`).
+        let returns = self.returns.as_ref().and_then(|r| {
+            let node = self.graph.node_by_name(RETURN_NODE_NAME)?;
+            Some((&r.ports, self.port_ids(node.id)))
+        });
         for w in with_effects(&self.state) {
             let (owner, n, target) = (w.owner, w.positions.len(), w.owner.target());
             if let Some(dev) = self.graph.node_by_name(&to_effects_node_name(target)) {
-                let ours = self.ours(|c| PortKey::ToEffects(owner, c), n, &by_name);
+                let ours = ours(&self.ports, |c| PortKey::ToEffects(owner, c), n, &by_name);
                 let dev_ports = self.graph.ports_of(dev.id, PortDirection::In, None);
                 for (our_out, dev_in) in pair(&ours, &theirs(dev_ports), true) {
                     desired.push((our_out, dev_in));
                 }
             }
-            let Some(dev) = self.graph.node_by_name(&from_effects_node_name(target)) else {
+            let (Some(dev), Some((ports, ret_by_name))) = (
+                self.graph.node_by_name(&from_effects_node_name(target)),
+                returns.as_ref(),
+            ) else {
                 continue;
             };
-            let dev_in = self.graph.ports_of(dev.id, PortDirection::In, None);
-            let (Some(silent), Some(first)) = (silent, dev_in.first()) else {
-                continue;
-            };
-            desired.push((silent, first.id));
-            if self.graph.has_link(silent, first.id) {
-                let ours = self.ours(|c| PortKey::FromEffects(owner, c), n, &by_name);
-                let dev_ports = self.graph.ports_of(dev.id, PortDirection::Out, Some(true));
-                for (our_in, dev_out) in pair(&ours, &theirs(dev_ports), false) {
-                    desired.push((dev_out, our_in));
-                }
+            let ours = ours(ports, |c| PortKey::FromEffects(owner, c), n, ret_by_name);
+            let dev_ports = self.graph.ports_of(dev.id, PortDirection::Out, Some(true));
+            for (our_in, dev_out) in pair(&ours, &theirs(dev_ports), false) {
+                desired.push((dev_out, our_in));
             }
         }
         desired
@@ -188,8 +195,8 @@ impl Runner {
         };
         let desired = self.desired_links(engine.id);
 
-        // Unlinking first: links coming back from external effects must be
-        // gone before their silent link is made (see `effects`).
+        // Unlinking first, so a port never has an old link and its new one
+        // at once.
         let unwanted: Vec<(u32, u32)> = self
             .links
             .keys()

@@ -1,31 +1,46 @@
-//! External effects' connections: whether anything plays into each "back
-//! from effects" device, which decides between what comes back and the
-//! fallback, and the links to their devices, which outlive the devices
-//! being remade when a strip or bus is renamed or changes layout.
+//! External effects, as far as PipeWire goes: the node their sound comes
+//! back into, whether anything plays into each "from effects" device, which
+//! decides between what comes back and the fallback, and the links to
+//! their devices, which outlive the devices being remade when a strip or
+//! bus is renamed or changes layout.
 //!
-//! The sound going out and coming back makes a loop: the engine, "to
-//! effects", the effects program, "back from effects", the engine again.
-//! PipeWire runs a loop by marking the link that closes it as feedback,
-//! which carries the previous cycle's sound, but it only sees loops made of
-//! links. Many effects programs are two nodes inside, one that records and
-//! one that plays, with no link between them: `pw-loopback`, filter chains.
-//! Through those, PipeWire sees no loop, marks nothing, and each node waits
-//! for the one before it forever, the engine included.
+//! The sound goes out of the engine into "to effects", through the effects
+//! program into "from effects", and from there into a node of its own, the
+//! return node, "Weir effects return", which hands it to the engine for its
+//! next cycle (see [`crate::dsp::handoff`]). In a patchbay that reads as a
+//! line, Weir to the effects and on to Weir, with no wire doubling back;
+//! and PipeWire sees no loop, which it could not run through an effects
+//! program made of two unlinked nodes, such as a filter chain.
 //!
-//! So Weir makes the loop visible itself: the engine's silent
-//! `effects_loop` output is linked into every "back from effects" device
-//! first, and the links coming back are made only once that one is there.
-//! Each of them closes a loop of links, engine to device and back, so
-//! PipeWire marks it as feedback, whatever the effects program is made of.
+//! The return node exists only while some strip or bus has external effects
+//! on, with a port per channel of each, linked from the monitor of its
+//! "from effects" device. An effects program can also be wired straight
+//! into those ports, in a patchbay, and that counts as connected too.
 
-use super::{with_effects, Runner};
-use crate::pw::from_effects_node_name;
+use super::{with_effects, LocalPort, Owner, PortKey, Runner, OLD_SNAPSHOTS_KEPT};
+use crate::dsp::handoff::Handoff;
+use crate::pw::filter::{Direction, Filter, ReturnParams, ReturnShared, RtReturn};
 use crate::pw::graph::PortDirection;
+use crate::pw::{from_effects_node_name, ENGINE_NODE_NAME, RETURN_NODE_NAME};
 use pipewire::link::Link;
 use pipewire::properties::PropertiesBox;
+use std::collections::{HashMap, VecDeque};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 use weir_protocol::{InsertStatus, StripOrBus};
+
+/// The node external effects come back into, and what it keeps.
+pub(super) struct Returns {
+    filter: Filter<ReturnShared>,
+    /// Its ports, `PortKey::FromEffects`, one per channel of each strip's
+    /// or bus's external effects.
+    pub(super) ports: HashMap<PortKey, LocalPort>,
+    /// Ports to remove once a snapshot without them is published.
+    stale: Vec<LocalPort>,
+    /// Replaced snapshots, kept so its real-time thread never frees one.
+    old: VecDeque<Arc<ReturnParams>>,
+}
 
 /// How long to wait for a remade device before giving up on making its
 /// links again.
@@ -64,25 +79,195 @@ fn describe(target: StripOrBus) -> String {
 }
 
 impl Runner {
+    /// Keep a hand-off for each strip or bus with external effects on, and
+    /// the return node with a port for each of their channels, or no return
+    /// node while none has them on. Ports no longer wanted go to its stale
+    /// list, for after the next snapshot.
+    pub(super) fn ensure_returns(&mut self) {
+        let wanted = with_effects(&self.state);
+        // A hand-off is made for a number of channels, so a new layout
+        // needs a new one.
+        self.handoffs.retain(|owner, h| {
+            wanted
+                .iter()
+                .any(|w| w.owner == *owner && w.positions.len() == h.channels())
+        });
+        for w in &wanted {
+            self.handoffs
+                .entry(w.owner)
+                .or_insert_with(|| Arc::new(Handoff::new(w.positions.len())));
+        }
+        if wanted.is_empty() {
+            if self.returns.take().is_some() {
+                info!("removed the effects return node: no external effects are on");
+            }
+            return;
+        }
+        if self.returns.is_none() {
+            match Filter::new_return(
+                self.main_loop.loop_(),
+                ReturnShared::new(),
+                RETURN_NODE_NAME,
+            ) {
+                Ok(filter) => {
+                    info!("created the effects return node");
+                    self.returns = Some(Returns {
+                        filter,
+                        ports: HashMap::new(),
+                        stale: Vec::new(),
+                        old: VecDeque::new(),
+                    });
+                }
+                Err(e) => {
+                    error!("could not create the effects return node: {e}");
+                    return;
+                }
+            }
+        }
+        let Some(r) = self.returns.as_mut() else {
+            return;
+        };
+        for w in &wanted {
+            let (kind, id, positions) = (w.owner.kind(), w.owner.id(), &w.positions);
+            for (c, &pos) in positions.iter().enumerate() {
+                let key = PortKey::FromEffects(w.owner, c);
+                let name = Self::port_name(&format!("from_effects_{kind}"), id, positions, c);
+                if r.ports
+                    .get(&key)
+                    .is_some_and(|p| p.name == name && p.position == pos)
+                {
+                    continue;
+                }
+                if let Some(old) = r.ports.remove(&key) {
+                    r.stale.push(old);
+                }
+                match r.filter.add_port(Direction::Input, &name, pos) {
+                    Ok(ptr) => {
+                        debug!("added port {name} to the effects return node");
+                        r.ports.insert(
+                            key,
+                            LocalPort {
+                                ptr,
+                                name,
+                                position: pos,
+                            },
+                        );
+                    }
+                    Err(e) => error!("could not add port {name}: {e}"),
+                }
+            }
+        }
+        let gone: Vec<PortKey> = r
+            .ports
+            .keys()
+            .filter(|k| match **k {
+                PortKey::FromEffects(owner, c) => !wanted
+                    .iter()
+                    .any(|w| w.owner == owner && c < w.positions.len()),
+                _ => true,
+            })
+            .copied()
+            .collect();
+        for k in gone {
+            if let Some(p) = r.ports.remove(&k) {
+                r.stale.push(p);
+            }
+        }
+    }
+
+    /// Hand the return node what it passes on: each strip's or bus's ports
+    /// and hand-off.
+    pub(super) fn publish_returns(&mut self) {
+        let Some(r) = self.returns.as_mut() else {
+            return;
+        };
+        let returns = with_effects(&self.state)
+            .iter()
+            .filter_map(|w| {
+                let handoff = self.handoffs.get(&w.owner)?.clone();
+                let ports = (0..w.positions.len())
+                    .map(|c| {
+                        r.ports
+                            .get(&PortKey::FromEffects(w.owner, c))
+                            .map_or(std::ptr::null_mut(), |p| p.ptr)
+                    })
+                    .collect();
+                Some(RtReturn { ports, handoff })
+            })
+            .collect();
+        let old = r
+            .filter
+            .shared()
+            .params
+            .swap(Arc::new(ReturnParams { returns }));
+        r.old.push_back(old);
+        while r.old.len() > OLD_SNAPSHOTS_KEPT {
+            r.old.pop_front();
+        }
+    }
+
+    /// Remove the return node's ports `ensure_returns` retired.
+    pub(super) fn remove_stale_return_ports(&mut self) {
+        let Some(r) = self.returns.as_mut() else {
+            return;
+        };
+        for p in std::mem::take(&mut r.stale) {
+            debug!("removing port {} from the effects return node", p.name);
+            // SAFETY: the port came from this filter and the snapshot that
+            // dropped it was published in `publish_returns`.
+            unsafe { r.filter.remove_port(p.ptr) };
+        }
+    }
+
+    /// Global ids of the return node's ports for `owner`'s channels, as
+    /// PipeWire knows them so far.
+    pub(super) fn return_port_ids(&self, owner: Owner) -> Vec<(usize, u32)> {
+        let (Some(r), Some(node)) = (
+            self.returns.as_ref(),
+            self.graph.node_by_name(RETURN_NODE_NAME),
+        ) else {
+            return Vec::new();
+        };
+        r.ports
+            .iter()
+            .filter_map(|(key, lp)| match *key {
+                PortKey::FromEffects(o, c) if o == owner => {
+                    let id = self
+                        .graph
+                        .ports
+                        .values()
+                        .find(|p| p.node_id == node.id && p.name == lp.name)?
+                        .id;
+                    Some((c, id))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
     /// Note whether each strip's and bus's external effects are connected:
-    /// whether anything plays into its "back from effects" device. Returns
-    /// true, and marks the snapshot out of date, when that changed.
+    /// whether anything plays into its "from effects" device, or straight
+    /// into its ports on the return node. Returns true, and marks the
+    /// snapshot out of date, when that changed.
     pub(super) fn check_inserts(&mut self) -> bool {
-        let engine = self.graph.engine_node().map(|n| n.id);
         let now: Vec<InsertStatus> = with_effects(&self.state)
             .iter()
             .map(|w| {
                 let target = w.owner.target();
-                // The engine's own silent link does not count.
-                let connected = self
+                let device = self
                     .graph
                     .node_by_name(&from_effects_node_name(target))
-                    .is_some_and(|n| {
-                        self.graph
-                            .links
-                            .values()
-                            .any(|l| l.in_node == n.id && Some(l.out_node) != engine)
-                    });
+                    .map(|n| n.id);
+                let ours: Vec<u32> = self
+                    .return_port_ids(w.owner)
+                    .into_iter()
+                    .map(|(_, id)| id)
+                    .collect();
+                // The device's own link into the return node is Weir's.
+                let connected = self.graph.links.values().any(|l| {
+                    Some(l.in_node) == device
+                        || (ours.contains(&l.in_port) && Some(l.out_node) != device)
+                });
                 InsertStatus { target, connected }
             })
             .collect();
@@ -107,12 +292,15 @@ impl Runner {
 
     /// Note the links other programs have with external effects' device
     /// `name`, which is about to be remade, to make them again with the new
-    /// one. Links with the engine node come back by themselves.
+    /// one. Links with Weir's own nodes come back by themselves.
     pub(super) fn relink_later(&mut self, name: &str) {
         let Some(node) = self.graph.node_by_name(name) else {
             return;
         };
-        let engine = self.graph.engine_node().map(|n| n.id);
+        let weir: Vec<u32> = [ENGINE_NODE_NAME, RETURN_NODE_NAME]
+            .iter()
+            .filter_map(|n| self.graph.node_by_name(n).map(|n| n.id))
+            .collect();
         let until = Instant::now() + RELINK_TIMEOUT;
         let end = |port: u32| {
             let p = self.graph.ports.get(&port)?;
@@ -132,7 +320,7 @@ impl Runner {
             } else {
                 continue;
             };
-            if Some(l.out_node) == engine || Some(l.in_node) == engine {
+            if weir.contains(&l.out_node) || weir.contains(&l.in_node) {
                 continue;
             }
             let (Some(own_end), Some(peer_end)) = (end(own), end(peer)) else {

@@ -1502,6 +1502,13 @@ records from, and "*name* from effects (Weir)", an output it plays into.
 Link them to the program in its own settings or in a patchbay such as
 Carla's or qpwgraph.
 
+Weir links "from effects" on into a node of its own, "Weir effects return"
+(`weir.effects-return`), which exists while any external effects are on
+and has a port per channel of each, such as `from_effects_strip_2_FL`. So
+a patchbay shows a line, from the engine, "Weir Engine", through the
+effects program and on to the return node. A program can also be linked
+straight into the return node's ports; that counts as connected too.
+
 ```json
 {"enabled": true, "position": "before_compressor", "fallback": "pass_through"}
 ```

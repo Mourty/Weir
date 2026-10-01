@@ -21,6 +21,10 @@ pub use engine::{Engine, EngineError, EngineEvent, EngineHandle, EngineOptions};
 
 /// `node.name` of the engine filter node.
 pub const ENGINE_NODE_NAME: &str = "Weir";
+/// `node.name` of the node external effects come back into, "Weir effects
+/// return". Like the virtual devices, it starts with [`VIRTUAL_PREFIX`], so
+/// it is never offered as a device or listed as an application.
+pub const RETURN_NODE_NAME: &str = "weir.effects-return";
 /// Prefix of every virtual device node we create.
 pub const VIRTUAL_PREFIX: &str = "weir.";
 

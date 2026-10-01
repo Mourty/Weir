@@ -1397,7 +1397,8 @@ pub struct FullState {
 pub struct InsertStatus {
     /// The strip or bus.
     pub target: StripOrBus,
-    /// Whether something plays into its "from effects" device.
+    /// Whether something plays into its "from effects" device, or straight
+    /// into its ports on Weir's effects return node.
     pub connected: bool,
 }
 

@@ -3,8 +3,8 @@
 
 use anyhow::{anyhow, bail, Context, Result};
 use weir_protocol::{
-    format_color, parse_color, BusId, BusKind, ChannelLayout, DownmixMethod, Flag, MixerState,
-    Startup, StripId, StripKind, TrayIcon, Upmix, COLOR_PRESETS,
+    format_color, parse_color, BusId, BusKind, ChannelLayout, DownmixMethod, Flag, InsertFallback,
+    InsertPoint, MixerState, Startup, StripId, StripKind, TrayIcon, Upmix, COLOR_PRESETS,
 };
 
 /// on or off, and the usual ways of saying them.
@@ -88,6 +88,33 @@ pub fn parse_downmix(s: &str) -> Result<DownmixMethod> {
         _ => bail!(
             "expected standard, matrix, front-only, center-only, lfe-only or surround-only, got '{s}'"
         ),
+    })
+}
+
+/// Where external effects go.
+pub fn parse_insert_point(s: &str) -> Result<InsertPoint> {
+    Ok(match s.to_ascii_lowercase().replace('_', "-").as_str() {
+        "before-denoise" | "before-noise-suppression" => InsertPoint::BeforeDenoise,
+        "before-gate" => InsertPoint::BeforeGate,
+        "before-eq" | "before-equalizer" => InsertPoint::BeforeEq,
+        "before-compressor" | "before-comp" => InsertPoint::BeforeCompressor,
+        "before-fader" => InsertPoint::BeforeFader,
+        "after-fader" => InsertPoint::AfterFader,
+        "before-limiter" => InsertPoint::BeforeLimiter,
+        "after-limiter" => InsertPoint::AfterLimiter,
+        _ => bail!(
+            "expected before-denoise, before-gate, before-eq, before-compressor, before-fader or after-fader for a strip, or before-eq, before-fader, before-limiter or after-limiter for a bus, got '{s}'"
+        ),
+    })
+}
+
+/// What a strip or bus plays while nothing comes back from its external
+/// effects.
+pub fn parse_insert_fallback(s: &str) -> Result<InsertFallback> {
+    Ok(match s.to_ascii_lowercase().replace('_', "-").as_str() {
+        "pass" | "pass-through" | "passthrough" | "through" => InsertFallback::PassThrough,
+        "silence" | "silent" => InsertFallback::Silence,
+        _ => bail!("expected pass or silence, got '{s}'"),
     })
 }
 

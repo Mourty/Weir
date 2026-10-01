@@ -30,6 +30,7 @@ pub fn strip_fx(s: &Strip) -> String {
         (s.eq.enabled, "eq"),
         (s.compressor.enabled, "comp"),
         (s.ducking.enabled, "duck"),
+        (s.insert.enabled, "ext"),
     ]
     .into_iter()
     .filter_map(|(on, name)| on.then_some(name))
@@ -49,6 +50,9 @@ fn bus_fx(b: &Bus) -> String {
     }
     if b.limiter.enabled {
         fx.push(format!("lim {:+.0}", b.limiter.ceiling_db));
+    }
+    if b.insert.enabled {
+        fx.push("ext".to_string());
     }
     if fx.is_empty() {
         "-".into()
@@ -73,6 +77,25 @@ pub fn downmix_summary(d: &Downmix) -> String {
         }
     }
     parts.join(", ")
+}
+
+/// Where a strip's or bus's external effects sit and whether they are
+/// connected, for what `strip`, `bus` and `state` print.
+fn external_effects(insert: &Insert, target: StripOrBus, st: &FullState) -> String {
+    let connected = st.inserts.iter().any(|i| i.target == target && i.connected);
+    let status = match (connected, insert.fallback) {
+        (true, _) => "connected",
+        (false, InsertFallback::PassThrough) => "not connected, so passing the sound through",
+        (false, InsertFallback::Silence) => "not connected, so silent",
+    };
+    format!("{}, {status}", insert.position.label().to_lowercase())
+}
+
+/// The devices a strip's or bus's external effects use, named `name`.
+fn external_effects_devices(name: &str) -> String {
+    format!(
+        "out through '{name}: to effects (Weir)', back through '{name}: back from effects (Weir)'"
+    )
 }
 
 /// A bus name with the strip's send level after it, when it is not 0 dB.
@@ -164,6 +187,23 @@ pub fn state(st: &FullState) {
     t.print();
     for b in st.mixer.buses.iter().filter(|b| !b.downmix.is_default()) {
         println!("  {} downmix: {}", b.name, downmix_summary(&b.downmix));
+    }
+    let strips = st
+        .mixer
+        .strips
+        .iter()
+        .filter(|s| s.insert.enabled)
+        .map(|s| {
+            let at = external_effects(&s.insert, StripOrBus::Strip(s.id), st);
+            format!("  {}: {at}", s.name)
+        });
+    let buses = st.mixer.buses.iter().filter(|b| b.insert.enabled).map(|b| {
+        let at = external_effects(&b.insert, StripOrBus::Bus(b.id), st);
+        format!("  {}: {at}", b.name)
+    });
+    let lines: Vec<String> = strips.chain(buses).collect();
+    if !lines.is_empty() {
+        println!("\nEXTERNAL EFFECTS\n{}", lines.join("\n"));
     }
     system_volumes(st);
 }
@@ -272,6 +312,11 @@ pub fn strip(s: &Strip, st: &FullState) {
             }
         );
     }
+    if s.insert.enabled {
+        let at = external_effects(&s.insert, StripOrBus::Strip(s.id), st);
+        println!("  external effects: {at}");
+        println!("    {}", external_effects_devices(&s.name));
+    }
     if s.denoise.enabled {
         println!("  noise suppression: {:.0}%", s.denoise.amount * 100.0);
         if st.engine.sample_rate != 0 && st.engine.sample_rate != Denoise::SAMPLE_RATE {
@@ -284,7 +329,7 @@ pub fn strip(s: &Strip, st: &FullState) {
 }
 
 /// A bus after a change.
-pub fn bus(b: &Bus) {
+pub fn bus(b: &Bus, st: &FullState) {
     println!(
         "bus {} '{}': {:+.1} dB{}{}{}{}",
         b.id,
@@ -301,6 +346,11 @@ pub fn bus(b: &Bus) {
     );
     if !b.downmix.is_default() {
         println!("  downmix: {}", downmix_summary(&b.downmix));
+    }
+    if b.insert.enabled {
+        let at = external_effects(&b.insert, StripOrBus::Bus(b.id), st);
+        println!("  external effects: {at}");
+        println!("    {}", external_effects_devices(&b.name));
     }
 }
 

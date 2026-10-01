@@ -39,6 +39,7 @@ const CAPABILITIES: &[&str] = &[
     "setups",
     "app_rules",
     "system_volumes",
+    "external_effects",
     "toggle",
     "deltas",
     "names",
@@ -118,6 +119,7 @@ impl Controller {
             app_rules: inner.app_rules.clone(),
             library,
             system_volumes: inner.system_volumes.clone(),
+            inserts: inner.inserts.clone(),
         }
     }
 
@@ -514,6 +516,10 @@ fn set_strip(m: &mut MixerState, p: StripPatch) -> Result<Strip, RpcError> {
     if let Some(v) = &p.ducking {
         v.apply(&mut s.ducking);
     }
+    if let Some(v) = &p.insert {
+        check_insert_point(v, &InsertPoint::STRIP, "strip")?;
+        v.apply(&mut s.insert);
+    }
     Ok(s.clone())
 }
 
@@ -562,6 +568,10 @@ fn set_bus(m: &mut MixerState, p: BusPatch) -> Result<Bus, RpcError> {
     }
     if let Some(v) = &p.limiter {
         v.apply(&mut b.limiter);
+    }
+    if let Some(v) = &p.insert {
+        check_insert_point(v, &InsertPoint::BUS, "bus")?;
+        v.apply(&mut b.insert);
     }
     Ok(b.clone())
 }
@@ -753,6 +763,25 @@ fn check_bands(bands: &[EqBand]) -> Result<(), RpcError> {
         )));
     }
     Ok(())
+}
+
+/// Refuse to put external effects where a strip or bus (`what`) has no
+/// place for them: `places` are the ones it has.
+fn check_insert_point(
+    patch: &InsertPatch,
+    places: &[InsertPoint],
+    what: &str,
+) -> Result<(), RpcError> {
+    match patch.position {
+        Some(at) if !places.contains(&at) => {
+            let names: Vec<String> = places.iter().map(|p| to_json(p).to_string()).collect();
+            Err(RpcError::invalid_params(format!(
+                "a {what}'s external effects go {}",
+                names.join(", ").replace('"', "")
+            )))
+        }
+        _ => Ok(()),
+    }
 }
 
 fn check_layout(layout: &ChannelLayout) -> Result<(), RpcError> {

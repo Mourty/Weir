@@ -1,6 +1,7 @@
 //! Per-strip and per-bus effects on the real-time thread: noise suppression,
 //! noise gate, equalizer and compressor on strips; equalizer and limiter on
-//! buses; and the feeds a strip sends to subwoofers and surround speakers.
+//! buses; external effects on both; and the feeds a strip sends to
+//! subwoofers and surround speakers.
 //!
 //! Unlike the ramps in [`super::params`], effect state (filter memories, the
 //! gate's envelope, the noise suppressor's frames) must carry on smoothly
@@ -12,7 +13,8 @@
 //! Each effect has a module of its own with its state and its per-sample
 //! work. This one ties them together: [`FxState`] holds one strip's or
 //! bus's effects, [`StripFx::process`] runs a strip's chain, and
-//! [`process_bus_eq`] and [`process_bus_limiter`] run a bus's.
+//! [`process_bus_eq`], [`process_bus_limiter`] and [`process_bus_insert`]
+//! run a bus's.
 
 mod compressor;
 mod denoise;
@@ -20,23 +22,28 @@ mod ducking;
 mod eq;
 mod feeds;
 mod gate;
+mod insert;
 mod limiter;
 mod tap;
 
 pub use denoise::{new_warm_up_state, warm_up_denoise, DenoiseBank};
 pub use ducking::RtDuck;
 pub use eq::EqParams;
+pub use insert::process_bus_insert;
 pub use tap::Tap;
 
-use super::params::{RtCell, MAX_QUANTUM};
+use super::params::{RtCell, RtInsert, MAX_QUANTUM};
 use compressor::CompRt;
 use ducking::DuckRt;
 use eq::EqRt;
 use feeds::{SubFilter, SurroundFeed, SURROUND_DELAY_LEN};
 use gate::GateRt;
+use insert::InsertRt;
 use limiter::LimiterRt;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use weir_protocol::{linear_to_db, Compressor, CompressorMeter, Denoise, Gate, GateMeter, Limiter};
+use weir_protocol::{
+    linear_to_db, Compressor, CompressorMeter, Denoise, Gate, GateMeter, InsertPoint, Limiter,
+};
 
 /// Most channels a strip's gate and compressor look at, and a bus's limiter
 /// works on. Channels past this pass through unlimited.
@@ -160,6 +167,7 @@ struct FxInner {
     comp: CompRt,
     /// Strips only.
     duck: DuckRt,
+    insert: InsertRt,
 }
 
 impl FxState {
@@ -195,6 +203,7 @@ impl FxState {
                 surround: SurroundFeed::new(surround_delay),
                 comp: CompRt::new(),
                 duck: DuckRt::new(),
+                insert: InsertRt::new(),
             }),
             gate_gain: AtomicU32::new(1.0f32.to_bits()),
             gate_level: AtomicU32::new(0),
@@ -331,6 +340,23 @@ pub struct StripFx<'a> {
     pub denoise_bank: Option<&'a DenoiseBank>,
     /// Its compressor.
     pub compressor: &'a Compressor,
+    /// Its external effects.
+    pub insert: &'a RtInsert,
+    /// Whether they have anything to do this cycle; see
+    /// [`FxState::insert_busy`].
+    pub insert_busy: bool,
+    /// Its fader's level per sample, which external effects after the
+    /// fader apply before sending.
+    pub level: &'a [f32],
+}
+
+/// A strip's channels after its effects.
+pub struct Processed<'a> {
+    /// The first `n` samples of each channel.
+    pub channels: &'a [Vec<f32>],
+    /// Whether the fader has been applied already, as it has when external
+    /// effects come after it.
+    pub faded: bool,
 }
 
 /// Scratch space for effect processing, owned by the processor.
@@ -367,9 +393,10 @@ impl Default for FxScratch {
 impl StripFx<'_> {
     /// Run this strip's effects on `n` samples, reading each channel from
     /// `input(c)` (null is silence): noise suppression, gate, equalizer and
-    /// compressor, in that order. Returns the processed channels, or `None`
-    /// when every effect is off and settled, in which case the caller
-    /// should use the input as it is.
+    /// compressor, in that order, with its external effects wherever they
+    /// sit, the fader included when they sit after it. Returns the
+    /// processed channels, or `None` when every effect is off and settled,
+    /// in which case the caller should use the input as it is.
     ///
     /// # Safety
     /// Real-time thread only. Input pointers must be valid for `n` samples.
@@ -380,7 +407,7 @@ impl StripFx<'_> {
         ramp: usize,
         input: &dyn Fn(usize) -> *const f32,
         scratch: &mut FxScratch,
-    ) -> Option<&[Vec<f32>]> {
+    ) -> Option<Processed<'_>> {
         let state = self.state;
         let fx = state.inner.get_mut();
         fx.eq.update(self.eq, rate);
@@ -391,7 +418,7 @@ impl StripFx<'_> {
         let analyzing = state.analyzing();
         let mono = &mut scratch.mono[..n];
 
-        if !denoise_busy && !gate_busy && fx.eq.is_idle() && !comp_busy {
+        if !denoise_busy && !gate_busy && fx.eq.is_idle() && !comp_busy && !self.insert_busy {
             state.gate_gain.store(1.0f32.to_bits(), Ordering::Relaxed);
             if analyzing {
                 // Nothing changes the audio, so it goes in and out as is.
@@ -417,10 +444,26 @@ impl StripFx<'_> {
         }
         let bufs = &mut fx.bufs[..channels];
 
+        self.insert_at(
+            InsertPoint::BeforeDenoise,
+            &mut fx.insert,
+            bufs,
+            n,
+            ramp,
+            scratch,
+        );
         if let (Some(bank), true) = (self.denoise_bank, denoise_busy) {
             bank.run(bufs, n, denoise_wanted, self.denoise.amount, ramp);
         }
 
+        self.insert_at(
+            InsertPoint::BeforeGate,
+            &mut fx.insert,
+            bufs,
+            n,
+            ramp,
+            scratch,
+        );
         if gate_busy {
             let gains = &mut scratch.gains[..n];
             let (views, count) = channel_views(bufs, n);
@@ -436,6 +479,15 @@ impl StripFx<'_> {
             state.gate_gain.store(1.0f32.to_bits(), Ordering::Relaxed);
         }
 
+        self.insert_at(
+            InsertPoint::BeforeEq,
+            &mut fx.insert,
+            bufs,
+            n,
+            ramp,
+            scratch,
+        );
+        let mono = &mut scratch.mono[..n];
         if analyzing {
             state.feed_tap(&state.tap_in, bufs.iter().map(|b| &b[..n]), mono);
         }
@@ -451,6 +503,14 @@ impl StripFx<'_> {
             state.feed_tap(&state.tap_out, bufs.iter().map(|b| &b[..n]), mono);
         }
 
+        self.insert_at(
+            InsertPoint::BeforeCompressor,
+            &mut fx.insert,
+            bufs,
+            n,
+            ramp,
+            scratch,
+        );
         if comp_busy {
             let gains = &mut scratch.gains[..n];
             let (views, count) = channel_views(bufs, n);
@@ -465,7 +525,57 @@ impl StripFx<'_> {
                 .comp_reduction
                 .fetch_max(most.to_bits(), Ordering::Relaxed);
         }
-        Some(&fx.bufs[..channels])
+
+        self.insert_at(
+            InsertPoint::BeforeFader,
+            &mut fx.insert,
+            bufs,
+            n,
+            ramp,
+            scratch,
+        );
+        let faded = self.insert_busy && self.insert.position == InsertPoint::AfterFader;
+        if faded {
+            for buf in bufs.iter_mut() {
+                buf[..n]
+                    .iter_mut()
+                    .zip(self.level)
+                    .for_each(|(x, l)| *x *= l);
+            }
+            self.insert_at(
+                InsertPoint::AfterFader,
+                &mut fx.insert,
+                bufs,
+                n,
+                ramp,
+                scratch,
+            );
+        }
+        Some(Processed {
+            channels: &fx.bufs[..channels],
+            faded,
+        })
+    }
+
+    /// Run the strip's external effects on `bufs`, if they sit at `at` and
+    /// have anything to do.
+    ///
+    /// # Safety
+    /// Real-time thread only.
+    #[allow(clippy::too_many_arguments)]
+    unsafe fn insert_at(
+        &self,
+        at: InsertPoint,
+        rt: &mut InsertRt,
+        bufs: &mut [Vec<f32>],
+        n: usize,
+        ramp: usize,
+        scratch: &mut FxScratch,
+    ) {
+        if self.insert_busy && self.insert.position == at {
+            let (dry, wet) = (&mut scratch.weights[..n], &mut scratch.gains[..n]);
+            insert::run_on_bufs(rt, self.insert, bufs, n, ramp, dry, wet);
+        }
     }
 }
 

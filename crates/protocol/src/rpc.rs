@@ -246,8 +246,9 @@ pub enum Topic {
     State,
     /// `meters`: periodic peak levels.
     Meters,
-    /// `devices_changed` and `system_volumes_changed`: a device appeared or
-    /// vanished, or the system volume of one of Weir's devices changed.
+    /// `devices_changed`, `system_volumes_changed` and `inserts_changed`: a
+    /// device appeared or vanished, the system volume of one of Weir's
+    /// devices changed, or external effects were connected or disconnected.
     Devices,
     /// `apps_changed`: an application stream appeared, vanished or moved.
     Apps,
@@ -648,6 +649,43 @@ impl From<Limiter> for LimiterPatch {
     }
 }
 
+/// Partial update of a strip's or bus's external effects. Absent fields are
+/// left unchanged; see [`Insert`].
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct InsertPatch {
+    /// See [`Insert::enabled`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<Flag>,
+    /// See [`Insert::position`]. Strips and buses each have places of their
+    /// own; asking a strip for a bus's place, or the other way round, is an
+    /// error.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub position: Option<InsertPoint>,
+    /// See [`Insert::fallback`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback: Option<InsertFallback>,
+}
+
+impl InsertPatch {
+    /// Change `insert` as this says.
+    pub fn apply(&self, insert: &mut Insert) {
+        switch(&mut insert.enabled, self.enabled);
+        set(&mut insert.position, self.position);
+        set(&mut insert.fallback, self.fallback);
+    }
+}
+
+/// A patch that sets every field to what `insert` has.
+impl From<Insert> for InsertPatch {
+    fn from(insert: Insert) -> Self {
+        Self {
+            enabled: Some(Flag::Set(insert.enabled)),
+            position: Some(insert.position),
+            fallback: Some(insert.fallback),
+        }
+    }
+}
+
 /// Partial update of a bus's downmix. Absent fields are left unchanged; see
 /// [`Downmix`].
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -749,6 +787,9 @@ pub struct StripPatch {
     /// Change its ducking.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ducking: Option<DuckingPatch>,
+    /// Change its external effects.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub insert: Option<InsertPatch>,
 }
 
 /// Partial update of a bus. Absent fields are left unchanged; see [`Bus`]
@@ -800,6 +841,9 @@ pub struct BusPatch {
     /// Change its downmix.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub downmix: Option<DownmixPatch>,
+    /// Change its external effects.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub insert: Option<InsertPatch>,
 }
 
 /// Parameters of `set_route`.
@@ -1178,6 +1222,9 @@ pub enum Notification {
     LibraryChanged(Library),
     /// The system volume of one of Weir's virtual devices changed.
     SystemVolumesChanged(SystemVolumes),
+    /// Whether the external effects of each strip and bus that has them on
+    /// are connected changed.
+    InsertsChanged(Vec<InsertStatus>),
 }
 
 impl Notification {
@@ -1190,7 +1237,9 @@ impl Notification {
             | Self::AppRulesChanged(_)
             | Self::LibraryChanged(_) => Topic::State,
             Self::Meters(_) => Topic::Meters,
-            Self::DevicesChanged(_) | Self::SystemVolumesChanged(_) => Topic::Devices,
+            Self::DevicesChanged(_) | Self::SystemVolumesChanged(_) | Self::InsertsChanged(_) => {
+                Topic::Devices
+            }
             Self::AppsChanged(_) => Topic::Apps,
             Self::EngineChanged(_) => Topic::Engine,
             Self::SettingsChanged(_) => Topic::Settings,

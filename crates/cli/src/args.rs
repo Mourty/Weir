@@ -288,6 +288,20 @@ pub struct StripArgs {
     /// How loud a trigger strip must be to count as heard, in dB.
     #[arg(long, allow_negative_numbers = true)]
     pub duck_threshold: Option<f32>,
+    /// External effects on or off: the strip's sound goes out to another
+    /// program, such as Carla, through "NAME: to effects (Weir)", and comes
+    /// back through "NAME: back from effects (Weir)".
+    #[arg(long)]
+    pub external_effects: Option<String>,
+    /// Where in the strip the external effects go: before-denoise,
+    /// before-gate, before-eq, before-compressor, before-fader or
+    /// after-fader.
+    #[arg(long)]
+    pub external_effects_at: Option<String>,
+    /// What the strip plays while nothing comes back from its external
+    /// effects: pass (its sound, as if they were off) or silence.
+    #[arg(long)]
+    pub external_effects_fallback: Option<String>,
 }
 
 #[derive(Args, Debug)]
@@ -341,6 +355,19 @@ pub struct BusArgs {
     /// Keep the subwoofer (LFE) channel in the downmix: on or off.
     #[arg(long)]
     pub keep_lfe: Option<String>,
+    /// External effects on or off: the bus's mix goes out to another
+    /// program, such as Carla, through "NAME: to effects (Weir)", and comes
+    /// back through "NAME: back from effects (Weir)".
+    #[arg(long)]
+    pub external_effects: Option<String>,
+    /// Where in the bus the external effects go: before-eq, before-fader,
+    /// before-limiter or after-limiter.
+    #[arg(long)]
+    pub external_effects_at: Option<String>,
+    /// What the bus plays while nothing comes back from its external
+    /// effects: pass (its mix, as if they were off) or silence.
+    #[arg(long)]
+    pub external_effects_fallback: Option<String>,
 }
 
 /// What to do with scenes or setups.

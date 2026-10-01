@@ -278,8 +278,9 @@ Returns `{"protocol_version", "daemon_version", "capabilities"}`:
   "daemon_version": "1.0.0",
   "capabilities": ["meters", "apps", "eq", "gate", "denoise", "compressor", "ducking",
                    "limiter", "sends", "upmix", "downmix", "spectrum", "history",
-                   "scenes", "setups", "app_rules", "system_volumes", "toggle",
-                   "deltas", "names", "batch", "describe"]
+                   "scenes", "setups", "app_rules", "system_volumes",
+                   "external_effects", "toggle", "deltas", "names", "batch",
+                   "describe"]
 }
 ```
 
@@ -318,8 +319,9 @@ Everything the daemon knows, in one answer. Takes no parameters.
 
 Returns a [FullState](#fullstate): the mixer's strips and buses, the
 devices and applications, the engine's status, the settings, the equalizer
-presets, the application rules, the saved scenes and setups, and the
-system's volume on Weir's devices.
+presets, the application rules, the saved scenes and setups, the
+system's volume on Weir's devices, and whether external effects are
+connected.
 
 A client that shows the state reads it once with `get_state`, then keeps it
 up to date from notifications. Subscribe first, then read the state, so no
@@ -354,7 +356,7 @@ stop when the connection closes.
 |---|---|
 | `state` | `state_changed`, `eq_presets_changed`, `history_changed`, `app_rules_changed`, `library_changed` |
 | `meters` | `meters`, up to 30 times a second |
-| `devices` | `devices_changed`, `system_volumes_changed` |
+| `devices` | `devices_changed`, `system_volumes_changed`, `inserts_changed` |
 | `apps` | `apps_changed` |
 | `engine` | `engine_changed` |
 | `settings` | `settings_changed` |
@@ -461,11 +463,14 @@ fields you give change.
 | `eq` | object, *optional* | Change its [equalizer](#equalizer). |
 | `compressor` | object, *optional* | Change its [compressor](#compressor). |
 | `ducking` | object, *optional* | Change its [ducking](#ducking). |
+| `insert` | object, *optional* | Change its [external effects](#insert). |
 
 Returns the [Strip](#strip) as it is now.
 
 Changing a strip's name or layout recreates its virtual device, which takes
 a moment; applications playing into it are moved back once it is there.
+The same goes for its external effects' devices, and the links other
+programs had with them are made again.
 
 ```sh
 weirctl raw set_strip '{"id": "Music", "gain_db": -6}'           # fader to -6 dB
@@ -493,6 +498,7 @@ weirctl raw set_strip '{"id": "Mic", "compressor": {"enabled": true, "threshold_
 weirctl raw set_strip '{"id": "Mic", "eq": {"enabled": true, "bands": [{"kind": "high_pass", "freq_hz": 80, "q": 0.707}]}}'
 weirctl raw set_strip '{"id": "Music", "ducking": {"enabled": true, "triggers": ["Mic"], "amount_db": 15}}'
 weirctl raw set_strip '{"id": "Mic", "gate": {"enabled": "toggle"}}'
+weirctl raw set_strip '{"id": "Mic", "insert": {"enabled": true, "position": "before_compressor"}}'
 ```
 
 ```python
@@ -616,6 +622,7 @@ Change a bus. Only the fields you give change.
 | `eq` | object, *optional* | Change its [equalizer](#equalizer). |
 | `limiter` | object, *optional* | Change its [safety limiter](#limiter). |
 | `downmix` | object, *optional* | Change how it plays channels it has no speaker for. See [Downmix](#downmix). |
+| `insert` | object, *optional* | Change its [external effects](#insert). |
 
 Returns the [Bus](#bus) as it is now.
 
@@ -628,6 +635,7 @@ weirctl raw set_bus '{"id": "B1", "limiter": {"ceiling_db": -3}}'
 weirctl raw set_bus '{"id": "A2", "layout": "surround_5_1", "downmix": {"method": "matrix"}}'
 weirctl raw set_bus '{"id": "A1", "eq": {"enabled": true, "bands": [{"kind": "low_shelf", "freq_hz": 100, "gain_db": 4, "q": 0.707}]}}'
 weirctl raw set_bus '{"id": "A1", "device": "alsa_output.usb-SteelSeries_Arctis-00.analog-stereo"}'
+weirctl raw set_bus '{"id": "B1", "insert": {"enabled": true, "position": "before_limiter", "fallback": "silence"}}'
 ```
 
 ```python
@@ -1260,6 +1268,7 @@ replace its copy.
 | `meters` | `meters` | [Meters](#meters) | 30 times a second, or as often as `meter_rate_hz` says. |
 | `devices_changed` | `devices` | list of [DeviceInfo](#deviceinfo) | A device was plugged in or out. |
 | `system_volumes_changed` | `devices` | [SystemVolumes](#systemvolumes) | The system's volume on one of Weir's devices changed. |
+| `inserts_changed` | `devices` | list of [InsertStatus](#insertstatus) | A program started or stopped playing into a "back from effects" device, or external effects were switched on or off. |
 | `apps_changed` | `apps` | list of [AppStream](#appstream) | An application started or stopped playing, moved, or its volume changed. |
 | `engine_changed` | `engine` | [EngineStatus](#enginestatus) | The engine connected, stopped, or changed rate or buffer size. |
 | `settings_changed` | `settings` | [Settings](#settings) | A setting changed. |
@@ -1300,6 +1309,7 @@ What [`get_state`](#get_state) returns.
 | `app_rules` | list of [AppRule](#apprule) | Where applications go when they start. |
 | `library` | [Library](#library) | The saved scenes and setups. |
 | `system_volumes` | [SystemVolumes](#systemvolumes) | The system's volume on Weir's devices. |
+| `inserts` | list of [InsertStatus](#insertstatus) | Whether each strip's and bus's external effects are connected, for those that have them on. Left out when none do. |
 
 ### MixerState
 
@@ -1335,6 +1345,7 @@ mixer shows them, left to right.
 | `color` | string | `"#RRGGBB"`, when it has one. |
 | `denoise`, `gate`, `eq`, `compressor` | object | Its effects, in the order they work on the sound, all before the fader: [Denoise](#denoise), [Gate](#gate), [Equalizer](#equalizer), [Compressor](#compressor). |
 | `ducking` | object | [Ducking](#ducking), which turns the strip down in some mixes while others are heard, after the fader. |
+| `insert` | object | Its [external effects](#insert), which can go anywhere among the effects and the fader. |
 
 ### Bus
 
@@ -1360,6 +1371,7 @@ mixer shows them, left to right.
 | `eq` | object | Its [Equalizer](#equalizer), before the fader. |
 | `limiter` | object | Its safety [Limiter](#limiter), after the fader. |
 | `downmix` | object | How it plays channels it has no speaker for: [Downmix](#downmix). |
+| `insert` | object | Its [external effects](#insert). |
 
 A bus's label, `A1` or `B2`, is not stored: it is the bus's place among
 the buses of its kind, `A` for hardware and `B` for virtual, in the order
@@ -1479,6 +1491,46 @@ and delays the bus that much while it is on.
 | `enabled` | `false` | New virtual buses start with it on. |
 | `ceiling_db` | `-1` | The level the bus never goes over, -60 to +12 dB. |
 | `release_ms` | `300` | How long the bus takes to come back up after being turned down, 10 to 2000 ms. |
+
+### Insert
+
+External effects: a point in a strip's or bus's chain where its sound
+leaves Weir for another program, such as [Carla](https://kx.studio/Applications:Carla)
+or EasyEffects, and comes back. While they are on, Weir makes two devices
+for them: "*name*: to effects (Weir)", a microphone the effects program
+records from, and "*name*: back from effects (Weir)", an output it plays
+into. Link them to the program in its own settings or in a patchbay such
+as qpwgraph.
+
+```json
+{"enabled": true, "position": "before_compressor", "fallback": "pass_through"}
+```
+
+| Field | Default | |
+|---|---|---|
+| `enabled` | `false` | Whether the sound goes out and back. Switching it on or off makes or removes the two devices. |
+| `position` | `before_fader` | Where in the chain, from the lists below. |
+| `fallback` | `pass_through` | What carries on while nothing plays into "back from effects": `pass_through`, the sound as it went out, as if the external effects were off, or `silence`. |
+
+A strip's places, in the order of its chain: `before_denoise`,
+`before_gate`, `before_eq`, `before_compressor`, `before_fader`,
+`after_fader`. A bus's: `before_eq` (straight after its mix),
+`before_fader`, `before_limiter`, `after_limiter`. Asking for a place the
+strip or bus does not have is an error. After a strip's fader, the effects
+hear it as loud as it is in the mix, and what comes back goes into the
+buses' mixes as it is; ducking and the send levels still apply.
+
+The round trip adds one PipeWire cycle, a few milliseconds, besides
+whatever the effects program takes. Weir switches between what comes back
+and the fallback as programs connect and go, fading over 10 ms.
+[InsertStatus](#insertstatus) says which it is using.
+
+### InsertStatus
+
+`{"target": {"strip": 1}, "connected": true}`: whether something plays
+into the "back from effects" device of a strip's or bus's
+[external effects](#insert). While not connected, the strip or bus plays
+its `fallback`.
 
 ### Downmix
 

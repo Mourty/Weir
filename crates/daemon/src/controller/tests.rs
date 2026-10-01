@@ -163,6 +163,44 @@ fn routes_toggle_and_levels_leave_them_as_they_are() {
 }
 
 #[test]
+fn external_effects_go_where_a_strip_or_bus_has_room() {
+    let mut r = Rig::new("insert");
+    let s = r.ok(
+        "set_strip",
+        json!({"id": "Mic", "insert": {"enabled": true, "position": "before_gate"}}),
+    );
+    assert_eq!(
+        s["insert"],
+        json!({"enabled": true, "position": "before_gate", "fallback": "pass_through"})
+    );
+    let s = r.ok(
+        "set_strip",
+        json!({"id": "Mic", "insert": {"enabled": "toggle", "fallback": "silence"}}),
+    );
+    assert_eq!(s["insert"]["enabled"], false);
+    assert_eq!(s["insert"]["fallback"], "silence");
+    // A strip has no limiter, and a bus no gate.
+    let bad =
+        |r: &mut Rig, method, id, at| r.code(method, json!({"id": id, "insert": {"position": at}}));
+    assert_eq!(
+        bad(&mut r, "set_strip", 1, "after_limiter"),
+        RpcError::INVALID_PARAMS
+    );
+    assert_eq!(
+        bad(&mut r, "set_bus", 1, "before_gate"),
+        RpcError::INVALID_PARAMS
+    );
+    let b = r.ok(
+        "set_bus",
+        json!({"id": "Headset", "insert": {"enabled": true, "position": "after_limiter"}}),
+    );
+    assert_eq!(b["insert"]["position"], "after_limiter");
+    let h = r.ok("history", json!({}));
+    assert_eq!(h["undo"][0]["label"], "A1 Headset external effects");
+    assert_eq!(h["undo"][1]["label"], "Mic external effects");
+}
+
+#[test]
 fn undo_takes_back_a_fader_drag_as_one_step() {
     let mut r = Rig::new("undo");
     for db in [-1, -2, -3] {

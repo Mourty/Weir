@@ -78,6 +78,8 @@ struct Inner {
     setup: Option<String>,
     /// The system volumes of Weir's own devices.
     system_volumes: SystemVolumes,
+    /// Whether each strip's and bus's external effects are connected.
+    inserts: Vec<InsertStatus>,
 }
 
 /// The daemon's state and its request handlers, shared by every
@@ -140,6 +142,7 @@ impl Controller {
                 scene: None,
                 setup: None,
                 system_volumes: SystemVolumes::default(),
+                inserts: Vec::new(),
             }),
             engine,
             notify,
@@ -312,6 +315,10 @@ impl Controller {
                 EngineEvent::SystemVolumes(v) => {
                     inner.system_volumes = v.clone();
                     (Notification::SystemVolumesChanged(v), Vec::new())
+                }
+                EngineEvent::Inserts(v) => {
+                    inner.inserts = v.clone();
+                    (Notification::InsertsChanged(v), Vec::new())
                 }
             }
         };

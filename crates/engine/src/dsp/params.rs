@@ -12,7 +12,8 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use weir_protocol::{
     db_to_linear, linear_to_db, Bus, BusId, ChannelPosition, Compressor, CompressorMeter, Denoise,
-    Gate, GateMeter, Limiter, MixerState, Side, SoloMode, Strip, StripId,
+    Gate, GateMeter, Insert, InsertFallback, InsertPoint, Limiter, MixerState, Side, SoloMode,
+    Strip, StripId, StripOrBus,
 };
 
 use super::fx::{DenoiseBank, EqParams, FxState, RtDuck};
@@ -82,6 +83,68 @@ pub struct RtSend {
     pub current: RtCell<Vec<f32>>,
 }
 
+/// A strip's or bus's external effects, as the real-time thread sees them:
+/// where its sound goes out to another program and comes back.
+pub struct RtInsert {
+    /// Whether the sound goes out at all. Off, nothing is sent, and once
+    /// [`RtInsert::dry`] and [`RtInsert::wet`] have settled at 1 and 0 the
+    /// insert costs nothing.
+    pub enabled: bool,
+    /// Where in the chain.
+    pub position: InsertPoint,
+    /// How much of the sound as it went out carries on: 1 while nothing
+    /// comes back and the fallback passes it through, or while off.
+    pub dry: f32,
+    /// How much of what comes back carries on: 1 while something plays
+    /// into "back from effects".
+    pub wet: f32,
+    /// Per channel, the output port to "to effects"; may be null.
+    pub send_ports: Vec<PortPtr>,
+    /// Per channel, the input port from "back from effects"; may be null.
+    pub return_ports: Vec<PortPtr>,
+    /// Per-cycle cache of the send ports' buffers (null = none).
+    pub send_bufs: Vec<RtCell<*mut f32>>,
+    /// Per-cycle cache of the return ports' buffers (null = silence).
+    pub return_bufs: Vec<RtCell<*const f32>>,
+}
+
+impl RtInsert {
+    /// The insert of `target`, whose settings are `insert`, with `n`
+    /// channels.
+    fn new(target: StripOrBus, insert: &Insert, n: usize, ports: &dyn PortResolver) -> Self {
+        let (dry, wet) = match (insert.enabled, ports.insert_connected(target)) {
+            (false, _) => (1.0, 0.0),
+            (true, true) => (0.0, 1.0),
+            (true, false) => match insert.fallback {
+                InsertFallback::PassThrough => (1.0, 0.0),
+                InsertFallback::Silence => (0.0, 0.0),
+            },
+        };
+        let port = |send: bool, c: usize| {
+            if insert.enabled {
+                ports.insert_port(target, send, c)
+            } else {
+                std::ptr::null_mut()
+            }
+        };
+        Self {
+            enabled: insert.enabled,
+            // The mixer state is normalized, so this only guards the chain
+            // against a place it does not have.
+            position: match target {
+                StripOrBus::Strip(_) => insert.position.for_strip(),
+                StripOrBus::Bus(_) => insert.position.for_bus(),
+            },
+            dry,
+            wet,
+            send_ports: (0..n).map(|c| port(true, c)).collect(),
+            return_ports: (0..n).map(|c| port(false, c)).collect(),
+            send_bufs: (0..n).map(|_| RtCell::new(std::ptr::null_mut())).collect(),
+            return_bufs: (0..n).map(|_| RtCell::new(std::ptr::null())).collect(),
+        }
+    }
+}
+
 /// A strip, as the real-time thread sees it.
 pub struct RtStrip {
     /// The strip's id.
@@ -125,6 +188,8 @@ pub struct RtStrip {
     pub compressor: Compressor,
     /// Present once noise suppression has been switched on for this strip.
     pub denoise_bank: Option<Arc<DenoiseBank>>,
+    /// Its external effects.
+    pub insert: RtInsert,
 }
 
 impl RtStrip {
@@ -169,6 +234,8 @@ pub struct RtBus {
     pub eq: EqParams,
     /// Its limiter.
     pub limiter: Limiter,
+    /// Its external effects.
+    pub insert: RtInsert,
 }
 
 /// The complete immutable snapshot handed to the real-time thread.
@@ -177,6 +244,10 @@ pub struct RtParams {
     pub strips: Vec<RtStrip>,
     /// Every bus, in mixer order.
     pub buses: Vec<RtBus>,
+    /// The output that keeps external effects' loops in order, which
+    /// carries silence; null while no strip or bus has external effects.
+    /// See the runner's `effects` module.
+    pub effects_loop: PortPtr,
 }
 
 // Raw port pointers are only dereferenced by PipeWire on its own thread; the
@@ -241,12 +312,28 @@ fn take(peaks: &[AtomicU32]) -> Vec<f32> {
 }
 
 /// Resolves the `pw_filter` port for a given strip/bus channel. The builder
-/// asks for every channel of every strip and bus.
+/// asks for every channel of every strip and bus, and of every external
+/// effects insert that is on.
 pub trait PortResolver {
     /// The input port of `strip`'s `channel`, or null.
     fn strip_port(&self, strip: StripId, channel: usize) -> PortPtr;
     /// The output port of `bus`'s `channel`, or null.
     fn bus_port(&self, bus: BusId, channel: usize) -> PortPtr;
+    /// The port of `target`'s external effects for `channel`: the output
+    /// to "to effects" when `send`, the input from "back from effects"
+    /// otherwise; or null.
+    fn insert_port(&self, _target: StripOrBus, _send: bool, _channel: usize) -> PortPtr {
+        std::ptr::null_mut()
+    }
+    /// Whether anything plays into `target`'s "back from effects" device.
+    fn insert_connected(&self, _target: StripOrBus) -> bool {
+        false
+    }
+    /// The silent output that keeps external effects' loops in order, or
+    /// null.
+    fn effects_loop_port(&self) -> PortPtr {
+        std::ptr::null_mut()
+    }
 }
 
 /// A resolver that yields no ports at all (used by tests and before the
@@ -309,7 +396,11 @@ pub fn build_rt_params(
             build_strip(s, state, cue, ports, before)
         })
         .collect();
-    Arc::new(RtParams { strips, buses })
+    Arc::new(RtParams {
+        strips,
+        buses,
+        effects_loop: ports.effects_loop_port(),
+    })
 }
 
 /// One bus of a snapshot. `before` is the same bus in the previous one,
@@ -332,6 +423,7 @@ fn build_bus(b: &Bus, ports: &dyn PortResolver, before: Option<&RtBus>) -> RtBus
             .unwrap_or_else(|| Arc::new(FxState::for_bus(n))),
         eq: EqParams::from_eq(&b.eq),
         limiter: b.limiter,
+        insert: RtInsert::new(StripOrBus::Bus(b.id), &b.insert, n, ports),
         positions,
     }
 }
@@ -433,6 +525,7 @@ fn build_strip(
         denoise: s.denoise,
         compressor: s.compressor,
         denoise_bank,
+        insert: RtInsert::new(StripOrBus::Strip(s.id), &s.insert, n, ports),
         positions,
     }
 }

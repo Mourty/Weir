@@ -695,6 +695,150 @@ impl Limiter {
     }
 }
 
+/// Where in a strip's or bus's chain its external effects go: the stage the
+/// sound goes on to after coming back.
+///
+/// A strip's chain is noise suppression, gate, equalizer, compressor,
+/// fader; after the fader it splits into the mixes of the buses it plays
+/// in, so `after_fader` is as late as a strip's external effects can go. A
+/// bus's chain is its mix, equalizer, fader, limiter.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize, schemars::JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum InsertPoint {
+    /// Strips: first of all, before noise suppression.
+    BeforeDenoise,
+    /// Strips: before the gate.
+    BeforeGate,
+    /// Strips and buses: before the equalizer. For a bus, straight after
+    /// its mix.
+    BeforeEq,
+    /// Strips: before the compressor.
+    BeforeCompressor,
+    /// Strips and buses: before the fader, after every effect of a strip
+    /// or the equalizer of a bus.
+    #[default]
+    BeforeFader,
+    /// Strips: after the fader, so the effects hear the strip as loud as it
+    /// is in the mix.
+    AfterFader,
+    /// Buses: after the fader, before the limiter.
+    BeforeLimiter,
+    /// Buses: last of all, after the limiter.
+    AfterLimiter,
+}
+
+impl InsertPoint {
+    /// Where a strip's external effects can go, in chain order.
+    pub const STRIP: [InsertPoint; 6] = [
+        Self::BeforeDenoise,
+        Self::BeforeGate,
+        Self::BeforeEq,
+        Self::BeforeCompressor,
+        Self::BeforeFader,
+        Self::AfterFader,
+    ];
+
+    /// Where a bus's external effects can go, in chain order.
+    pub const BUS: [InsertPoint; 4] = [
+        Self::BeforeEq,
+        Self::BeforeFader,
+        Self::BeforeLimiter,
+        Self::AfterLimiter,
+    ];
+
+    /// The nearest place a strip has: both of a bus's places past its fader
+    /// are a strip's `after_fader`.
+    pub fn for_strip(self) -> Self {
+        match self {
+            Self::BeforeLimiter | Self::AfterLimiter => Self::AfterFader,
+            p => p,
+        }
+    }
+
+    /// The nearest place a bus has. A bus's mix comes first, so a strip's
+    /// places before its equalizer are a bus's `before_eq`; a strip's
+    /// compressor sits just before its fader.
+    pub fn for_bus(self) -> Self {
+        match self {
+            Self::BeforeDenoise | Self::BeforeGate => Self::BeforeEq,
+            Self::BeforeCompressor => Self::BeforeFader,
+            Self::AfterFader => Self::BeforeLimiter,
+            p => p,
+        }
+    }
+
+    /// What it is called, for people.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::BeforeDenoise => "Before noise suppression",
+            Self::BeforeGate => "Before the gate",
+            Self::BeforeEq => "Before the equalizer",
+            Self::BeforeCompressor => "Before the compressor",
+            Self::BeforeFader => "Before the fader",
+            Self::AfterFader => "After the fader",
+            Self::BeforeLimiter => "Before the limiter",
+            Self::AfterLimiter => "After the limiter",
+        }
+    }
+}
+
+/// What a strip's or bus's external effects do while nothing plays into
+/// its "back from effects" device.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize, schemars::JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum InsertFallback {
+    /// Carry on with the sound as it went out, unchanged, so the strip or
+    /// bus is heard even before the effects program is running.
+    #[default]
+    PassThrough,
+    /// Silence, so nothing is heard without its effects.
+    Silence,
+}
+
+impl InsertFallback {
+    /// Both, for menus.
+    pub const ALL: [InsertFallback; 2] = [Self::PassThrough, Self::Silence];
+
+    /// What it is called, for people.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::PassThrough => "Pass the sound through",
+            Self::Silence => "Silence",
+        }
+    }
+}
+
+/// External effects: a point in a strip's or bus's chain where its sound
+/// leaves Weir for another program, such as Carla or EasyEffects, and comes
+/// back.
+///
+/// While on, two devices exist for it: "*name*: to effects (Weir)", which
+/// that program records from, and "*name*: back from effects (Weir)", which
+/// it plays into. The round trip costs one PipeWire cycle, a few
+/// milliseconds, on top of whatever the effects take.
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(default)]
+pub struct Insert {
+    /// Whether the sound goes out and back. Switching it on or off creates
+    /// or removes the two devices.
+    pub enabled: bool,
+    /// Where in the chain.
+    pub position: InsertPoint,
+    /// What happens while nothing plays into "back from effects".
+    pub fallback: InsertFallback,
+}
+
+impl Insert {
+    /// Whether every setting is at its default.
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
 /// A named set of equalizer bands.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct EqPreset {

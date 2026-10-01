@@ -62,6 +62,19 @@ Around it, the daemon creates **virtual devices** and **links**:
   microphone applications can record from, fed by the engine's outputs.
 * A **hardware** strip or bus links the engine's ports straight to the
   device's.
+* A strip or bus with **external effects** on gets two more adapters and a
+  pair of engine ports per channel: "*name*: to effects (Weir)"
+  (`weir.to-effects.strip.N`, like a virtual bus), fed from the engine,
+  which an effects program records from, and "*name*: back from effects
+  (Weir)" (`weir.from-effects.strip.N`, like a virtual strip), which it
+  plays into and whose monitor feeds the engine. The engine, the program
+  and back make a loop, which PipeWire runs by marking the link that closes
+  it as feedback, a cycle late. It only sees loops made of links, and many
+  effects programs, filter chains and `pw-loopback` among them, record and
+  play through two nodes with no link between them. So the engine's silent
+  `effects_loop` output is linked into each "back from effects" first, and
+  the links back into the engine come after it: those always close a loop
+  PipeWire can see (`runner/effects.rs`).
 * The engine and Weir's devices share a `node.group`, so one clock drives
   them all, and the engine has `node.autoconnect = false`, so the session
   manager leaves its wiring to Weir.
@@ -71,15 +84,25 @@ mirror of PipeWire's registry, and whenever anything changes, on either
 side, it **reconciles**: it brings the engine's ports, the real-time
 parameters, the virtual devices and the links in line with the mixer state
 the daemon wants, in that order. So a device unplugged and plugged back in
-is simply linked again, and a strip added in the window gets its device,
-ports and links from the same code that set everything up at the start.
+is simply linked again, a link of Weir's removed in a patchbay is made
+again, and a strip added in the window gets its device, ports and links
+from the same code that set everything up at the start.
 
 Two things about PipeWire shape that code. It **reuses ids**, both of nodes
 and of application streams, so nodes are told apart by `object.serial` and
 applications by id and name together. And a strip's device has to be
 **recreated** when the strip is renamed or its layout changes; the runner
 remembers which applications were playing into it (`pending_moves`) and
-moves them back once the new device is there.
+moves them back once the new device is there. External effects' devices
+are remade the same way, and the links other programs had with them are
+noted and made again (`pending_relinks`), as lingering links that belong
+to PipeWire, like the ones they replace.
+
+Whether anything plays into a "back from effects" device is read from the
+links in the registry mirror. It decides, in the snapshot, whether the
+strip or bus carries on with what comes back or with its fallback, and the
+daemon passes it on so the window can warn about effects that are not
+connected.
 
 ## The real-time mixer
 
@@ -108,7 +131,7 @@ only the real-time thread touches.
 
 **One cycle**, for each block of samples:
 
-1. Every bus output is cleared.
+1. Every bus output, and every output to external effects, is cleared.
 2. Each strip runs its chain: **noise suppression**, **gate**,
    **equalizer**, **compressor**, then its **fader**, mute and pan. Its
    meter reads here. It is then added into each bus it is routed to,
@@ -116,6 +139,13 @@ only the real-time thread touches.
    mixes its ducking covers, with its subwoofer and upmix feeds.
 3. Each bus folds to **mono** if asked, runs its **equalizer**, applies its
    **fader**, then its **limiter**, and meters what comes out.
+
+**External effects** can sit between any two of those stages of a strip
+or bus, or after a strip's fader: there the sound is copied to the
+outputs to "to effects", and replaced by what the inputs from "back from
+effects" bring. After a strip's fader, the fader is applied before
+sending, and what comes back is mixed at unity, ducking and send levels
+still applying.
 
 **Meters** are atomics the real-time thread raises to each new peak; the
 daemon reads and resets them 30 times a second. The **spectrum** behind
@@ -145,6 +175,7 @@ part only); and speakers a strip has no channel for can be filled by
 | Compressor | A feed-forward compressor with a 6 dB soft knee, and a lift that can be worked out from the threshold and ratio. Its curve is in the protocol crate, for the window's graph. |
 | Ducking | Each strip's level after its fader, gated by its gate, is compared with a threshold; the strips it ducks are turned down in the mixes their ducking names. |
 | Limiter | Looks 1.5 ms ahead, with the channels of a bus linked so the image does not shift. |
+| External effects | Not an effect itself: the sound goes out and comes back, crossfading over 10 ms between what comes back, the sound as it went out, and silence, as programs connect and go. |
 
 `dsp/process.rs` has a test `Rig` that drives the processor without
 PipeWire, and the tests read like the behavior they check: a gate closes
@@ -270,6 +301,13 @@ engine carries a small unsafe one (`pw/filter.rs`). egui makes custom
 controls such as faders and meters easy to draw, and the window a pure
 function of the state.
 
+**Why external effects rather than plugins?** Hosting LV2, CLAP or VST
+plugins means loading other people's code into the real-time thread,
+plugin windows, presets and crash isolation: a project of its own, which
+Carla already is. A send and a return per strip or bus lets Carla,
+EasyEffects or anything else that PipeWire can link do the effects, for
+the price of one cycle of latency, and keeps Weir a mixer.
+
 **Why only a local socket?** It needs no password: only the user running
 Weir can open it. A TCP listener could be added in the server alone, if
 remote control is ever wanted.
@@ -278,8 +316,6 @@ remote control is ever wanted.
 
 * Testing on more real hardware; most of the newer features have been
   developed against a headless PipeWire.
-* A package in a repository, so installing needs no build: the RPM spec in
-  `packaging/` builds locally; a COPR build needs the crates vendored.
 * An OpenDeck plugin, as its own project on top of the protocol.
-* Perhaps: a routing matrix view for many strips, send and return ports for
-  external effects, and positioning sources in a sound field.
+* Perhaps: a routing matrix view for many strips, and positioning sources
+  in a sound field.

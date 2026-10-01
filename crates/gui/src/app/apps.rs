@@ -39,7 +39,10 @@ impl App {
                 // Worded, not an arrow: the fonts do not all have one.
                 Some(s) => format!("in {}", s.name),
                 None => match &a.target {
-                    Some(t) => format!("in {t}"),
+                    Some(t) => match crate::effects::return_device(state, t) {
+                        Some(device) => format!("in {device}"),
+                        None => format!("in {t}"),
+                    },
                     None => "(not playing anywhere)".into(),
                 },
             };

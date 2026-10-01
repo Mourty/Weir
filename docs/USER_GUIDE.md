@@ -140,7 +140,10 @@ From top to bottom:
 
 * **The caption**, such as "VIRTUAL INPUT · STEREO", with six dots in front.
   Drag it to move the strip.
-* **The name.** Click it to rename the strip.
+* **The name.** Click it to rename the strip. With
+  [external effects](#external-effects) on, a badge beside it says whether
+  they are working: **EXT** while they are connected, a yellow **EXT !**
+  while they are not. Click it for their settings.
 * **The source**: a device list on a hardware strip, or the applications
   playing into a virtual one.
 * **Pan**, from left to right. Double-click it to center it.
@@ -201,8 +204,10 @@ without your stream noticing.
 ## Effects
 
 Every strip has noise suppression, a noise gate, an equalizer, a compressor
-and ducking. Every bus has an equalizer and a safety limiter. They are all
-off until you switch them on.
+and ducking. Every bus has an equalizer and a safety limiter. Both can also
+send their sound to another program for effects Weir does not have, and
+take it back: see [External effects](#external-effects). They are all off
+until you switch them on.
 
 Under each strip's fader are switches for the three used most: **NS**
 (noise suppression), **Gate** and **EQ**. The **Gate** button dims while
@@ -220,6 +225,8 @@ step the sound goes through, in order, lit where it is on.
 * A strip: noise suppression, gate, equalizer, compressor, fader, ducking,
   upmix.
 * A bus: downmix, equalizer, fader, safety limiter.
+
+**Ext FX**, external effects, sits in the chain wherever you put them.
 
 Click a step to go to its settings. The equalizer fills the middle of the
 window, and everything else has a section down the left that folds away.
@@ -362,6 +369,54 @@ ahead, so it catches a peak before it happens, and delays the bus by those
 The **CLIP** light under every fader lights up when that strip or bus goes
 over full scale, the loudest a sound card or a recording can carry, and
 stays lit until you click it, so you notice even if you looked away.
+
+### External effects
+
+Weir's own effects are the ones voices need most. For anything else, such
+as a reverb, a pitch shifter or a plugin you already have, a strip or bus
+can send its sound out to another program and take it back:
+[Carla](https://kx.studio/Applications:Carla), which loads LV2, VST and
+other plugins, [EasyEffects](https://github.com/wwmm/easyeffects), or
+anything else that works with PipeWire. Coming from Voicemeeter, this is
+Weir's version of its inserts.
+
+Switch on **External effects** in the strip's or bus's settings window.
+Weir then makes two devices for it, named after it:
+
+* **"Mic: to effects (Weir)"**, a microphone the effects program records
+  from;
+* **"Mic: back from effects (Weir)"**, an output it plays into.
+
+Connect the program to them in its own settings, or with a patchbay such
+as qpwgraph. What comes back carries on through the rest of the chain.
+
+**Where they go.** **Ext FX** sits in the signal chain along the top of
+the settings window. Drag it to another gap to move it, or choose under
+**Where**. A strip's can go anywhere from before noise suppression to just
+after the fader; after the fader, the effects hear the strip as loud as it
+is in the mix. A bus's can go anywhere from straight after its mix to after
+the limiter.
+
+**While nothing is connected**, the strip or bus either passes its sound
+through, as if external effects were off, or stays silent, as you choose.
+Silence suits a voice that should never be heard without its effects.
+
+**At a glance**, a badge beside the name says whether they are working: a
+blue **EXT** while something plays into "back from effects", a yellow
+**EXT !** while nothing does. Hover over it for what that means for the
+sound, and click it for the settings. **Ext FX** in the signal chain lights
+up in the same colors.
+
+**Renaming** a strip or bus with external effects on renames its two
+devices too, so Weir asks first. Whatever is connected to them is
+connected again, but a program that finds devices by name when it starts,
+such as Carla opening a saved project, will need connecting to the new
+names.
+
+The trip out and back adds a few milliseconds of delay, on top of whatever
+the effects program adds.
+
+![External effects in a strip's settings window](images/external-effects.png)
 
 ## Surround sound
 
@@ -601,10 +656,18 @@ off its `A1` routing button.
 microphone, that Mic is sent to `B1`, and that neither is muted. The meters
 on the Mic strip and the Stream Mic bus show where the sound stops.
 
+**A strip shows a yellow EXT !, or is silent with external effects on.**
+Nothing plays into its "back from effects" device. Check that the effects
+program is running, and that it records from "to effects" and plays into
+"back from effects". With **Silence** chosen for while nothing is
+connected, the strip stays silent until it does.
+
 **Known limitations.**
 
 * Pan is a balance control: it turns the other side down rather than
   moving the sound across.
 * A settings window remembers its size but not where it was on screen.
 * Renaming a virtual strip, or changing its layout, recreates its device.
-  Applications playing into it are put back, after a short gap.
+  Applications playing into it are put back, after a short gap. The same
+  goes for the devices of external effects, and the programs connected to
+  them.

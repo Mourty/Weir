@@ -45,7 +45,7 @@ impl App {
                     };
                     let layout = s.layout.label().to_uppercase();
                     drag_caption(ui, &format!("{kind_text} · {layout}"), target);
-                    self.name_editor(ui, target, &s.name);
+                    self.name_editor(ui, state, target, &s.name);
                     self.strip_source_band(ui, state, s, inner_w);
                     self.strip_fader_row(ui, state, s, lay, inner_w);
                     self.readout_row(ui, inner_w, target, None, |this, ui| {

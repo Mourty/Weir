@@ -2,10 +2,12 @@
 //! curve in the middle, and down the side everything else about it, each in
 //! a section that folds away. For strips: noise suppression, the noise
 //! gate, the compressor, the fader, ducking and upmixing. For buses:
-//! downmixing, the fader and the safety limiter.
+//! downmixing, the fader and the safety limiter. Both have external
+//! effects, whose section sits wherever they are in the chain.
 //!
 //! A row along the top shows the signal chain, the order things happen in,
-//! with the ones that are on lit up. Clicking one opens its section.
+//! with the ones that are on lit up. Clicking one opens its section, and
+//! external effects are dragged along it to move them.
 //!
 //! Each window is its own native window (an egui viewport), so it can sit on
 //! another screen while the mixer stays where it is.
@@ -20,7 +22,8 @@
 //!
 //! * `chain`: the signal chain along the top.
 //! * `section`: the folding header every side section has.
-//! * `fader`, `dynamics`, `ducking` and `channels`: the side sections.
+//! * `fader`, `dynamics`, `ducking`, `channels` and `external`: the side
+//!   sections.
 //! * `eq` and `curve`: the equalizer, and the graph it is edited on.
 
 mod chain;
@@ -29,6 +32,7 @@ mod curve;
 mod ducking;
 mod dynamics;
 mod eq;
+mod external;
 mod fader;
 mod section;
 
@@ -129,10 +133,12 @@ pub enum Section {
     Upmix,
     Downmix,
     Limiter,
+    /// External effects.
+    Insert,
 }
 
 /// How many [`Section`]s there are.
-const SECTIONS: usize = 8;
+const SECTIONS: usize = 9;
 
 /// One settings window, and what is being edited in it.
 pub struct FxWindow {
@@ -377,7 +383,7 @@ impl FxWindow {
         meters: WindowMeters,
         actions: &mut Vec<Request>,
     ) {
-        self.chain_row(ui, state);
+        self.chain_row(ui, state, actions);
         ui.add_space(4.0);
         let avail = ui.available_size();
         ui.horizontal_top(|ui| {
@@ -403,7 +409,7 @@ impl FxWindow {
     }
 
     /// The folding sections down the side, in the order things happen to
-    /// the sound.
+    /// the sound, external effects included wherever they are.
     fn side(
         &mut self,
         ui: &mut Ui,
@@ -420,10 +426,8 @@ impl FxWindow {
         if let Some(section) = focus {
             open[section as usize] = true;
         }
-        let order: &[Section] = match target {
-            FxTarget::Strip(_) => &[Denoise, Gate, Comp, Fader, Duck, Upmix],
-            FxTarget::Bus(_) => &[Downmix, Fader, Limiter],
-        };
+        let at = external::settings(state, target).map(|(_, i)| i.position);
+        let order = side_order(target, at.unwrap_or_default());
         for (k, &section) in order.iter().enumerate() {
             if k > 0 {
                 ui.add_space(6.0);
@@ -432,6 +436,7 @@ impl FxWindow {
             let o = &mut open[section as usize];
             match (section, target) {
                 (Fader, _) => self.fader_section(ui, state, o, actions),
+                (Insert, _) => self.insert_section(ui, state, o, actions),
                 (_, FxTarget::Strip(id)) => {
                     let Some(strip) = state.mixer.strip(id) else {
                         return;
@@ -470,6 +475,41 @@ impl FxWindow {
     }
 }
 
+/// The side sections of `target`, in chain order with its external effects
+/// `at` their place. The equalizer has no section, being the middle of the
+/// window, so external effects just before it sit with the compressor's.
+fn side_order(target: FxTarget, at: InsertPoint) -> Vec<Section> {
+    use Section::*;
+    let (mut order, before) = match target {
+        FxTarget::Strip(_) => (
+            vec![Denoise, Gate, Comp, Fader, Duck, Upmix],
+            match at.for_strip() {
+                InsertPoint::BeforeDenoise => Denoise,
+                InsertPoint::BeforeGate => Gate,
+                InsertPoint::BeforeFader => Fader,
+                InsertPoint::AfterFader => Duck,
+                _ => Comp,
+            },
+        ),
+        FxTarget::Bus(_) => (
+            vec![Downmix, Fader, Limiter],
+            match at.for_bus() {
+                InsertPoint::BeforeLimiter => Limiter,
+                InsertPoint::AfterLimiter => {
+                    return vec![Downmix, Fader, Limiter, Insert];
+                }
+                _ => Fader,
+            },
+        ),
+    };
+    let k = order
+        .iter()
+        .position(|&s| s == before)
+        .unwrap_or(order.len());
+    order.insert(k, Insert);
+    order
+}
+
 /// Which sections start unfolded: those of the effects that are on, so
 /// what is at work is in view.
 fn first_open(target: FxTarget, mixer: &MixerState) -> [bool; SECTIONS] {
@@ -482,12 +522,14 @@ fn first_open(target: FxTarget, mixer: &MixerState) -> [bool; SECTIONS] {
                 open[Section::Comp as usize] = s.compressor.enabled;
                 open[Section::Duck as usize] = s.ducking.enabled;
                 open[Section::Upmix as usize] = s.upmix != Upmix::Off;
+                open[Section::Insert as usize] = s.insert.enabled;
             }
         }
         FxTarget::Bus(id) => {
             if let Some(b) = mixer.bus(id) {
                 open[Section::Limiter as usize] = b.limiter.enabled;
                 open[Section::Downmix as usize] = !b.downmix.is_default();
+                open[Section::Insert as usize] = b.insert.enabled;
             }
         }
     }
@@ -529,6 +571,33 @@ mod tests {
         actions.clear();
         w.flush(&mut actions, true);
         assert!(actions.is_empty(), "nothing changed since");
+    }
+
+    #[test]
+    fn external_effects_sit_down_the_side_where_they_are_in_the_chain() {
+        use Section::*;
+        let strip = FxTarget::Strip(1);
+        assert_eq!(
+            side_order(strip, InsertPoint::BeforeFader),
+            [Denoise, Gate, Comp, Insert, Fader, Duck, Upmix]
+        );
+        assert_eq!(
+            side_order(strip, InsertPoint::BeforeEq),
+            [Denoise, Gate, Insert, Comp, Fader, Duck, Upmix]
+        );
+        assert_eq!(
+            side_order(strip, InsertPoint::AfterFader),
+            [Denoise, Gate, Comp, Fader, Insert, Duck, Upmix]
+        );
+        let bus = FxTarget::Bus(1);
+        assert_eq!(
+            side_order(bus, InsertPoint::BeforeEq),
+            [Downmix, Insert, Fader, Limiter]
+        );
+        assert_eq!(
+            side_order(bus, InsertPoint::AfterLimiter),
+            [Downmix, Fader, Limiter, Insert]
+        );
     }
 
     #[test]

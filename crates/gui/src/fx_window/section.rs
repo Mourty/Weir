@@ -24,6 +24,23 @@ pub(super) fn section_header(
     color: Color32,
     open: bool,
 ) -> HeaderClick {
+    let summary_color = match switch {
+        Some(true) => color,
+        _ => theme::p().text_dim,
+    };
+    section_header_with(ui, title, (summary, summary_color), switch, color, open)
+}
+
+/// [`section_header`] with the summary in a color of its own, for a summary
+/// that warns: `color` lights the switch, which is not text.
+pub(super) fn section_header_with(
+    ui: &mut Ui,
+    title: &str,
+    (summary, summary_color): (&str, Color32),
+    switch: Option<bool>,
+    color: Color32,
+    open: bool,
+) -> HeaderClick {
     let w = ui.available_width();
     let (rect, resp) = ui.allocate_exact_size(vec2(w, 42.0), Sense::click());
     let on = switch.unwrap_or(true);
@@ -80,10 +97,7 @@ pub(super) fn section_header(
         Align2::LEFT_CENTER,
         summary,
         FontId::proportional(11.0),
-        match switch {
-            Some(true) => color,
-            _ => theme::p().text_dim,
-        },
+        summary_color,
     );
     if switch.is_some() {
         let fill = if on {

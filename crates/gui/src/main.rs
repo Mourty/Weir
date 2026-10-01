@@ -3,6 +3,7 @@
 mod app;
 mod appearance;
 mod client;
+mod effects;
 mod fx_window;
 mod patch;
 mod prefs;

@@ -1,10 +1,13 @@
 //! What strips and buses both have: the caption to drag them by, the name
-//! field, the device picker, the layout and arrange menus, the band of
-//! their own color, the row of lights under the fader, and the note shown
-//! when the system's volume control is turning one of them down.
+//! field with the external effects badge beside it, the device picker, the
+//! layout and arrange menus, the band of their own color, the row of lights
+//! under the fader, and the note shown when the system's volume control is
+//! turning one of them down.
 
+use super::dialogs::RenameConfirm;
 use super::mixer::move_request;
 use super::App;
+use crate::effects;
 use crate::fx_window::{FxTarget, Section};
 use crate::patch::CommonPatch;
 use crate::{theme, widgets};
@@ -20,32 +23,65 @@ pub(super) const NAME_SIZE: f32 = 10.5;
 impl App {
     /// The name, edited in place. The new name is sent when the field loses
     /// focus; an empty one puts the old name back.
-    pub(super) fn name_editor(&mut self, ui: &mut Ui, target: StripOrBus, current: &str) {
+    ///
+    /// With external effects on, a badge beside it says at a glance whether
+    /// they are connected, and a new name waits for a yes: it renames their
+    /// devices too, which a program may know them by.
+    pub(super) fn name_editor(
+        &mut self,
+        ui: &mut Ui,
+        state: &FullState,
+        target: StripOrBus,
+        current: &str,
+    ) {
+        let status = effects::Status::of(state, target);
         let text = self
             .name_edits
             .entry(target)
             .or_insert_with(|| current.to_string());
-        let resp = ui.add(
-            egui::TextEdit::singleline(text)
-                .font(TextStyle::Button)
-                .desired_width(f32::INFINITY)
-                .margin(egui::Margin::symmetric(4, 2)),
-        );
+        let (resp, badge_clicked) = ui
+            .horizontal(|ui| {
+                let width = match status {
+                    Some(_) => {
+                        ui.available_width() - effects::BADGE_W - ui.spacing().item_spacing.x
+                    }
+                    None => f32::INFINITY,
+                };
+                let resp = ui.add(
+                    egui::TextEdit::singleline(text)
+                        .font(TextStyle::Button)
+                        .desired_width(width)
+                        .margin(egui::Margin::symmetric(4, 2)),
+                );
+                let clicked = status
+                    .is_some_and(|s| effects::badge(ui, &s, current, resp.rect.height()).clicked());
+                (resp, clicked)
+            })
+            .inner;
         if resp.lost_focus() {
             let new = text.trim().to_string();
-            if !new.is_empty() && new != current {
+            if new.is_empty() || new == current {
+                *text = current.to_string();
+            } else if status.is_some() {
+                self.confirm_rename = Some(RenameConfirm {
+                    target,
+                    from: current.to_string(),
+                    to: new,
+                });
+            } else {
                 let patch = CommonPatch {
                     name: Some(new),
                     ..Default::default()
                 };
                 self.actions.push(patch.to(target));
-            } else {
-                *text = current.to_string();
             }
         } else if !resp.has_focus() && *text != current {
             *text = current.to_string();
         }
         resp.on_hover_text("Click to rename");
+        if badge_clicked {
+            self.open_fx_at(target, Section::Insert);
+        }
     }
 
     /// The device a hardware strip captures from or a hardware bus plays

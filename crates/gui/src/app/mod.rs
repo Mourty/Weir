@@ -121,6 +121,9 @@ pub struct App {
     confirm_library: Option<LibraryConfirm>,
     /// A strip or bus waiting for a yes before it is removed, and its name.
     confirm_remove: Option<(StripOrBus, String)>,
+    /// A rename waiting for a yes, because it renames external effects'
+    /// devices too.
+    confirm_rename: Option<dialogs::RenameConfirm>,
     show_about: bool,
     show_prefs: bool,
     prefs: Prefs,
@@ -194,6 +197,7 @@ impl App {
             focus_save_as: false,
             confirm_library: None,
             confirm_remove: None,
+            confirm_rename: None,
             show_about: false,
             show_prefs: false,
             prefs: Prefs::load(),

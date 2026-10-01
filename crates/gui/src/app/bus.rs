@@ -45,7 +45,7 @@ impl App {
                         b.layout.label().to_uppercase()
                     );
                     drag_caption(ui, &title, target);
-                    self.name_editor(ui, target, &b.name);
+                    self.name_editor(ui, state, target, &b.name);
                     self.bus_band(ui, state, b, inner_w);
                     self.bus_fader_row(ui, b, lay, inner_w);
                     self.readout_row(ui, inner_w, target, Some(b), |this, ui| {

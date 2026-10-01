@@ -1,5 +1,5 @@
-//! The dialogs that add a strip or a bus, and the one that asks before
-//! removing either.
+//! The dialogs that add a strip or a bus, and the ones that ask before
+//! removing either, or renaming one with external effects on.
 
 use super::{bus_title, App};
 use crate::theme;
@@ -48,6 +48,14 @@ impl AddBusDialog {
     }
 }
 
+/// A new name for a strip or bus with external effects on, waiting for a
+/// yes.
+pub(super) struct RenameConfirm {
+    pub target: StripOrBus,
+    pub from: String,
+    pub to: String,
+}
+
 /// What the buttons at the bottom of a dialog were used for.
 #[derive(Default)]
 struct Outcome {
@@ -61,6 +69,7 @@ impl App {
         self.add_strip_dialog(ctx, state);
         self.add_bus_dialog(ctx, state);
         self.confirm_remove_dialog(ctx);
+        self.confirm_rename_dialog(ctx);
     }
 
     fn add_strip_dialog(&mut self, ctx: &egui::Context, state: &FullState) {
@@ -221,6 +230,64 @@ impl App {
             });
         if !open || done {
             self.confirm_remove = None;
+        }
+    }
+
+    /// Renaming a strip or bus renames its external effects' devices too. A
+    /// program connected to them now is connected again, but one that finds
+    /// them by name later, such as Carla opening a saved project, would look
+    /// for the old names, so this asks first.
+    fn confirm_rename_dialog(&mut self, ctx: &egui::Context) {
+        let Some(r) = self.confirm_rename.as_ref() else {
+            return;
+        };
+        let what = match r.target {
+            StripOrBus::Strip(_) => "strip",
+            StripOrBus::Bus(_) => "bus",
+        };
+        let (to_fx, back) = crate::effects::device_names(&r.to);
+        let mut open = true;
+        let mut answer = None;
+        egui::Window::new(format!("Rename {what}?"))
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.set_max_width(380.0);
+                ui.label(format!(
+                    "\"{}\" has external effects on. Renaming it to \"{}\" renames their \
+                     devices too:",
+                    r.from, r.to
+                ));
+                ui.label(RichText::new(format!("  {to_fx}\n  {back}")).strong());
+                ui.label(
+                    RichText::new(
+                        "Whatever is connected to them now is connected again. A program \
+                         that finds them by name when it starts, such as Carla opening a \
+                         saved project, will need connecting to the new names.",
+                    )
+                    .color(theme::p().text_dim),
+                );
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    if ui.button("Rename").clicked() {
+                        answer = Some(true);
+                    }
+                    if ui.button("Cancel").clicked() {
+                        answer = Some(false);
+                    }
+                });
+            });
+        if answer == Some(true) {
+            let RenameConfirm { target, to, .. } =
+                self.confirm_rename.take().expect("checked above");
+            let patch = crate::patch::CommonPatch {
+                name: Some(to),
+                ..Default::default()
+            };
+            self.actions.push(patch.to(target));
+        } else if answer == Some(false) || !open {
+            self.confirm_rename = None;
         }
     }
 }

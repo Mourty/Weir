@@ -69,6 +69,9 @@ pub struct Palette {
     pub duck: Color32,
     /// The safety limiter's ceiling handle, and its light while it is working.
     pub limit: Color32,
+    /// External effects that are connected. While they are not, they are
+    /// shown in `meter_yellow`.
+    pub ext_on: Color32,
     /// An indicator light that is off, and its label.
     pub lamp_off: Color32,
     pub lamp_off_text: Color32,
@@ -121,6 +124,7 @@ pub const DARK: Palette = Palette {
     comp_on: Color32::from_rgb(180, 140, 240),
     duck: Color32::from_rgb(230, 162, 60),
     limit: Color32::from_rgb(230, 162, 60),
+    ext_on: Color32::from_rgb(120, 185, 245),
     lamp_off: Color32::from_rgb(42, 46, 55),
     lamp_off_text: Color32::from_rgb(90, 97, 112),
     lamp_on_text: Color32::from_rgb(11, 13, 16),
@@ -166,6 +170,7 @@ pub const LIGHT: Palette = Palette {
     comp_on: Color32::from_rgb(174, 132, 240),
     duck: Color32::from_rgb(222, 146, 36),
     limit: Color32::from_rgb(222, 146, 36),
+    ext_on: Color32::from_rgb(110, 172, 240),
     lamp_off: Color32::from_rgb(218, 222, 228),
     lamp_off_text: Color32::from_rgb(136, 142, 154),
     lamp_on_text: Color32::from_rgb(11, 13, 16),

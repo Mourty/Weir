@@ -589,6 +589,19 @@ fn is_false(b: &bool) -> bool {
     !*b
 }
 
+/// What the system calls the virtual device of a strip or bus called
+/// `name`: "Music (Weir)".
+pub fn device_description(name: &str) -> String {
+    format!("{} (Weir)", without_colons(name))
+}
+
+/// `name` fit for a device's name. A colon is left out: patchbays that work
+/// like JACK's, such as Carla's, take everything before one for the name of
+/// the program a port belongs to, and would file the device under it.
+pub(crate) fn without_colons(name: &str) -> String {
+    name.replace(": ", " - ").replace(':', "-")
+}
+
 /// An input strip: one source of sound, with its fader, effects and
 /// routing.
 ///
@@ -602,7 +615,8 @@ pub struct Strip {
     /// Unique among strips.
     pub id: StripId,
     /// Unique among strips, ignoring case, and 40 characters at most. A
-    /// virtual strip's device shows in the system as "*name* (Weir)".
+    /// virtual strip's device shows in the system as "*name* (Weir)", with
+    /// any colon left out (see [`device_description`]).
     pub name: String,
     /// Where it takes its sound from.
     pub kind: StripKind,
@@ -790,7 +804,8 @@ pub struct Bus {
     /// Unique among buses.
     pub id: BusId,
     /// Unique among buses, ignoring case, and 40 characters at most. A
-    /// virtual bus's device shows in the system as "*name* (Weir)".
+    /// virtual bus's device shows in the system as "*name* (Weir)", with
+    /// any colon left out (see [`device_description`]).
     pub name: String,
     /// Where it sends its mix.
     pub kind: BusKind,
@@ -1376,13 +1391,14 @@ pub struct FullState {
 }
 
 /// Whether a strip's or bus's external effects are connected: whether any
-/// program plays into its "back from effects" device. While nothing does,
+/// program plays into its "from effects" device. While nothing does,
 /// its sound carries on as [`Insert::fallback`] says.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct InsertStatus {
     /// The strip or bus.
     pub target: StripOrBus,
-    /// Whether something plays into its "back from effects" device.
+    /// Whether something plays into its "from effects" device, or straight
+    /// into its ports on Weir's effects return node.
     pub connected: bool,
 }
 
@@ -1572,6 +1588,19 @@ mod tests {
             assert!(InsertPoint::STRIP.contains(&p.for_strip()), "{p:?}");
             assert_eq!(p.for_bus(), p);
         }
+    }
+
+    #[test]
+    fn device_names_leave_colons_out() {
+        assert_eq!(device_description("Music"), "Music (Weir)");
+        assert_eq!(device_description("Mic: USB"), "Mic - USB (Weir)");
+        assert_eq!(
+            Insert::device_names("Game:Chat"),
+            (
+                "Game-Chat to effects (Weir)".to_string(),
+                "Game-Chat from effects (Weir)".to_string()
+            )
+        );
     }
 
     #[test]

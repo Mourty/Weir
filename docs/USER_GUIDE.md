@@ -383,12 +383,34 @@ Weir's version of its inserts.
 Switch on **External effects** in the strip's or bus's settings window.
 Weir then makes two devices for it, named after it:
 
-* **"Mic: to effects (Weir)"**, a microphone the effects program records
-  from;
-* **"Mic: back from effects (Weir)"**, an output it plays into.
+* **"Mic to effects (Weir)"**, a microphone the effects program records
+  from (**Out** in the settings window);
+* **"Mic from effects (Weir)"**, an output it plays into (**Back**).
 
 Connect the program to them in its own settings, or with a patchbay such
-as qpwgraph. What comes back carries on through the rest of the chain.
+as Carla's or qpwgraph. What comes back carries on through the rest of the
+chain.
+
+**Connecting Carla, step by step.** Say you want a reverb on Music:
+
+1. Switch on **External effects** for Music. Its badge shows a yellow
+   **EXT !** until the effects are connected.
+2. In Carla, click **Add Plugin** and load your reverb.
+3. Open Carla's **Patchbay** tab. Each program and device is a block, with
+   its inputs on the left and its outputs on the right.
+4. Find **Music to effects (Weir)**. Drag a wire from each of its outputs,
+   left and right, to the reverb's inputs.
+5. Drag a wire from each of the reverb's outputs to the inputs of
+   **Music from effects (Weir)**.
+
+The badge turns into a blue **EXT**, and Music plays through the reverb.
+With Weir's own wires, the blocks make a line: Weir's engine, **Weir
+Engine**, into "Music to effects", through the reverb, into "Music from
+effects", and on into **Weir effects return**, where the sound comes back
+into Weir. Weir draws the wires to and from its own blocks itself, and
+draws them again if one is removed, so there is nothing else to connect. To keep the wiring
+for next time, save a project in Carla (**File › Save**) and open it again
+later.
 
 **Where they go.** **Ext FX** sits in the signal chain along the top of
 the settings window. Drag it to another gap to move it, or choose under
@@ -402,7 +424,7 @@ through, as if external effects were off, or stays silent, as you choose.
 Silence suits a voice that should never be heard without its effects.
 
 **At a glance**, a badge beside the name says whether they are working: a
-blue **EXT** while something plays into "back from effects", a yellow
+blue **EXT** while something plays into "from effects", a yellow
 **EXT !** while nothing does. Hover over it for what that means for the
 sound, and click it for the settings. **Ext FX** in the signal chain lights
 up in the same colors.
@@ -657,9 +679,9 @@ microphone, that Mic is sent to `B1`, and that neither is muted. The meters
 on the Mic strip and the Stream Mic bus show where the sound stops.
 
 **A strip shows a yellow EXT !, or is silent with external effects on.**
-Nothing plays into its "back from effects" device. Check that the effects
+Nothing plays into its "from effects" device. Check that the effects
 program is running, and that it records from "to effects" and plays into
-"back from effects". With **Silence** chosen for while nothing is
+"from effects". With **Silence** chosen for while nothing is
 connected, the strip stays silent until it does.
 
 **Known limitations.**

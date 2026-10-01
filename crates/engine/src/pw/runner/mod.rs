@@ -20,10 +20,11 @@ use super::engine::{EngineCommand, EngineError, EngineEvent, EngineOptions};
 use super::filter::{Direction, Filter, FilterShared};
 use super::graph::Graph;
 use super::volume::AppVolume;
-use super::ENGINE_NODE_NAME;
+use super::{ENGINE_NODE_NAME, RETURN_NODE_NAME};
+use crate::dsp::handoff::Handoff;
 use crate::dsp::{build_rt_params, PortPtr, PortResolver, RtParams};
 use devices::{DeviceKey, PendingMove, VirtualNode};
-use effects::PendingRelink;
+use effects::{PendingRelink, Returns};
 use pipewire::context::ContextRc;
 use pipewire::core::CoreRc;
 use pipewire::link::Link;
@@ -53,15 +54,14 @@ const ENOENT: i32 = 2;
 const OLD_SNAPSHOTS_KEPT: usize = 64;
 
 /// One port of the engine node: a strip's or bus's channel, or one of its
-/// external effects' channels, going to them or coming back, or the silent
-/// output that keeps external effects' loops in order (see [`effects`]).
+/// channels going to its external effects; or of the return node: one
+/// coming back from them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum PortKey {
     Strip(StripId, usize),
     Bus(BusId, usize),
     ToEffects(Owner, usize),
     FromEffects(Owner, usize),
-    EffectsLoop,
 }
 
 /// A strip or a bus, as the owner of ports and virtual devices.
@@ -72,6 +72,14 @@ enum Owner {
 }
 
 impl Owner {
+    /// The strip or bus `target` is.
+    fn of(target: StripOrBus) -> Self {
+        match target {
+            StripOrBus::Strip(id) => Owner::Strip(id),
+            StripOrBus::Bus(id) => Owner::Bus(id),
+        }
+    }
+
     /// Its `channel`'s port.
     fn port(self, channel: usize) -> PortKey {
         match self {
@@ -136,17 +144,18 @@ fn with_effects(state: &MixerState) -> Vec<WithEffects> {
     strips.chain(buses).collect()
 }
 
-/// A port this program added to the engine node.
+/// A port this program added to one of its nodes.
 struct LocalPort {
     ptr: PortPtr,
     name: String,
     position: ChannelPosition,
 }
 
-/// Finds the engine node's ports for the snapshot builder, and whether
-/// external effects are connected.
+/// Finds the engine node's ports for the snapshot builder, and external
+/// effects' hand-offs and whether they are connected.
 struct PortMap<'a> {
     ports: &'a HashMap<PortKey, LocalPort>,
+    handoffs: &'a HashMap<Owner, Arc<Handoff>>,
     inserts: &'a [InsertStatus],
 }
 
@@ -163,24 +172,16 @@ impl PortResolver for PortMap<'_> {
     fn bus_port(&self, bus: BusId, channel: usize) -> PortPtr {
         self.get(PortKey::Bus(bus, channel))
     }
-    fn insert_port(&self, target: StripOrBus, send: bool, channel: usize) -> PortPtr {
-        let owner = match target {
-            StripOrBus::Strip(id) => Owner::Strip(id),
-            StripOrBus::Bus(id) => Owner::Bus(id),
-        };
-        self.get(if send {
-            PortKey::ToEffects(owner, channel)
-        } else {
-            PortKey::FromEffects(owner, channel)
-        })
+    fn insert_send_port(&self, target: StripOrBus, channel: usize) -> PortPtr {
+        self.get(PortKey::ToEffects(Owner::of(target), channel))
+    }
+    fn insert_handoff(&self, target: StripOrBus) -> Option<Arc<Handoff>> {
+        self.handoffs.get(&Owner::of(target)).cloned()
     }
     fn insert_connected(&self, target: StripOrBus) -> bool {
         self.inserts
             .iter()
             .any(|i| i.target == target && i.connected)
-    }
-    fn effects_loop_port(&self) -> PortPtr {
-        self.get(PortKey::EffectsLoop)
     }
 }
 
@@ -193,6 +194,7 @@ struct Runner {
     graph: Graph,
     core: CoreRc,
     registry: RegistryRc,
+    main_loop: MainLoopRc,
     /// The engine node.
     filter: Filter,
     /// The engine node's ports.
@@ -236,6 +238,12 @@ struct Runner {
     inserts: Vec<InsertStatus>,
     /// Links to external effects' devices being remade, to make again.
     pending_relinks: Vec<PendingRelink>,
+    /// The node external effects come back into, while any strip or bus
+    /// has them on.
+    returns: Option<Returns>,
+    /// Per strip or bus with external effects on, where what comes back
+    /// waits for the engine.
+    handoffs: HashMap<Owner, Arc<Handoff>>,
 }
 
 /// The PipeWire thread's body: connect, then run the main loop until told
@@ -283,6 +291,7 @@ pub(super) fn run(
         graph: Graph::default(),
         core: core.clone(),
         registry: registry.clone(),
+        main_loop: mainloop.clone(),
         filter,
         ports: HashMap::new(),
         stale_ports: Vec::new(),
@@ -303,6 +312,8 @@ pub(super) fn run(
         pending_moves: Vec::new(),
         inserts: Vec::new(),
         pending_relinks: Vec::new(),
+        returns: None,
+        handoffs: HashMap::new(),
     }));
 
     let _core_listener = {
@@ -383,10 +394,12 @@ impl Runner {
             }
         }
         // Application streams, for their volume sliders, and our own
-        // virtual devices, to show the volume the system set on them.
+        // virtual devices, to show the volume the system set on them. The
+        // return node is no device and has no volume.
         if obj.type_ == ObjectType::Node
             && self.graph.nodes.get(&obj.id).is_some_and(|n| {
-                n.media_class == "Stream/Output/Audio" || n.name.starts_with(super::VIRTUAL_PREFIX)
+                n.media_class == "Stream/Output/Audio"
+                    || (n.name.starts_with(super::VIRTUAL_PREFIX) && n.name != RETURN_NODE_NAME)
             })
         {
             self.watch_volume(obj);
@@ -474,7 +487,9 @@ impl Runner {
         let inserts_changed = self.check_inserts();
         if self.params_dirty {
             self.ensure_ports();
+            self.ensure_returns();
             self.publish_params();
+            self.publish_returns();
             self.remove_stale_ports();
         }
         self.ensure_virtual_nodes();
@@ -527,31 +542,15 @@ impl Runner {
                 ));
             }
         }
-        // External effects: `to_effects_strip_2_FL` out, and
-        // `from_effects_strip_2_FL` back in, and one silent output for all.
-        let effects = with_effects(&self.state);
-        if !effects.is_empty() {
-            let name = "effects_loop".to_string();
-            wanted.push((
-                PortKey::EffectsLoop,
-                Direction::Output,
-                name,
-                ChannelPosition::Mono,
-            ));
-        }
-        for w in effects {
+        // External effects: `to_effects_strip_2_FL` out. They come back
+        // into the return node (see `effects`).
+        for w in with_effects(&self.state) {
             let (kind, id, positions) = (w.owner.kind(), w.owner.id(), &w.positions);
             for (c, &pos) in positions.iter().enumerate() {
                 wanted.push((
                     PortKey::ToEffects(w.owner, c),
                     Direction::Output,
                     Self::port_name(&format!("to_effects_{kind}"), id, positions, c),
-                    pos,
-                ));
-                wanted.push((
-                    PortKey::FromEffects(w.owner, c),
-                    Direction::Input,
-                    Self::port_name(&format!("from_effects_{kind}"), id, positions, c),
                     pos,
                 ));
             }
@@ -592,6 +591,8 @@ impl Runner {
                 .is_some_and(|s| c < s.layout.channel_count()),
             PortKey::Bus(id, c) => state.bus(id).is_some_and(|b| c < b.layout.channel_count()),
             PortKey::ToEffects(owner, c) | PortKey::FromEffects(owner, c) => {
+                // The engine has only the first; the return node keeps its
+                // own.
                 let (insert, channels) = match owner {
                     Owner::Strip(id) => match state.strip(id) {
                         Some(s) => (s.insert, s.layout.channel_count()),
@@ -604,7 +605,6 @@ impl Runner {
                 };
                 insert.enabled && c < channels
             }
-            PortKey::EffectsLoop => !with_effects(state).is_empty(),
         };
         let stale: Vec<PortKey> = self
             .ports
@@ -619,7 +619,7 @@ impl Runner {
         }
     }
 
-    /// Remove the ports `ensure_ports` retired.
+    /// Remove the ports `ensure_ports` and `ensure_returns` retired.
     fn remove_stale_ports(&mut self) {
         for p in std::mem::take(&mut self.stale_ports) {
             debug!("removing port {}", p.name);
@@ -627,6 +627,7 @@ impl Runner {
             // dropped it was published in `publish_params` above.
             unsafe { self.filter.remove_port(p.ptr) };
         }
+        self.remove_stale_return_ports();
     }
 
     /// Build a snapshot of `state` and hand it to the real-time thread.
@@ -636,6 +637,7 @@ impl Runner {
             let current = shared.params.load();
             let ports = PortMap {
                 ports: &self.ports,
+                handoffs: &self.handoffs,
                 inserts: &self.inserts,
             };
             build_rt_params(&self.state, self.options.solo, &ports, Some(&current))

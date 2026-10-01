@@ -17,6 +17,7 @@ use weir_protocol::{
 };
 
 use super::fx::{DenoiseBank, EqParams, FxState, RtDuck};
+use super::handoff::Handoff;
 use super::mapping::{channel_matrix, surround_feed_row, wants_surround_feed};
 
 /// Peak levels in dBFS per channel, for strips and buses, keyed by id.
@@ -96,15 +97,15 @@ pub struct RtInsert {
     /// comes back and the fallback passes it through, or while off.
     pub dry: f32,
     /// How much of what comes back carries on: 1 while something plays
-    /// into "back from effects".
+    /// into "from effects".
     pub wet: f32,
     /// Per channel, the output port to "to effects"; may be null.
     pub send_ports: Vec<PortPtr>,
-    /// Per channel, the input port from "back from effects"; may be null.
-    pub return_ports: Vec<PortPtr>,
+    /// What comes back, from the return node, while they are on.
+    pub handoff: Option<Arc<Handoff>>,
     /// Per-cycle cache of the send ports' buffers (null = none).
     pub send_bufs: Vec<RtCell<*mut f32>>,
-    /// Per-cycle cache of the return ports' buffers (null = silence).
+    /// Per channel, what came back this cycle (null = silence).
     pub return_bufs: Vec<RtCell<*const f32>>,
 }
 
@@ -120,9 +121,9 @@ impl RtInsert {
                 InsertFallback::Silence => (0.0, 0.0),
             },
         };
-        let port = |send: bool, c: usize| {
+        let send_port = |c: usize| {
             if insert.enabled {
-                ports.insert_port(target, send, c)
+                ports.insert_send_port(target, c)
             } else {
                 std::ptr::null_mut()
             }
@@ -137,8 +138,10 @@ impl RtInsert {
             },
             dry,
             wet,
-            send_ports: (0..n).map(|c| port(true, c)).collect(),
-            return_ports: (0..n).map(|c| port(false, c)).collect(),
+            send_ports: (0..n).map(send_port).collect(),
+            handoff: ports
+                .insert_handoff(target)
+                .filter(|h| insert.enabled && h.channels() == n),
             send_bufs: (0..n).map(|_| RtCell::new(std::ptr::null_mut())).collect(),
             return_bufs: (0..n).map(|_| RtCell::new(std::ptr::null())).collect(),
         }
@@ -244,10 +247,6 @@ pub struct RtParams {
     pub strips: Vec<RtStrip>,
     /// Every bus, in mixer order.
     pub buses: Vec<RtBus>,
-    /// The output that keeps external effects' loops in order, which
-    /// carries silence; null while no strip or bus has external effects.
-    /// See the runner's `effects` module.
-    pub effects_loop: PortPtr,
 }
 
 // Raw port pointers are only dereferenced by PipeWire on its own thread; the
@@ -319,20 +318,18 @@ pub trait PortResolver {
     fn strip_port(&self, strip: StripId, channel: usize) -> PortPtr;
     /// The output port of `bus`'s `channel`, or null.
     fn bus_port(&self, bus: BusId, channel: usize) -> PortPtr;
-    /// The port of `target`'s external effects for `channel`: the output
-    /// to "to effects" when `send`, the input from "back from effects"
-    /// otherwise; or null.
-    fn insert_port(&self, _target: StripOrBus, _send: bool, _channel: usize) -> PortPtr {
+    /// The output port of `target`'s external effects for `channel`, to
+    /// "to effects", or null.
+    fn insert_send_port(&self, _target: StripOrBus, _channel: usize) -> PortPtr {
         std::ptr::null_mut()
     }
-    /// Whether anything plays into `target`'s "back from effects" device.
+    /// Where what comes back from `target`'s external effects arrives.
+    fn insert_handoff(&self, _target: StripOrBus) -> Option<Arc<Handoff>> {
+        None
+    }
+    /// Whether anything plays into `target`'s "from effects" device.
     fn insert_connected(&self, _target: StripOrBus) -> bool {
         false
-    }
-    /// The silent output that keeps external effects' loops in order, or
-    /// null.
-    fn effects_loop_port(&self) -> PortPtr {
-        std::ptr::null_mut()
     }
 }
 
@@ -396,11 +393,7 @@ pub fn build_rt_params(
             build_strip(s, state, cue, ports, before)
         })
         .collect();
-    Arc::new(RtParams {
-        strips,
-        buses,
-        effects_loop: ports.effects_loop_port(),
-    })
+    Arc::new(RtParams { strips, buses })
 }
 
 /// One bus of a snapshot. `before` is the same bus in the previous one,

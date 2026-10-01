@@ -2,11 +2,11 @@
 //! back in.
 //!
 //! Where the insert sits in the chain, each channel is copied to its "to
-//! effects" port, and what comes back from "back from effects" takes its
-//! place. What comes back left one PipeWire cycle earlier: the loop through
-//! the other program is a feedback loop to PipeWire, which breaks it with a
-//! cycle's delay. While nothing plays into "back from effects" the sound as
-//! it went out carries on, or silence, as the fallback says. Every change
+//! effects" port, and what comes back through "from effects" takes its
+//! place. What comes back left one PipeWire cycle earlier: it reaches the
+//! engine through the return node's hand-off (see [`crate::dsp::handoff`]).
+//! While nothing plays into "from effects" the sound as it went out carries
+//! on, or silence, as the fallback says. Every change
 //! between those crossfades over one ramp, so nothing clicks when a program
 //! connects or goes away.
 

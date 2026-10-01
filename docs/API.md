@@ -1268,7 +1268,7 @@ replace its copy.
 | `meters` | `meters` | [Meters](#meters) | 30 times a second, or as often as `meter_rate_hz` says. |
 | `devices_changed` | `devices` | list of [DeviceInfo](#deviceinfo) | A device was plugged in or out. |
 | `system_volumes_changed` | `devices` | [SystemVolumes](#systemvolumes) | The system's volume on one of Weir's devices changed. |
-| `inserts_changed` | `devices` | list of [InsertStatus](#insertstatus) | A program started or stopped playing into a "back from effects" device, or external effects were switched on or off. |
+| `inserts_changed` | `devices` | list of [InsertStatus](#insertstatus) | A program started or stopped playing into a "from effects" device, or external effects were switched on or off. |
 | `apps_changed` | `apps` | list of [AppStream](#appstream) | An application started or stopped playing, moved, or its volume changed. |
 | `engine_changed` | `engine` | [EngineStatus](#enginestatus) | The engine connected, stopped, or changed rate or buffer size. |
 | `settings_changed` | `settings` | [Settings](#settings) | A setting changed. |
@@ -1331,7 +1331,7 @@ mixer shows them, left to right.
 | Field | Type | |
 |---|---|---|
 | `id` | number | Its id. |
-| `name` | string | Its name. A virtual strip's device is called "*name* (Weir)". |
+| `name` | string | Its name. A virtual strip's device is called "*name* (Weir)", with any `:` in the name made `-`, since patchbays take `:` for the end of a program's name. |
 | `kind` | string | `virtual`, a device applications play into, or `hardware`, which captures from `device`. |
 | `layout` | [layout](#layout) | Its channels. |
 | `gain_db` | number | The fader, -60 (silent) to +12 dB. |
@@ -1360,7 +1360,7 @@ mixer shows them, left to right.
 | Field | Type | |
 |---|---|---|
 | `id` | number | Its id. |
-| `name` | string | Its name. A virtual bus's microphone is called "*name* (Weir)". |
+| `name` | string | Its name. A virtual bus's microphone is called "*name* (Weir)", with any `:` made `-` as for strips. |
 | `kind` | string | `hardware`, which plays to `device`, or `virtual`, a virtual microphone. |
 | `layout` | [layout](#layout) | Its channels. |
 | `gain_db` | number | The fader, -60 (silent) to +12 dB. |
@@ -1497,10 +1497,17 @@ and delays the bus that much while it is on.
 External effects: a point in a strip's or bus's chain where its sound
 leaves Weir for another program, such as [Carla](https://kx.studio/Applications:Carla)
 or EasyEffects, and comes back. While they are on, Weir makes two devices
-for them: "*name*: to effects (Weir)", a microphone the effects program
-records from, and "*name*: back from effects (Weir)", an output it plays
-into. Link them to the program in its own settings or in a patchbay such
-as qpwgraph.
+for them: "*name* to effects (Weir)", a microphone the effects program
+records from, and "*name* from effects (Weir)", an output it plays into.
+Link them to the program in its own settings or in a patchbay such as
+Carla's or qpwgraph.
+
+Weir links "from effects" on into a node of its own, "Weir effects return"
+(`weir.effects-return`), which exists while any external effects are on
+and has a port per channel of each, such as `from_effects_strip_2_FL`. So
+a patchbay shows a line, from the engine, "Weir Engine", through the
+effects program and on to the return node. A program can also be linked
+straight into the return node's ports; that counts as connected too.
 
 ```json
 {"enabled": true, "position": "before_compressor", "fallback": "pass_through"}
@@ -1510,7 +1517,7 @@ as qpwgraph.
 |---|---|---|
 | `enabled` | `false` | Whether the sound goes out and back. Switching it on or off makes or removes the two devices. |
 | `position` | `before_fader` | Where in the chain, from the lists below. |
-| `fallback` | `pass_through` | What carries on while nothing plays into "back from effects": `pass_through`, the sound as it went out, as if the external effects were off, or `silence`. |
+| `fallback` | `pass_through` | What carries on while nothing plays into "from effects": `pass_through`, the sound as it went out, as if the external effects were off, or `silence`. |
 
 A strip's places, in the order of its chain: `before_denoise`,
 `before_gate`, `before_eq`, `before_compressor`, `before_fader`,
@@ -1528,7 +1535,7 @@ and the fallback as programs connect and go, fading over 10 ms.
 ### InsertStatus
 
 `{"target": {"strip": 1}, "connected": true}`: whether something plays
-into the "back from effects" device of a strip's or bus's
+into the "from effects" device of a strip's or bus's
 [external effects](#insert). While not connected, the strip or bus plays
 its `fallback`.
 

@@ -2,7 +2,7 @@
 //! applications choose as their output, and a microphone for each virtual
 //! bus, which applications record from. Each strip and bus with external
 //! effects on has two more: "to effects", a microphone the effects program
-//! records from, and "back from effects", a playback device it plays into.
+//! records from, and "from effects", a playback device it plays into.
 //!
 //! Each is a `support.null-audio-sink` adapter the runner creates and
 //! destroys as strips and buses come and go. Renaming a strip or changing
@@ -18,7 +18,7 @@ use pipewire::node::Node;
 use pipewire::properties::PropertiesBox;
 use std::time::{Duration, Instant};
 use tracing::{debug, error, info, warn};
-use weir_protocol::{BusKind, ChannelPosition, StripId, StripKind};
+use weir_protocol::{device_description, BusKind, ChannelPosition, Insert, StripId, StripKind};
 
 /// How long to wait for a recreated device before giving up on moving its
 /// applications back.
@@ -60,7 +60,7 @@ struct Wanted {
     name: String,
     /// What the system shows, such as "Music (Weir)".
     description: String,
-    /// `Audio/Sink` for a strip or "back from effects",
+    /// `Audio/Sink` for a strip or "from effects",
     /// `Audio/Source/Virtual` for a bus or "to effects".
     class: &'static str,
     positions: Vec<ChannelPosition>,
@@ -77,7 +77,7 @@ impl Runner {
             .map(|s| Wanted {
                 key: DeviceKey::Own(Owner::Strip(s.id)),
                 name: virtual_input_node_name(s.id),
-                description: format!("{} (Weir)", s.name),
+                description: device_description(&s.name),
                 class: "Audio/Sink",
                 positions: s.layout.positions(),
             });
@@ -89,24 +89,25 @@ impl Runner {
             .map(|b| Wanted {
                 key: DeviceKey::Own(Owner::Bus(b.id)),
                 name: virtual_output_node_name(b.id),
-                description: format!("{} (Weir)", b.name),
+                description: device_description(&b.name),
                 class: "Audio/Source/Virtual",
                 positions: b.layout.positions(),
             });
         let effects = with_effects(&self.state).into_iter().flat_map(|w| {
             let target = w.owner.target();
+            let (to_effects, from_effects) = Insert::device_names(&w.name);
             [
                 Wanted {
                     key: DeviceKey::ToEffects(w.owner),
                     name: to_effects_node_name(target),
-                    description: format!("{}: to effects (Weir)", w.name),
+                    description: to_effects,
                     class: "Audio/Source/Virtual",
                     positions: w.positions.clone(),
                 },
                 Wanted {
                     key: DeviceKey::FromEffects(w.owner),
                     name: from_effects_node_name(target),
-                    description: format!("{}: back from effects (Weir)", w.name),
+                    description: from_effects,
                     class: "Audio/Sink",
                     positions: w.positions,
                 },

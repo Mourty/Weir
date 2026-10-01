@@ -1,12 +1,19 @@
-//! Wrapper over `pw_filter`: the engine node.
+//! Wrapper over `pw_filter`: the engine node, and the node external effects
+//! come back into.
 //!
 //! One `pw_filter` does all of Weir's mixing. It has an input port for every
-//! strip channel and an output port for every bus channel, and one of each
-//! more for every channel of a strip or bus with external effects on.
+//! strip channel and an output port for every bus channel, and one more
+//! output for every channel of a strip or bus with external effects on.
 //! PipeWire calls [`on_process`] on its real-time thread once per cycle
 //! with a buffer for each.
+//!
+//! What comes back from external effects arrives in a second, much smaller
+//! node, "Weir effects return", whose [`on_return_process`] passes it on to
+//! the engine through each insert's [`Handoff`]. Why it is a node of its
+//! own is in [`crate::dsp::handoff`].
 
-use crate::dsp::params::{NoPorts, RtInsert};
+use crate::dsp::handoff::Handoff;
+use crate::dsp::params::{NoPorts, RtInsert, MAX_QUANTUM};
 use crate::dsp::{build_rt_params, PortPtr, Processor, RtParams};
 use arc_swap::ArcSwap;
 use libspa_sys as spa_sys;
@@ -26,12 +33,17 @@ const RAMP_MS: u32 = 10;
 /// Which way a port carries audio.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Direction {
-    /// Into the engine: a strip channel, or one coming back from external
+    /// Into the node: a strip channel, or one coming back from external
     /// effects.
     Input,
-    /// Out of the engine: a bus channel, or one going to external effects.
+    /// Out of the node: a bus channel, or one going to external effects.
     Output,
 }
+
+/// The group both of Weir's nodes are in, so that one driver always runs
+/// them, and the return node keeps time with the engine whatever it is
+/// linked to.
+const NODE_GROUP: &str = "weir";
 
 /// Data shared between the real-time process callback, the runner thread
 /// and the daemon (for meters and status).
@@ -177,8 +189,13 @@ unsafe extern "C" fn on_process(data: *mut c_void, position: *mut spa_sys::spa_i
         for (c, &port) in ins.send_ports.iter().enumerate() {
             ins.send_bufs[c].set(buffer(port));
         }
-        for (c, &port) in ins.return_ports.iter().enumerate() {
-            ins.return_bufs[c].set(buffer(port));
+        // What came back in the return node's last cycle.
+        let back = ins.handoff.as_ref().map(|h| h.pull(n));
+        for (c, cell) in ins.return_bufs.iter().enumerate() {
+            let buf = back
+                .and_then(|b| b.get(c))
+                .map_or(std::ptr::null(), |b| b.as_ptr());
+            cell.set(buf);
         }
     };
     for strip in &params.strips {
@@ -192,10 +209,6 @@ unsafe extern "C" fn on_process(data: *mut c_void, position: *mut spa_sys::spa_i
             bus.out_bufs[c].set(buffer(port));
         }
         resolve_insert(&bus.insert);
-    }
-    let silent = buffer(params.effects_loop);
-    if !silent.is_null() {
-        std::ptr::write_bytes(silent, 0, n);
     }
 
     let input = |si: usize, c: usize| -> *const f32 { params.strips[si].in_bufs[c].get() };
@@ -218,14 +231,86 @@ pub enum FilterError {
     AddPort,
 }
 
-/// The engine node. Must be created, used and dropped on the PipeWire
-/// main-loop thread.
-pub struct Filter {
-    raw: *mut pw_sys::pw_filter,
-    shared: Arc<FilterShared>,
+/// What the return node shares with its process callback.
+pub struct ReturnShared {
+    /// The published parameter snapshot.
+    pub params: ArcSwap<ReturnParams>,
 }
 
-impl Filter {
+impl ReturnShared {
+    /// Shared state with nothing to pass on yet.
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self {
+            params: ArcSwap::from_pointee(ReturnParams::default()),
+        })
+    }
+}
+
+/// What the return node passes on: one entry per strip or bus with external
+/// effects on.
+#[derive(Default)]
+pub struct ReturnParams {
+    pub returns: Vec<RtReturn>,
+}
+
+/// One strip's or bus's way back from its external effects.
+pub struct RtReturn {
+    /// One input port per channel, may be null.
+    pub ports: Vec<PortPtr>,
+    /// Where they go, for the engine.
+    pub handoff: Arc<Handoff>,
+}
+
+// As for `RtParams`: the port pointers are only used by PipeWire on its
+// own thread.
+unsafe impl Send for ReturnParams {}
+unsafe impl Sync for ReturnParams {}
+
+static RETURN_EVENTS: pw_sys::pw_filter_events = pw_sys::pw_filter_events {
+    version: pw_sys::PW_VERSION_FILTER_EVENTS,
+    destroy: None,
+    state_changed: None,
+    io_changed: None,
+    param_changed: None,
+    add_buffer: None,
+    remove_buffer: None,
+    process: Some(on_return_process),
+    drained: None,
+    command: None,
+};
+
+/// The return node's real-time process callback: what came back from each
+/// strip's and bus's external effects goes into its hand-off, for the
+/// engine's next cycle.
+unsafe extern "C" fn on_return_process(data: *mut c_void, position: *mut spa_sys::spa_io_position) {
+    let shared = &*(data as *const ReturnShared);
+    if position.is_null() {
+        return;
+    }
+    let n = ((*position).clock.duration as usize).min(MAX_QUANTUM);
+    let guard = shared.params.load();
+    for r in &guard.returns {
+        // PipeWire hands out a port's buffer once per cycle, so each is
+        // asked for exactly once, here.
+        let mut bufs = [std::ptr::null::<f32>(); 16];
+        for (slot, &port) in bufs.iter_mut().zip(&r.ports) {
+            if !port.is_null() {
+                *slot = pw_sys::pw_filter_get_dsp_buffer(port, n as u32) as *const f32;
+            }
+        }
+        r.handoff
+            .push(n, &|c| bufs.get(c).copied().unwrap_or(std::ptr::null()));
+    }
+}
+
+/// One of Weir's nodes. Must be created, used and dropped on the PipeWire
+/// main-loop thread. `S` is what it shares with its callbacks.
+pub struct Filter<S: 'static = FilterShared> {
+    raw: *mut pw_sys::pw_filter,
+    shared: Arc<S>,
+}
+
+impl Filter<FilterShared> {
     /// Make the engine node, named `node_name`, on `loop_`, and connect it.
     /// Its callbacks work on `shared`.
     pub fn new(
@@ -233,10 +318,45 @@ impl Filter {
         shared: Arc<FilterShared>,
         node_name: &str,
     ) -> Result<Self, FilterError> {
+        Self::create(loop_, shared, node_name, "Weir Engine", "Weir", &EVENTS)
+    }
+}
+
+impl Filter<ReturnShared> {
+    /// Make the node external effects come back into, named `node_name`, on
+    /// `loop_`, and connect it.
+    pub fn new_return(
+        loop_: &pipewire::loop_::Loop,
+        shared: Arc<ReturnShared>,
+        node_name: &str,
+    ) -> Result<Self, FilterError> {
+        let description = "Weir effects return";
+        Self::create(
+            loop_,
+            shared,
+            node_name,
+            description,
+            description,
+            &RETURN_EVENTS,
+        )
+    }
+}
+
+impl<S: 'static> Filter<S> {
+    /// Make a node, and connect it. `events` gets `shared` as its data.
+    fn create(
+        loop_: &pipewire::loop_::Loop,
+        shared: Arc<S>,
+        node_name: &str,
+        description: &str,
+        nick: &str,
+        events: &'static pw_sys::pw_filter_events,
+    ) -> Result<Self, FilterError> {
         let mut props = PropertiesBox::new();
         props.insert("node.name", node_name);
-        props.insert("node.description", "Weir Engine");
-        props.insert("node.nick", "Weir");
+        props.insert("node.description", description);
+        props.insert("node.nick", nick);
+        props.insert("node.group", NODE_GROUP);
         props.insert("media.type", "Audio");
         props.insert("media.category", "Filter");
         props.insert("media.role", "DSP");
@@ -249,7 +369,7 @@ impl Filter {
                 loop_.as_raw_ptr(),
                 name.as_ptr(),
                 props.into_raw(),
-                &EVENTS,
+                events,
                 Arc::as_ptr(&shared) as *mut c_void,
             )
         };
@@ -271,8 +391,8 @@ impl Filter {
         Ok(Self { raw, shared })
     }
 
-    /// What the node shares with its callbacks and the daemon.
-    pub fn shared(&self) -> &Arc<FilterShared> {
+    /// What the node shares with its callbacks.
+    pub fn shared(&self) -> &Arc<S> {
         &self.shared
     }
 
@@ -360,7 +480,9 @@ impl Filter {
             pw_sys::pw_filter_remove_port(port);
         }
     }
+}
 
+impl Filter<FilterShared> {
     /// Global id of the node, or `None` until connected.
     pub fn node_id(&self) -> Option<u32> {
         let id = unsafe { pw_sys::pw_filter_get_node_id(self.raw) };
@@ -373,7 +495,7 @@ impl Filter {
     }
 }
 
-impl Drop for Filter {
+impl<S: 'static> Drop for Filter<S> {
     fn drop(&mut self) {
         unsafe {
             pw_sys::pw_filter_disconnect(self.raw);

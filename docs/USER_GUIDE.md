@@ -373,8 +373,12 @@ the same music on two outputs that do not take equally long, such as
 speakers next to a Bluetooth speaker, which is usually 100 to 250 ms
 behind: put the delay on the faster bus until the two line up.
 
-Open a bus's **...** menu and set **Delay**. Changing it while music plays
-blends from the old delay to the new one, so there is no click. A delay is
+Open the bus's settings window and unfold **Delay**: drag the slider, click
+the number to type an exact value, or use the **-1 ms** and **+1 ms**
+buttons to nudge it while you listen. The bus's **...** menu has a quick
+Delay field too, which you drag. Changing the delay while music plays blends
+from the old one to the new one, so there is no click. The signal chain at
+the top of the window shows a **Delay** stage when it is on. A delay is
 meant for listening to music: it does not delay anything else, so video
 would drift out of step with the bus.
 

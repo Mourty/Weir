@@ -51,6 +51,9 @@ fn bus_fx(b: &Bus) -> String {
     if b.limiter.enabled {
         fx.push(format!("lim {:+.0}", b.limiter.ceiling_db));
     }
+    if b.delay_ms > 0.0 {
+        fx.push(format!("dly {:.0}ms", b.delay_ms));
+    }
     if b.insert.enabled {
         fx.push("ext".to_string());
     }
@@ -341,8 +344,11 @@ pub fn bus(b: &Bus, st: &FullState) {
             format!(" limiter at {:+.1} dB", b.limiter.ceiling_db)
         } else {
             String::new()
-        }
+        },
     );
+    if b.delay_ms > 0.0 {
+        println!("  delay {:.1} ms", b.delay_ms);
+    }
     if !b.downmix.is_default() {
         println!("  downmix: {}", downmix_summary(&b.downmix));
     }

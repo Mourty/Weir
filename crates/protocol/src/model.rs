@@ -91,6 +91,14 @@ pub mod id_keys {
 pub const GAIN_MIN_DB: f32 = -60.0;
 /// Highest fader position.
 pub const GAIN_MAX_DB: f32 = 12.0;
+
+/// Longest delay a bus can add to its output, in milliseconds.
+pub const BUS_DELAY_MAX_MS: f32 = 500.0;
+
+/// For `skip_serializing_if`: a delay of nothing is left out of files.
+fn is_zero(v: &f32) -> bool {
+    *v == 0.0
+}
 /// Value reported by meters for silence (JSON has no -inf).
 pub const METER_FLOOR_DB: f32 = -100.0;
 
@@ -822,6 +830,11 @@ pub struct Bus {
     /// Fold all channels to mono (Voicemeeter "mono" button).
     #[serde(default)]
     pub mono: bool,
+    /// Delay added to the bus's output, in milliseconds, from 0 to
+    /// [`BUS_DELAY_MAX_MS`]. Lines a bus up with one that takes longer to
+    /// play, such as speakers next to a Bluetooth speaker.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub delay_ms: f32,
     /// PipeWire `node.name` of the sink to play to (hardware buses).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub device: Option<String>,
@@ -856,6 +869,7 @@ impl Bus {
             gain_db: 0.0,
             mute: false,
             mono: false,
+            delay_ms: 0.0,
             device: None,
             color: None,
             eq: Equalizer::default(),
@@ -878,6 +892,13 @@ impl Bus {
             }
         };
         self.gain_db = self.gain_db.clamp(GAIN_MIN_DB, GAIN_MAX_DB);
+        let delay = self.delay_ms;
+        self.delay_ms = if delay.is_finite() {
+            delay.clamp(0.0, BUS_DELAY_MAX_MS)
+        } else {
+            0.0
+        };
+        fix(self.delay_ms != delay, "had a delay out of range");
         let empty = self.layout.channel_count() == 0;
         if empty {
             self.layout = ChannelLayout::Stereo;

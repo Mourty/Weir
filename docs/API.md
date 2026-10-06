@@ -277,7 +277,7 @@ Returns `{"protocol_version", "daemon_version", "capabilities"}`:
   "protocol_version": 1,
   "daemon_version": "1.0.0",
   "capabilities": ["meters", "apps", "eq", "gate", "denoise", "compressor", "ducking",
-                   "limiter", "sends", "upmix", "downmix", "spectrum", "history",
+                   "limiter", "bus_delay", "sends", "upmix", "downmix", "spectrum", "history",
                    "scenes", "setups", "app_rules", "system_volumes",
                    "external_effects", "toggle", "deltas", "names", "batch",
                    "describe"]
@@ -615,6 +615,7 @@ Change a bus. Only the fields you give change.
 | `gain_delta_db` | number, *optional* | Move the fader by this many dB. |
 | `mute` | switch, *optional* | Silence the bus. |
 | `mono` | switch, *optional* | Fold every channel into one, on all its speakers. |
+| `delay_ms` | number, *optional* | Hold the bus's output back by this many milliseconds, 0 to 500. Values outside that are brought into it. |
 | `name` | string, *optional* | A new name, unique among buses, up to 40 characters. |
 | `color` | string or `null`, *optional* | An accent color as `"#RRGGBB"`, or `null` for none. |
 | `layout` | [layout](#layout), *optional* | Its channels. |
@@ -1366,6 +1367,7 @@ mixer shows them, left to right.
 | `gain_db` | number | The fader, -60 (silent) to +12 dB. |
 | `mute` | boolean | |
 | `mono` | boolean | Every channel folded into one, on all its speakers. |
+| `delay_ms` | number | How long the bus holds its output back, 0 to 500. Left out when it is 0, which is what a reader takes a missing one for. |
 | `device` | string | A hardware bus's device, by `name`, when it has one. |
 | `color` | string | `"#RRGGBB"`, when it has one. |
 | `eq` | object | Its [Equalizer](#equalizer), before the fader. |

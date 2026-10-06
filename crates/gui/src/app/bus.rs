@@ -237,6 +237,8 @@ impl App {
         ui.separator();
         self.limiter_menu(ui, b);
         ui.separator();
+        self.delay_menu(ui, b);
+        ui.separator();
         if ui
             .button(RichText::new("Remove bus").color(theme::p().meter_red))
             .clicked()
@@ -310,6 +312,35 @@ impl App {
                 .size(11.0)
                 .color(theme::p().text_dim),
         );
+    }
+
+    /// The delay of a bus, for its menus: holds its output back, so it can
+    /// be lined up with one that plays later, such as a Bluetooth speaker.
+    pub(super) fn delay_menu(&mut self, ui: &mut Ui, b: &Bus) {
+        egui::Grid::new(("delay", b.id))
+            .num_columns(2)
+            .show(ui, |ui| {
+                ui.label("Delay");
+                let key = Key::BusDelay(b.id);
+                let mut delay = self.value(key, b.delay_ms);
+                if ui
+                    .add(
+                        egui::DragValue::new(&mut delay)
+                            .speed(1.0)
+                            .range(0.0..=BUS_DELAY_MAX_MS)
+                            .fixed_decimals(0)
+                            .suffix(" ms"),
+                    )
+                    .on_hover_text(
+                        "Holds this bus's sound back by this long, to line it up with a bus \
+                         that plays later, such as a Bluetooth speaker",
+                    )
+                    .changed()
+                {
+                    self.set_value(key, delay);
+                }
+                ui.end_row();
+            });
     }
 
     /// The list of strips feeding a bus, drawn according to the preference.

@@ -72,6 +72,7 @@ enum Key {
     StripSend(StripId, BusId),
     BusCeiling(BusId),
     BusRelease(BusId),
+    BusDelay(BusId),
     AppVolume(u32),
 }
 
@@ -452,6 +453,11 @@ fn key_request(key: Key, v: f32) -> Request {
                 release_ms: Some(v),
                 ..Default::default()
             }),
+            ..Default::default()
+        }),
+        Key::BusDelay(id) => Request::SetBus(BusPatch {
+            id,
+            delay_ms: Some(v),
             ..Default::default()
         }),
         Key::AppVolume(app) => Request::SetAppVolume(AppVolumeParams {

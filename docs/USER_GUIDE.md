@@ -224,7 +224,7 @@ step the sound goes through, in order, lit where it is on.
 
 * A strip: noise suppression, gate, equalizer, compressor, fader, ducking,
   upmix.
-* A bus: downmix, equalizer, fader, safety limiter.
+* A bus: downmix, equalizer, fader, safety limiter, delay.
 
 **Ext FX**, external effects, sits in the chain wherever you put them.
 
@@ -365,6 +365,18 @@ would distort anything louder, and nobody listening to your stream can tell
 you it happened. Hardware buses start with it off. The limiter looks 1.5 ms
 ahead, so it catches a peak before it happens, and delays the bus by those
 1.5 ms while it is on.
+
+### Bus delay
+
+A bus can hold its sound back by up to half a second. It is for playing
+the same music on two outputs that do not take equally long, such as
+speakers next to a Bluetooth speaker, which is usually 100 to 250 ms
+behind: put the delay on the faster bus until the two line up.
+
+Open a bus's **...** menu and set **Delay**. Changing it while music plays
+blends from the old delay to the new one, so there is no click. A delay is
+meant for listening to music: it does not delay anything else, so video
+would drift out of step with the bus.
 
 The **CLIP** light under every fader lights up when that strip or bus goes
 over full scale, the loudest a sound card or a recording can carry, and

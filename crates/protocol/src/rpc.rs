@@ -813,6 +813,9 @@ pub struct BusPatch {
     /// See [`Bus::mono`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mono: Option<Flag>,
+    /// See [`Bus::delay_ms`]; 0 to [`BUS_DELAY_MAX_MS`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delay_ms: Option<f32>,
     /// See [`Bus::layout`]; 1 to 16 channels.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub layout: Option<ChannelLayout>,

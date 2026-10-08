@@ -366,6 +366,10 @@ you it happened. Hardware buses start with it off. The limiter looks 1.5 ms
 ahead, so it catches a peak before it happens, and delays the bus by those
 1.5 ms while it is on.
 
+The **CLIP** light under every fader lights up when that strip or bus goes
+over full scale, the loudest a sound card or a recording can carry, and
+stays lit until you click it, so you notice even if you looked away.
+
 ### Bus delay
 
 A bus can hold its sound back by up to half a second. It is for playing
@@ -375,16 +379,12 @@ behind: put the delay on the faster bus until the two line up.
 
 Open the bus's settings window and unfold **Delay**: drag the slider, click
 the number to type an exact value, or use the **-1 ms** and **+1 ms**
-buttons to nudge it while you listen. The bus's **...** menu has a quick
-Delay field too, which you drag. Changing the delay while music plays blends
-from the old one to the new one, so there is no click. The signal chain at
-the top of the window shows a **Delay** stage when it is on. A delay is
-meant for listening to music: it does not delay anything else, so video
-would drift out of step with the bus.
-
-The **CLIP** light under every fader lights up when that strip or bus goes
-over full scale, the loudest a sound card or a recording can carry, and
-stays lit until you click it, so you notice even if you looked away.
+buttons to nudge it while you listen. The bus's **…** menu has a quick
+Delay field too, which you drag. Changing the delay while music plays
+blends from the old one to the new one, so there is no click. The signal
+chain at the top of the window shows a **Delay** stage when it is on.
+Everything on that bus is delayed, so a video's sound plays that much after
+its picture.
 
 ### External effects
 

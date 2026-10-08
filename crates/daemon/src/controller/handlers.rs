@@ -546,10 +546,10 @@ fn set_bus(m: &mut MixerState, p: BusPatch) -> Result<Bus, RpcError> {
         b.mono = v.apply(b.mono);
     }
     if let Some(v) = p.delay_ms {
-        if !v.is_finite() {
-            return Err(RpcError::application("delay_ms must be a number"));
-        }
         b.delay_ms = v.clamp(0.0, BUS_DELAY_MAX_MS);
+    }
+    if let Some(d) = p.delay_delta_ms {
+        b.delay_ms = (b.delay_ms + d).clamp(0.0, BUS_DELAY_MAX_MS);
     }
     if let Some(v) = p.layout {
         check_layout(&v)?;

@@ -816,6 +816,10 @@ pub struct BusPatch {
     /// See [`Bus::delay_ms`]; 0 to [`BUS_DELAY_MAX_MS`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub delay_ms: Option<f32>,
+    /// Move the delay by this many milliseconds, after `delay_ms` if both
+    /// are given.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delay_delta_ms: Option<f32>,
     /// See [`Bus::layout`]; 1 to 16 channels.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub layout: Option<ChannelLayout>,

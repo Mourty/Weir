@@ -122,6 +122,36 @@ fn a_bus_delay_is_kept_within_range_and_undone_as_one_step() {
 }
 
 #[test]
+fn a_bus_delay_can_be_moved_by_an_amount() {
+    let mut r = Rig::new("bus-delay-by");
+    r.ok("set_bus", json!({"id": "Headset", "delay_ms": 190}));
+    let b = r.ok("set_bus", json!({"id": "Headset", "delay_delta_ms": 1}));
+    assert_eq!(b["delay_ms"].as_f64(), Some(191.0));
+    r.ok("set_bus", json!({"id": "Headset", "delay_delta_ms": -11}));
+    assert_eq!(r.c.mixer().buses[0].delay_ms, 180.0);
+    // Both given: the step comes after the value, and the result stays in
+    // range at either end.
+    let b = r.ok(
+        "set_bus",
+        json!({"id": 1, "delay_ms": 100, "delay_delta_ms": 5}),
+    );
+    assert_eq!(b["delay_ms"].as_f64(), Some(105.0));
+    let b = r.ok("set_bus", json!({"id": 1, "delay_delta_ms": 9999}));
+    assert_eq!(b["delay_ms"].as_f64(), Some(500.0));
+    r.ok("set_bus", json!({"id": 1, "delay_delta_ms": -9999}));
+    assert_eq!(r.c.mixer().buses[0].delay_ms, 0.0);
+    // Whichever way it was changed, the history calls it the delay.
+    for patch in [
+        json!({"id": 1, "delay_delta_ms": 3}),
+        json!({"id": 1, "delay_ms": 7, "delay_delta_ms": 3}),
+    ] {
+        r.ok("set_bus", patch);
+        let h = r.ok("history", json!({}));
+        assert_eq!(h["undo"][0]["label"], "A1 Headset delay");
+    }
+}
+
+#[test]
 fn names_are_unique_and_short() {
     let mut r = Rig::new("names");
     assert_eq!(

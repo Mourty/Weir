@@ -95,10 +95,6 @@ pub const GAIN_MAX_DB: f32 = 12.0;
 /// Longest delay a bus can add to its output, in milliseconds.
 pub const BUS_DELAY_MAX_MS: f32 = 500.0;
 
-/// For `skip_serializing_if`: a delay of nothing is left out of files.
-fn is_zero(v: &f32) -> bool {
-    *v == 0.0
-}
 /// Value reported by meters for silence (JSON has no -inf).
 pub const METER_FLOOR_DB: f32 = -100.0;
 
@@ -597,6 +593,11 @@ fn is_false(b: &bool) -> bool {
     !*b
 }
 
+/// For `skip_serializing_if`: a delay of nothing is left out of files.
+fn is_zero(v: &f32) -> bool {
+    *v == 0.0
+}
+
 /// What the system calls the virtual device of a strip or bus called
 /// `name`: "Music (Weir)".
 pub fn device_description(name: &str) -> String {
@@ -893,11 +894,7 @@ impl Bus {
         };
         self.gain_db = self.gain_db.clamp(GAIN_MIN_DB, GAIN_MAX_DB);
         let delay = self.delay_ms;
-        self.delay_ms = if delay.is_finite() {
-            delay.clamp(0.0, BUS_DELAY_MAX_MS)
-        } else {
-            0.0
-        };
+        self.delay_ms = finite_or(delay, 0.0).clamp(0.0, BUS_DELAY_MAX_MS);
         fix(self.delay_ms != delay, "had a delay out of range");
         let empty = self.layout.channel_count() == 0;
         if empty {

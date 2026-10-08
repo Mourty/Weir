@@ -325,6 +325,9 @@ pub struct BusArgs {
     /// speaker.
     #[arg(long)]
     pub delay: Option<f32>,
+    /// Move the delay by this many milliseconds, such as 5 or -5.
+    #[arg(long, allow_negative_numbers = true)]
+    pub delay_by: Option<f32>,
     /// A new name.
     #[arg(long)]
     pub name: Option<String>,

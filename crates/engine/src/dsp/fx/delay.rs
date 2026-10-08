@@ -23,7 +23,8 @@ pub(super) struct DelayRt {
     line: Vec<Vec<f32>>,
     /// Where the next sample goes, in `0..wrap`.
     pos: usize,
-    /// How much of `line` is in use at `rate`.
+    /// How much of `line` is in use at `rate`. Everything from here on is
+    /// silent, so clearing `..wrap` clears the line.
     wrap: usize,
     rate: u32,
     /// The delay being heard, in samples.
@@ -81,13 +82,15 @@ impl DelayRt {
 
     /// Forget everything, for a fresh start at `rate`.
     fn reset(&mut self, rate: u32) {
-        self.rate = rate;
-        self.wrap = Self::wrap_for(rate);
+        // Clear what was in use, before the new rate changes how much that
+        // is: the rest of the line is silent, and has never been touched.
         if self.dirty {
             for l in self.line.iter_mut() {
-                l.fill(0.0);
+                l[..self.wrap].fill(0.0);
             }
         }
+        self.rate = rate;
+        self.wrap = Self::wrap_for(rate);
         self.pos = 0;
         self.len = 0;
         self.prev_len = 0;
@@ -153,5 +156,46 @@ impl DelayRt {
         // Every channel advances through the fade together.
         self.fade = (fade0 + step * n as f32).min(1.0);
         self.dirty = true;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Run `blocks` blocks of `value` through `line`, and what came out.
+    fn play(line: &mut DelayRt, ms: f32, rate: u32, value: f32, blocks: usize) -> Vec<f32> {
+        let mut heard = Vec::new();
+        for _ in 0..blocks {
+            let mut buf = vec![value; 1024];
+            line.run(ms, rate, 8, &mut [Some(&mut buf[..])], 1024);
+            heard.extend_from_slice(&buf);
+        }
+        heard
+    }
+
+    #[test]
+    fn a_change_of_rate_leaves_no_old_sound_in_the_line() {
+        let mut line = DelayRt::new(1);
+        // At 96 kHz, long enough to fill the whole line with sound.
+        play(&mut line, 400.0, 96_000, 1.0, 60);
+        // At 48 kHz, which uses less of the line, and with the delay off.
+        play(&mut line, 0.0, 48_000, 0.0, 1);
+        // Back at 96 kHz with a long delay and nothing playing: what comes
+        // out is what is in the line, which must be silence.
+        let heard = play(&mut line, 400.0, 96_000, 0.0, 60);
+        assert!(heard.iter().all(|&v| v == 0.0), "old sound came back");
+    }
+
+    #[test]
+    fn a_change_of_rate_only_touches_what_was_in_use() {
+        // The line is allocated zeroed, and clearing all of it would make
+        // the system hand out every page of it on the real-time thread.
+        let mut line = DelayRt::new(1);
+        play(&mut line, 100.0, 48_000, 1.0, 10);
+        let used = line.wrap;
+        assert!(used < LINE_LEN / 4, "{used} of {LINE_LEN}");
+        play(&mut line, 100.0, 44_100, 1.0, 1);
+        assert!(line.wrap <= used);
     }
 }

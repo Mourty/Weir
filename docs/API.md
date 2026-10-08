@@ -233,7 +233,7 @@ of the current state.
 ### Steps
 
 Levels can be moved by an amount instead of set: `gain_delta_db` on
-`set_strip` and `set_bus`, `pan_delta` on `set_strip`, `level_delta_db` on
+`set_strip` and `set_bus`, `delay_delta_ms` on `set_bus`, `pan_delta` on `set_strip`, `level_delta_db` on
 `set_route` and `volume_delta_db` on `set_app_volume`. That is what a dial
 wants. Given with the absolute value, the step is applied after it.
 
@@ -616,6 +616,7 @@ Change a bus. Only the fields you give change.
 | `mute` | switch, *optional* | Silence the bus. |
 | `mono` | switch, *optional* | Fold every channel into one, on all its speakers. |
 | `delay_ms` | number, *optional* | Hold the bus's output back by this many milliseconds, 0 to 500. Values outside that are brought into it. |
+| `delay_delta_ms` | number, *optional* | Move the delay by this many milliseconds. |
 | `name` | string, *optional* | A new name, unique among buses, up to 40 characters. |
 | `color` | string or `null`, *optional* | An accent color as `"#RRGGBB"`, or `null` for none. |
 | `layout` | [layout](#layout), *optional* | Its channels. |

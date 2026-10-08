@@ -229,6 +229,37 @@ hand is respected.
 running when the window is closed. It talks to the rest through a channel,
 since its callbacks run on their own task.
 
+**Hotkeys** (`hotkeys/`) are steps, each an ordinary request, so a hotkey
+can do whatever the protocol can and needs nothing of its own in the
+engine. The controller keeps the list (`controller/hotkeys.rs`: checking,
+saving to `hotkeys.json`, noticing strips that are gone); a **runner**
+(`hotkeys/runner.rs`) does the work. It is one task with a mailbox that
+key presses, its own repeat and fade timers and a change of hotkeys all
+arrive in; a client pressing a hotkey calls it directly, under its lock,
+so the answer comes once the steps are done. Steps run through the same
+handler as requests, but without their own undo step: the runner records
+each press as one, from the mixer before the keys went down to the mixer
+once they are up and its fades are over. Putting back on release
+(`hotkeys/restore.rs`) compares the mixer before the press with the mixer
+right after the hotkey's own steps, as JSON with strips and buses matched
+by id, and sets back only those places. Undo steps recorded while the key
+was held are rewritten the same way, so undoing a fader moved while
+talking does not open the microphone again.
+
+The **keys** (`hotkeys/keys/`) come one of two ways. On Wayland no program
+may watch the keyboard, so Weir asks the desktop through the XDG desktop
+portal's global shortcuts (`portal.rs`, with `ashpd`): it suggests keys,
+the desktop decides and says when they go down and up, and people can
+change them in the desktop's settings. A portal session can bind only
+once, so a change of hotkeys closes it and opens a new one; shortcut ids
+carry a hash of the keys, so changed keys are offered afresh. On X11 Weir
+grabs the keys on the root window itself (`x11.rs`, with `x11rb`), with
+and without Caps Lock and Num Lock, and asks XKB not to repeat held keys
+as presses. Anywhere else hotkeys are pressed only by name, which the
+desktop's own shortcuts can do with `weirctl hotkey run`. At login the
+daemon waits for the desktop first, as it does for the window.
+`WEIR_HOTKEYS=desktop`, `x11` or `none` picks the way, for testing.
+
 **Starting at login** is systemd's to keep, not the configuration's:
 Weir starts at login when its user unit, `weir.service`, is enabled. The
 daemon asks `systemctl --user is-enabled` when it starts and after
@@ -317,6 +348,12 @@ plugin windows, presets and crash isolation: a project of its own, which
 Carla already is. A send and a return per strip or bus lets Carla,
 EasyEffects or anything else that PipeWire can link do the effects, for
 the price of one cycle of latency, and keeps Weir a mixer.
+
+**Why hotkeys in the daemon?** The daemon is what keeps running when the
+window is closed, and a hotkey that only worked while the window was open
+would be a surprise. Steps as requests, rather than a list of actions of
+their own, mean anything new in the protocol can be a hotkey's step at
+once, and that a script, a Stream Deck button and a key can share one.
 
 **Why only a local socket?** It needs no password: only the user running
 Weir can open it. A TCP listener could be added in the server alone, if

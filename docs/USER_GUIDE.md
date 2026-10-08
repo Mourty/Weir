@@ -640,6 +640,7 @@ Your settings, which are kept when Weir is uninstalled:
 | `~/.config/weir/scenes/` | Your scenes, one file each. |
 | `~/.config/weir/setups/` | Your setups, one file each. |
 | `~/.config/weir/eq-presets.toml` | Your equalizer presets. |
+| `~/.config/weir/hotkeys.json` | Your hotkeys. |
 | `~/.config/weir/gui.toml` | The window's own preferences, and the names of your devices, for showing them while they are unplugged. |
 | `~/.config/weir/backups/` | Copies of `config.toml` from the last ten times Weir started with a changed one. To go back to one, quit Weir and copy it over `config.toml`. |
 | `~/.local/state/weir/daemon.log` | What the service said, when the window started it. |

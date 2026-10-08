@@ -10,6 +10,8 @@
 //! * [`model`]: strips, buses, devices, meters and settings.
 //! * [`fx`]: the settings of every effect.
 //! * [`library`]: scenes and setups, the two kinds of saved mix.
+//! * [`hotkeys`]: keys that do things in the mixer, and their descriptions.
+//! * [`keys`]: key combinations such as `Ctrl+Alt+M`.
 //! * [`rpc`]: every request, response and notification.
 //!
 //! The doc comments here are also the protocol's documentation: the
@@ -19,11 +21,15 @@
 #![warn(missing_docs)]
 
 pub mod fx;
+pub mod hotkeys;
+pub mod keys;
 pub mod library;
 pub mod model;
 pub mod rpc;
 
 pub use fx::*;
+pub use hotkeys::*;
+pub use keys::*;
 pub use library::*;
 pub use model::*;
 pub use rpc::*;

@@ -470,3 +470,71 @@ fn strips_and_buses_can_be_named_instead_of_numbered() {
     let mut p = json!({"id": "Nope"});
     assert!(resolve_names("set_strip", &mut p, &m).is_err());
 }
+
+#[test]
+fn hotkeys_are_checked_kept_by_id_and_saved() {
+    let mut r = Rig::new("hotkeys");
+    let h = r.ok(
+        "set_hotkey",
+        json!({
+            "name": "Mute mic",
+            "keys": "ctrl + alt + m",
+            "steps": [{"method": "set_strip", "params": {"id": "Mic", "mute": "toggle"}}]
+        }),
+    );
+    assert_eq!(h["id"], json!(1));
+    assert_eq!(h["keys"], json!("Ctrl+Alt+M"));
+    // The strip is kept by id, so renaming it does not break the hotkey.
+    assert_eq!(h["steps"][0]["params"]["id"], json!(1));
+    r.ok("set_strip", json!({"id": "Mic", "name": "Voice"}));
+    let info = r.ok("list_hotkeys", json!({}));
+    assert_eq!(info["hotkeys"][0]["steps"][0]["params"]["id"], json!(1));
+    assert!(info.get("problems").is_none(), "{info}");
+
+    // A second one with the same name or keys is turned down.
+    let step = json!([{"method": "load_scene", "params": {"name": "Gaming"}}]);
+    for clash in [
+        json!({"name": "mute MIC", "steps": step}),
+        json!({"name": "Other", "keys": "Ctrl+Alt+M", "steps": step}),
+    ] {
+        assert_eq!(r.code("set_hotkey", clash), RpcError::APPLICATION);
+    }
+    // So are keys that would stop typing, requests that make no sense in a
+    // hotkey, fades of things that cannot fade, and strips that do not
+    // exist.
+    for bad in [
+        json!({"name": "A", "keys": "M", "steps": step}),
+        json!({"name": "B", "steps": [{"method": "subscribe", "params": {}}]}),
+        json!({"name": "C", "steps": [{"method": "set_strip", "params": {"id": 1, "mute": true}, "over_ms": 100}]}),
+        json!({"name": "D", "steps": [{"method": "set_strip", "params": {"id": "Nobody", "mute": true}}]}),
+        json!({"name": "E", "steps": [{"method": "fly", "params": {}}]}),
+    ] {
+        assert!(r.call("set_hotkey", bad.clone()).is_err(), "{bad}");
+    }
+
+    // Saved to its own file, and read back by the next daemon.
+    let paths = Paths::resolve(Some(r.dir.join("config.toml")));
+    let again = Controller::new(mixer(), None, paths, Settings::default(), Vec::new());
+    assert_eq!(again.hotkeys().len(), 1);
+    assert_eq!(again.hotkeys()[0].name, "Mute mic");
+}
+
+#[test]
+fn a_hotkey_on_a_removed_strip_is_a_problem_and_can_be_removed_by_name() {
+    let mut r = Rig::new("hotkey-problems");
+    r.ok(
+        "set_hotkey",
+        json!({
+            "name": "Music down",
+            "steps": [{"method": "set_strip", "params": {"id": "Music", "gain_delta_db": -3}}]
+        }),
+    );
+    r.ok("remove_strip", json!({"id": "Music"}));
+    let info = r.ok("list_hotkeys", json!({}));
+    assert_eq!(info["problems"][0]["hotkey"], json!(1), "{info}");
+    let left = r.ok("remove_hotkey", json!({"hotkey": "music DOWN"}));
+    assert_eq!(left["hotkeys"], json!([]));
+    assert!(r.call("remove_hotkey", json!({"hotkey": 7})).is_err());
+    // Pressing needs the runner, which a bare controller does not have.
+    assert!(r.call("run_hotkey", json!({"hotkey": 1})).is_err());
+}

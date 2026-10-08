@@ -14,6 +14,7 @@
 //! state to do its job.
 
 use crate::fx::*;
+use crate::hotkeys::*;
 use crate::library::Library;
 use crate::model::*;
 use serde::{Deserialize, Serialize};
@@ -263,18 +264,21 @@ pub enum Topic {
     /// `spectrum`: sent for the strips and buses a connection asked for with
     /// `watch_spectrum`, whatever it subscribed to.
     Spectrum,
+    /// `hotkeys_changed`: the hotkeys, or how keys reach Weir.
+    Hotkeys,
 }
 
 impl Topic {
     /// Everything a general-purpose client wants. `Window` is deliberately
     /// excluded: only the mixer window should claim to be one.
-    pub const ALL: [Topic; 6] = [
+    pub const ALL: [Topic; 7] = [
         Topic::State,
         Topic::Meters,
         Topic::Devices,
         Topic::Apps,
         Topic::Engine,
         Topic::Settings,
+        Topic::Hotkeys,
     ];
 }
 
@@ -1106,6 +1110,22 @@ pub enum Request {
     DeleteEqPreset(NameParams),
     /// Returns the updated [`Strip`] or [`Bus`].
     ApplyEqPreset(ApplyEqPresetParams),
+    /// Returns [`HotkeysInfo`]: every hotkey, and how keys reach Weir.
+    ListHotkeys,
+    /// Adds a hotkey, or replaces the one with the same `id`. Returns the
+    /// saved [`Hotkey`], with its id.
+    SetHotkey(Hotkey),
+    /// Removes a hotkey. Returns [`HotkeysInfo`].
+    RemoveHotkey(HotkeyRef),
+    /// Does what pressing the hotkey's keys does, until `release_hotkey`.
+    /// Returns the [`Hotkey`] once its steps are done.
+    PressHotkey(HotkeyRef),
+    /// Does what letting go of the hotkey's keys does. Returns the
+    /// [`Hotkey`] once its steps are done.
+    ReleaseHotkey(HotkeyRef),
+    /// Presses the hotkey and lets go at once, like a tap on its keys.
+    /// Returns the [`Hotkey`] once its steps are done.
+    RunHotkey(HotkeyRef),
     /// Start or stop `spectrum` notifications. Returns the targets now
     /// watched.
     WatchSpectrum(WatchSpectrumParams),
@@ -1225,6 +1245,8 @@ pub enum Notification {
     /// Whether the external effects of each strip and bus that has them on
     /// are connected changed.
     InsertsChanged(Vec<InsertStatus>),
+    /// The hotkeys, or how keys reach Weir, changed.
+    HotkeysChanged(HotkeysInfo),
 }
 
 impl Notification {
@@ -1245,6 +1267,7 @@ impl Notification {
             Self::SettingsChanged(_) => Topic::Settings,
             Self::Spectrum(_) => Topic::Spectrum,
             Self::ShowWindow | Self::Quit => Topic::Window,
+            Self::HotkeysChanged(_) => Topic::Hotkeys,
         }
     }
 

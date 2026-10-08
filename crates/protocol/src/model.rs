@@ -1388,6 +1388,9 @@ pub struct FullState {
     /// on are connected.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub inserts: Vec<InsertStatus>,
+    /// Every hotkey, and how keys reach Weir.
+    #[serde(default)]
+    pub hotkeys: crate::hotkeys::HotkeysInfo,
 }
 
 /// Whether a strip's or bus's external effects are connected: whether any

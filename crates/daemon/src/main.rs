@@ -9,12 +9,14 @@
 //! * [`tray`]: the system tray icon.
 //! * [`defaults`]: the mixer a first run starts with.
 //! * [`display`]: finding the desktop to show the window on.
+//! * [`hotkeys`]: doing what hotkeys say, and getting their keys.
 
 mod config;
 mod controller;
 mod defaults;
 mod display;
 mod history;
+mod hotkeys;
 mod login;
 mod server;
 mod tray;
@@ -116,6 +118,7 @@ async fn main() -> Result<()> {
         controller.save_if_dirty();
     }
     spawn_background_tasks(&controller, ev_rx);
+    hotkeys::start(&controller);
 
     let listener = server::bind(&socket_path).await?;
     let serve = tokio::spawn(server::serve(listener, controller.clone()));

@@ -585,6 +585,44 @@ pub fn meters(m: &Meters) {
     }
 }
 
+/// The hotkeys, what they do, and what is wrong with any of them.
+pub fn hotkeys(info: &HotkeysInfo, mixer: &MixerState) {
+    println!("{}", info.keys.message);
+    if info.hotkeys.is_empty() {
+        println!("(no hotkeys)");
+        return;
+    }
+    println!();
+    let mut t = Table::new(&["ID", "Name", "Keys", "What it does"], &[0]);
+    for h in &info.hotkeys {
+        let keys = match (info.keys.assigned.get(&h.id), &h.keys) {
+            (Some(given), _) => given.clone(),
+            (None, Some(keys)) => keys.clone(),
+            (None, None) => "-".into(),
+        };
+        let keys = if h.enabled {
+            keys
+        } else {
+            format!("{keys} (off)")
+        };
+        t.row(vec![
+            h.id.to_string(),
+            h.name.clone(),
+            keys,
+            describe_hotkey(h, mixer),
+        ]);
+    }
+    t.print();
+    for p in &info.problems {
+        let name = info
+            .hotkeys
+            .iter()
+            .find(|h| h.id == p.hotkey)
+            .map_or("Hotkeys", |h| h.name.as_str());
+        println!("{name}: {}", p.problem);
+    }
+}
+
 /// Columns lined up to their widest entry, for the listings.
 struct Table {
     rows: Vec<Vec<String>>,

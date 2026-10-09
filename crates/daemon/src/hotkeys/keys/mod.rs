@@ -10,6 +10,7 @@
 //! `WEIR_HOTKEYS=desktop`, `x11` or `none` picks the way by hand, for
 //! testing.
 
+mod kde;
 mod portal;
 mod x11;
 

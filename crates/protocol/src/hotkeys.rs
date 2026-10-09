@@ -67,14 +67,16 @@ pub struct Hotkey {
     pub name: String,
     /// Whether its keys work. Off, it can still be pressed by name. Where
     /// the desktop looks after the keys, it keeps them for a hotkey that is
-    /// off, once it has had them.
+    /// off, once it has had them; on KDE Plasma other programs may use them
+    /// meanwhile.
     #[serde(default = "yes", skip_serializing_if = "is_true")]
     pub enabled: bool,
     /// The keys: one or more combinations, up to 8, such as
     /// `["Ctrl+Alt+M", "F9"]`, each any of Ctrl, Alt, Shift and Super and
     /// one key. Any of them presses the hotkey. Where the desktop looks
-    /// after the keys, only the first is suggested to it, and more are
-    /// added in its shortcut settings: see [`KeysStatus`]. A single
+    /// after the keys, it gets them all on KDE Plasma, and elsewhere only
+    /// the first is suggested to it, more being added in its shortcut
+    /// settings: see [`KeysStatus`]. A single
     /// combination may be given as a string. Left out or empty, the hotkey
     /// has no keys and is only pressed by name.
     #[serde(
@@ -203,6 +205,12 @@ pub struct KeysStatus {
     /// newer, and other desktops with version 2 of the portal).
     #[serde(default, skip_serializing_if = "is_default")]
     pub configurable: bool,
+    /// With `desktop`: whether Weir can give hotkeys their keys in the
+    /// desktop itself (KDE Plasma), so all of a hotkey's `keys` work there,
+    /// and keys changed in the desktop's settings come back into `keys`.
+    /// Otherwise only the first is suggested to the desktop.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub settable: bool,
 }
 
 /// Which way keys reach Weir.

@@ -149,6 +149,36 @@ impl Controller {
         self.announce(Notification::HotkeysChanged(self.hotkeys_info()));
     }
 
+    /// Take `keys`, which the desktop has for hotkey `id`, as its keys:
+    /// where Weir can set the desktop's keys (KDE Plasma), keys changed in
+    /// its settings come back, so that `keys` says what works and the next
+    /// change made in Weir starts from them.
+    pub fn adopt_desktop_keys(&self, id: HotkeyId, keys: Vec<String>) {
+        let name = {
+            let mut inner = self.inner.lock().unwrap();
+            let Ok(list) = inner.hotkeys.as_mut() else {
+                return;
+            };
+            let mut candidate = list.clone();
+            let Some(h) = candidate.iter_mut().find(|h| h.id == id) else {
+                return;
+            };
+            if h.keys == keys {
+                return;
+            }
+            h.keys = keys;
+            let name = h.name.clone();
+            if let Err(e) = config::save_hotkeys(&self.paths.hotkeys_file, &candidate) {
+                warn!("could not save the keys the desktop gave '{name}': {e:#}");
+                return;
+            }
+            *list = candidate;
+            name
+        };
+        info!("the desktop's settings changed the keys of '{name}'");
+        self.hotkeys_changed();
+    }
+
     /// Have the desktop open its shortcut settings at Weir's hotkeys, when
     /// it can.
     pub(super) fn open_shortcut_settings(&self) -> Result<Value, RpcError> {

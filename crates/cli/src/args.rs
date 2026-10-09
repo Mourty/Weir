@@ -493,8 +493,9 @@ pub enum HotkeyCmd {
 pub struct HotkeyOpts {
     /// The keys, such as "Ctrl+Alt+M": any of Ctrl, Alt, Shift and Super,
     /// and one key. Give it once per key combination for several, any of
-    /// which presses the hotkey; where the desktop looks after the keys,
-    /// only the first is suggested to it. Replaces the keys it had.
+    /// which presses the hotkey; on desktops other than KDE Plasma that
+    /// look after the keys, only the first is suggested. Replaces the keys
+    /// it had.
     #[arg(long)]
     pub keys: Vec<String>,
     /// A step: a method and its parameters as JSON, such as

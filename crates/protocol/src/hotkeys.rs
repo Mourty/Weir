@@ -335,6 +335,19 @@ fn patch_words(p: &Value) -> Vec<String> {
                 let side = if d < 0.0 { "left" } else { "right" };
                 out.push(format!("pan a little {side}"));
             }
+            "delay_ms" => {
+                let ms = num(k).unwrap_or(0.0);
+                out.push(if ms <= 0.0 {
+                    "delay off".into()
+                } else {
+                    format!("delay to {} ms", plain(ms))
+                });
+            }
+            "delay_delta_ms" => {
+                let d = num(k).unwrap_or(0.0);
+                let way = if d < 0.0 { "shorter" } else { "longer" };
+                out.push(format!("delay {} ms {way}", plain(d.abs())));
+            }
             "name" => out.push(format!("rename to {}", v.as_str().unwrap_or("?"))),
             _ => match (effect_name(k), v.get("enabled")) {
                 (Some(effect), Some(on)) => {
@@ -503,6 +516,18 @@ mod tests {
         assert_eq!(
             d("set_strip", json!({"id": 1, "gate": {"enabled": true}})),
             "Mic: noise gate on"
+        );
+        assert_eq!(
+            d("set_bus", json!({"id": 3, "delay_ms": 180})),
+            "Stream Mic: delay to 180 ms"
+        );
+        assert_eq!(
+            d("set_bus", json!({"id": 3, "delay_delta_ms": -5})),
+            "Stream Mic: delay 5 ms shorter"
+        );
+        assert_eq!(
+            d("set_bus", json!({"id": 3, "delay_ms": 0})),
+            "Stream Mic: delay off"
         );
         assert_eq!(
             d(

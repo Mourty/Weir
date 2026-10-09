@@ -2316,7 +2316,7 @@ What [`inspect_import`](#inspect_import) returns.
 | `weir_version` | string | The version of Weir that exported it. |
 | `exported` | string, *optional* | When, such as `2026-10-10T14-30-05Z`. |
 | `items` | list of [ImportItem](#importitem) | Everything in it, scenes first, then setups, hotkeys, presets, app rules and the parts of the preferences. |
-| `missing` | list of `{"kind": "strip" or "bus", "name": string}`, *optional* | Every strip and bus the items name that this mixer has none called, for `map_strips` and `map_buses`. |
+| `missing` | list of `{"kind": "strip" or "bus", "name": string}`, *optional* | Every strip and bus the items name that this mixer has none called, and no setup either, here or in the file: for `map_strips` and `map_buses`. |
 | `problems` | list of strings, *optional* | Files in it that could not be read and are not any one thing, each with why. |
 
 ### ImportItem
@@ -2331,7 +2331,9 @@ What [`inspect_import`](#inspect_import) returns.
 | `taken` | boolean, *optional* | Something of its kind here has its name. |
 | `free_name` | string, *optional* | When `taken`, a name nothing has, to keep both under. |
 | `keys_taken` | list of `{"keys": string, "by": name}`, *optional* | For a hotkey, keys a hotkey here has: it comes in without them. |
-| `missing` | list, *optional* | Strips and buses it names that this mixer lacks, as in `ImportInspection`. |
+| `missing` | list, *optional* | Strips and buses it names that this mixer lacks, and no setup has, as in `ImportInspection`. It comes in only once each is mapped to one here. |
+| `setups` | list of strings, *optional* | For a hotkey naming strips or buses this mixer lacks: the setups saved here that have them. Hotkeys find strips by name in whichever setup is loaded, so it works while one of these is. |
+| `setup_items` | list of strings, *optional* | The same for setups in the file, by item id, such as `setups/Streaming.json`. With no `setups`, the hotkey needs one of these imported too: imported without, it is left out. |
 | `broken` | string, *optional* | Why it cannot be imported, such as a damaged file. |
 | `note` | string, *optional* | Anything else worth knowing first, such as that audio timing suits the computer it came from. |
 

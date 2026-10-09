@@ -715,7 +715,11 @@ shows what it holds, everything ticked:
   can change it), **Replace mine**, or **Skip**.
 * A **strip or bus this mixer does not have**, such as a hotkey that turns
   down "Music" when your strip is called "Media": at the top, pick one of
-  yours to use instead, or leave what uses it out.
+  yours to use instead, or leave what uses it out. A hotkey for a strip
+  that one of your setups has, or a setup in the file, needs nothing
+  picked: it says which setup it works with, since hotkeys find strips by
+  name in whichever setup is loaded. If that setup is only in the file,
+  import it too.
 * **Hotkeys** can be added to yours, or replace all of yours, groups and
   order included. If one of your hotkeys has an imported hotkey's keys
   already, yours keeps them, and the imported one comes in without them.

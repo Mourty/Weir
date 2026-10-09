@@ -278,11 +278,20 @@ pub struct ImportItem {
     /// already. It is imported without them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub keys_taken: Vec<KeysTaken>,
-    /// Strips and buses it names that the mixer has none called. It can
-    /// be imported only once each is given one the mixer has, in
-    /// `map_strips` or `map_buses`.
+    /// Strips and buses it names that the mixer has none called, and no
+    /// setup either, here or in the file. It can be imported only once
+    /// each is given one the mixer has, in `map_strips` or `map_buses`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub missing: Vec<MissingTarget>,
+    /// For a hotkey naming strips or buses the mixer has none called: the
+    /// saved setups here that have them, by name. It works while one of
+    /// them is loaded.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub setups: Vec<String>,
+    /// The same for setups in the file, by item id. A hotkey with only
+    /// these needs one of them imported too.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub setup_items: Vec<String>,
     /// Why it cannot be imported, such as a damaged file.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub broken: Option<String>,

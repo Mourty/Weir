@@ -234,8 +234,18 @@ impl Controller {
     /// `h` checked as `set_hotkey` takes it, apart from how it fits with
     /// the other hotkeys: its name trimmed, its keys parsed and written one
     /// way, its steps checked, with their strips and buses by name.
-    pub(super) fn checked_hotkey(&self, mut h: Hotkey) -> Result<Hotkey, RpcError> {
-        let mixers = Mixers::new(self.mixer(), &self.paths.setups_dir);
+    pub(super) fn checked_hotkey(&self, h: Hotkey) -> Result<Hotkey, RpcError> {
+        self.checked_hotkey_with(h, Vec::new())
+    }
+
+    /// [`Self::checked_hotkey`], finding strips and buses in the setups
+    /// `extra` too: setups in a file being imported.
+    pub(super) fn checked_hotkey_with(
+        &self,
+        mut h: Hotkey,
+        extra: Vec<MixerState>,
+    ) -> Result<Hotkey, RpcError> {
+        let mixers = Mixers::new(self.mixer(), &self.paths.setups_dir, extra);
         h.name = h.name.trim().to_string();
         if h.name.is_empty() {
             return Err(RpcError::invalid_params("a hotkey needs a name"));
@@ -756,24 +766,29 @@ impl HotkeyList {
 struct Mixers<'a> {
     here: MixerState,
     setups_dir: &'a Path,
+    /// Setups that are not saved (yet), looked in after the saved ones.
+    extra: Vec<MixerState>,
     setups: OnceCell<Vec<MixerState>>,
 }
 
 impl<'a> Mixers<'a> {
-    fn new(here: MixerState, setups_dir: &'a Path) -> Self {
+    fn new(here: MixerState, setups_dir: &'a Path, extra: Vec<MixerState>) -> Self {
         Self {
             here,
             setups_dir,
+            extra,
             setups: OnceCell::new(),
         }
     }
 
     fn setups(&self) -> &[MixerState] {
         self.setups.get_or_init(|| {
-            config::list_saved(self.setups_dir)
+            let mut setups: Vec<MixerState> = config::list_saved(self.setups_dir)
                 .iter()
                 .filter_map(|name| config::load_saved(self.setups_dir, name, "setup").ok())
-                .collect()
+                .collect();
+            setups.extend(self.extra.iter().cloned());
+            setups
         })
     }
 

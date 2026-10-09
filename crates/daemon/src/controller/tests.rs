@@ -960,8 +960,20 @@ fn settings_go_to_another_mixer_by_name() {
         item("hotkeys/Mute mic.json")["keys_taken"],
         json!([{"keys": "Ctrl+Alt+M", "by": "Mute mic"}])
     );
+    // Music down names a strip this mixer lacks, but the setup Home in the
+    // file has it: it works while Home is loaded, and asks for no strip.
+    let down = item("hotkeys/Music down.json");
+    assert!(down.get("missing").is_none(), "{down}");
+    assert_eq!(down["setup_items"], json!(["setups/Home.json"]));
+    assert!(
+        down["note"]
+            .as_str()
+            .unwrap()
+            .contains("'Home' (in this file)"),
+        "{down}"
+    );
     assert_eq!(
-        item("hotkeys/Music down.json")["missing"],
+        item("app-rules/app-rules.json")["missing"],
         json!([{"kind": "strip", "name": "Music"}])
     );
     assert!(item("preferences/preferences.json#audio_timing")["note"].is_string());
@@ -974,18 +986,21 @@ fn settings_go_to_another_mixer_by_name() {
         "a map to a strip that is not here"
     );
 
-    // Unmapped, Music down cannot come; taken names are skipped.
+    // Unmapped, the app rules cannot come; taken names are skipped. Music
+    // down comes with Home, keeping its strip's name.
     let done = b.ok("import_settings", json!({"path": zip}));
     let skipped = done["skipped"].to_string();
     assert!(
-        skipped.contains("hotkey 'Music down': this mixer has no strip 'Music'"),
+        skipped.contains("app rules: this mixer has no strip 'Music'"),
         "{skipped}"
     );
     assert!(
         skipped.contains("scene 'Gaming': there is one called that already"),
         "{skipped}"
     );
-    assert!(done["imported"].to_string().contains("setup 'Home'"));
+    let imported = done["imported"].to_string();
+    assert!(imported.contains("setup 'Home'"), "{imported}");
+    assert!(imported.contains("hotkey 'Music down'"), "{imported}");
 
     // Mapped, and keeping both.
     let done = b.ok(
@@ -1001,7 +1016,7 @@ fn settings_go_to_another_mixer_by_name() {
         json!([
             "scene 'Gaming 2'",
             "app rules",
-            "hotkey 'Music down'",
+            "hotkey 'Music down 2'",
             "hotkey 'Mute mic 2'",
             "preferences: window look",
             "preferences: mixer behavior"
@@ -1014,14 +1029,17 @@ fn settings_go_to_another_mixer_by_name() {
         .join("hotkeys.json")
         .exists());
     let info = b.ok("list_hotkeys", json!({}));
-    let down = info["hotkeys"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|h| h["name"] == "Music down")
-        .unwrap()
-        .clone();
-    assert_eq!(down["steps"][0]["params"]["id"], json!("Media"));
+    let strip_of = |name: &str| {
+        info["hotkeys"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|h| h["name"] == name)
+            .unwrap()["steps"][0]["params"]["id"]
+            .clone()
+    };
+    assert_eq!(strip_of("Music down"), json!("Music"));
+    assert_eq!(strip_of("Music down 2"), json!("Media"));
     assert_eq!(
         info["groups"],
         json!([{"id": 1, "name": "Streaming", "enabled": false}])
@@ -1030,6 +1048,34 @@ fn settings_go_to_another_mixer_by_name() {
     assert_eq!(state["app_rules"], json!([{"app": "firefox", "strip": 2}]));
     assert_eq!(state["settings"]["solo"], json!({"cue": 3}));
     assert_eq!(state["settings"]["meter_rate_hz"], json!(20));
+
+    // Without Home, and with no setup here that has Music, Music down
+    // cannot come.
+    let mut d = Rig::new("export-d");
+    d.ok("set_strip", json!({"id": "Music", "name": "Media"}));
+    let done = d.ok(
+        "import_settings",
+        json!({"path": zip, "items": ["hotkeys/Music down.json"]}),
+    );
+    assert!(
+        done["skipped"]
+            .to_string()
+            .contains("hotkey 'Music down': no strip called 'Music'"),
+        "{done}"
+    );
+    // A setup saved here that has it will do.
+    d.ok("set_strip", json!({"id": "Media", "name": "Music"}));
+    d.ok("save_setup", json!({"name": "Old"}));
+    d.ok("set_strip", json!({"id": "Music", "name": "Media"}));
+    let seen = d.ok("inspect_import", json!({"path": zip}));
+    let down = seen["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| i["id"] == "hotkeys/Music down.json")
+        .unwrap()
+        .clone();
+    assert_eq!(down["setups"], json!(["Old"]));
 
     // Replacing keeps a copy of what was there.
     let done = b.ok(

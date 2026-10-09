@@ -349,12 +349,40 @@ impl Shown {
                 unmapped.join(" and the ")
             ));
         }
+        if let Some(why) = self.needs_setup(item) {
+            return Some(why);
+        }
         if self.taken_matters(item) {
             if let Some(Taken::KeepBoth(name)) = self.taken.get(&item.id) {
                 return name_problem(item.kind, name, state);
             }
         }
         None
+    }
+
+    /// For a hotkey that works only with setups in this file: why it
+    /// cannot come in while none of them does.
+    fn needs_setup(&self, item: &ImportItem) -> Option<String> {
+        if item.setup_items.is_empty() || !item.setups.is_empty() {
+            return None;
+        }
+        let coming = item
+            .setup_items
+            .iter()
+            .any(|id| self.picked.contains(id) && self.taken.get(id) != Some(&Taken::Skip));
+        if coming {
+            return None;
+        }
+        let names: Vec<String> = item
+            .setup_items
+            .iter()
+            .filter_map(|id| self.seen.items.iter().find(|i| &i.id == id))
+            .map(|i| format!("'{}'", i.name))
+            .collect();
+        Some(format!(
+            "Works only with the setup {} from this file: import that too.",
+            names.join(" or ")
+        ))
     }
 
     /// The items that would be imported, by id.
@@ -608,11 +636,11 @@ impl Shown {
                 }
             }
             if let Some(why) = self.blocked(&item, state) {
-                if item
+                let unmapped = item
                     .missing
                     .iter()
-                    .any(|m| self.maps.get(m).is_none_or(Option::is_none))
-                {
+                    .any(|m| self.maps.get(m).is_none_or(Option::is_none));
+                if unmapped || self.needs_setup(&item).is_some() {
                     ui.label(RichText::new(why).size(12.0).color(amber));
                 }
             }

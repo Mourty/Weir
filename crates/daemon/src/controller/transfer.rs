@@ -136,6 +136,8 @@ fn item(id: &str, kind: ExportKind, name: &str) -> ImportItem {
         free_name: None,
         keys_taken: Vec::new(),
         missing: Vec::new(),
+        setups: Vec::new(),
+        setup_items: Vec::new(),
         broken: None,
         note: None,
     }
@@ -578,6 +580,7 @@ impl Controller {
             }
         }
         ex.found.sort_by_key(|f| f.item.kind);
+        self.place_in_setups(&mut ex.found, &here);
         // A free name must be free of the other imported items too.
         let names: Vec<(ExportKind, String)> = ex
             .found
@@ -600,6 +603,93 @@ impl Controller {
         ex.inspection.missing = missing.into_iter().collect();
         ex.inspection.items = ex.found.iter().map(|f| f.item.clone()).collect();
         Ok(ex)
+    }
+
+    /// A hotkey naming strips or buses this mixer lacks may be meant for
+    /// another setup: what a setup saved here or one in the file has is
+    /// not missing, and the item says which setups have it. Once nothing
+    /// is missing, the hotkey is checked as `set_hotkey` would.
+    fn place_in_setups(&self, found: &mut [Found], here: &Here) {
+        if !found
+            .iter()
+            .any(|f| f.item.kind == ExportKind::Hotkey && !f.item.missing.is_empty())
+        {
+            return;
+        }
+        let saved: Vec<(String, MixerState)> = here
+            .setups
+            .iter()
+            .filter_map(|name| {
+                let m = config::load_saved(&self.paths.setups_dir, name, "setup").ok()?;
+                Some((name.clone(), m))
+            })
+            .collect();
+        // By item id, and name.
+        let in_file: Vec<(String, String, MixerState)> = found
+            .iter()
+            .filter_map(|f| match &f.content {
+                Content::Setup(m) => Some((f.item.id.clone(), f.item.name.clone(), m.clone())),
+                _ => None,
+            })
+            .collect();
+        let has = |m: &MixerState, t: &MissingTarget| find_named(m, t.kind, &t.name).is_some();
+        for Found { item, content } in found.iter_mut() {
+            let Content::Hotkey(h, _) = content else {
+                continue;
+            };
+            let elsewhere: Vec<MissingTarget> = item
+                .missing
+                .iter()
+                .filter(|t| {
+                    saved.iter().any(|(_, m)| has(m, t))
+                        || in_file.iter().any(|(_, _, m)| has(m, t))
+                })
+                .cloned()
+                .collect();
+            if elsewhere.is_empty() {
+                continue;
+            }
+            item.missing.retain(|t| !elsewhere.contains(t));
+            let saved_with: Vec<&String> = saved
+                .iter()
+                .filter(|(_, m)| elsewhere.iter().any(|t| has(m, t)))
+                .map(|(name, _)| name)
+                .collect();
+            let file_with: Vec<&(String, String, MixerState)> = in_file
+                .iter()
+                .filter(|(_, _, m)| elsewhere.iter().any(|t| has(m, t)))
+                .collect();
+            item.setups = saved_with.iter().map(|n| n.to_string()).collect();
+            item.setup_items = file_with.iter().map(|(id, _, _)| id.clone()).collect();
+            let mut which: Vec<String> = saved_with.iter().map(|n| format!("'{n}'")).collect();
+            which.extend(
+                file_with
+                    .iter()
+                    .map(|(_, name, _)| format!("'{name}' (in this file)")),
+            );
+            let what: Vec<String> = elsewhere
+                .iter()
+                .map(|t| format!("{} called '{}'", t.kind.word(), t.name))
+                .collect();
+            let (setups, have, while_) = if which.len() == 1 {
+                ("the setup", "has", "it")
+            } else {
+                ("the setups", "have", "one of them")
+            };
+            item.note = Some(format!(
+                "This mixer has no {}; {setups} {} {have} {}, and the hotkey works while \
+                 {while_} is loaded.",
+                what.join(" or "),
+                which.join(", "),
+                if what.len() == 1 { "one" } else { "them" },
+            ));
+            if item.missing.is_empty() {
+                let extra = in_file.iter().map(|(_, _, m)| m.clone()).collect();
+                if let Err(e) = self.checked_hotkey_with(h.clone(), extra) {
+                    item.broken = Some(e.message);
+                }
+            }
+        }
     }
 
     /// Check one scene, setup, hotkey, preset or set of app rules.

@@ -191,7 +191,7 @@ impl Editor {
                     .show(ctx, |ui| {
                         egui::ScrollArea::vertical()
                             .max_height(520.0)
-                            .show(ui, |ui| self.form(ui, state));
+                            .show(ui, |ui| self.form(ui, state, actions));
                         ui.separator();
                         self.buttons(ui, state, actions);
                     });
@@ -211,7 +211,7 @@ impl Editor {
                     .show(ctx, |ui| {
                         egui::ScrollArea::vertical()
                             .auto_shrink(false)
-                            .show(ui, |ui| self.form(ui, state));
+                            .show(ui, |ui| self.form(ui, state, actions));
                     });
                 if ctx.input(|i| i.viewport().close_requested()) {
                     self.closed = true;
@@ -240,7 +240,15 @@ impl Editor {
                     .any(|(i, k)| i != slot && *k == keys);
                 if mine {
                     self.record_note = Some(format!("{keys} is already one of its keys."));
-                } else if let Some(other) = self.others(state).find(|h| h.keys.contains(&keys)) {
+                } else if let Some(other) = self.others(state).find(|h| {
+                    h.keys.contains(&keys)
+                        || state
+                            .hotkeys
+                            .keys
+                            .assigned
+                            .get(&h.id)
+                            .is_some_and(|a| a.contains(&keys))
+                }) {
                     self.record_note = Some(format!(
                         "{keys} already belongs to the hotkey '{}'. Press other keys.",
                         other.name
@@ -260,9 +268,9 @@ impl Editor {
     }
 
     /// Everything above the buttons.
-    fn form(&mut self, ui: &mut Ui, state: &FullState) {
+    fn form(&mut self, ui: &mut Ui, state: &FullState, actions: &mut Vec<Request>) {
         ui.spacing_mut().item_spacing.y = 8.0;
-        self.keys_section(ui, state);
+        self.keys_section(ui, state, actions);
         ui.add_space(6.0);
         if self.advanced {
             self.name_row(ui, state);
@@ -295,17 +303,39 @@ impl Editor {
         }
     }
 
-    /// The keys: one chip row for each combination, with buttons to record
-    /// them again or take them away, and a button for more.
-    fn keys_section(&mut self, ui: &mut Ui, state: &FullState) {
+    /// The keys, and how to change them: with the desktop's when it looks
+    /// after them, or else Weir's own.
+    fn keys_section(&mut self, ui: &mut Ui, state: &FullState, actions: &mut Vec<Request>) {
         heading(ui, "When I press");
-        let recording_text =
-            RichText::new("Press the keys you want… (Esc to stop)").color(theme::p().warning);
+        if state.hotkeys.keys.method == KeysMethod::Desktop {
+            self.desktop_keys(ui, state, actions);
+        } else {
+            self.own_keys(ui);
+        }
+        if let Some(note) = &self.record_note {
+            ui.label(RichText::new(note).color(theme::p().warning));
+        }
+        ui.label(
+            RichText::new(keys_hint(state))
+                .size(12.0)
+                .color(theme::p().text_dim),
+        );
+    }
+
+    /// The text shown while keys are being recorded.
+    fn recording_text() -> RichText {
+        RichText::new("Press the keys you want… (Esc to stop)").color(theme::p().warning)
+    }
+
+    /// Where Weir looks after the keys: a row of key caps for each
+    /// combination, with buttons to record it again or take it away, and a
+    /// button for more.
+    fn own_keys(&mut self, ui: &mut Ui) {
         let mut remove = None;
         for (i, keys) in self.keys.iter().enumerate() {
             ui.horizontal(|ui| {
                 if self.recording == Some(i) {
-                    ui.label(recording_text.clone());
+                    ui.label(Self::recording_text());
                 } else {
                     key_chips(ui, keys, 15.0);
                     ui.add_space(8.0);
@@ -334,19 +364,9 @@ impl Editor {
         let adding = self.recording == Some(self.keys.len());
         ui.horizontal(|ui| {
             if adding {
-                ui.label(recording_text);
+                ui.label(Self::recording_text());
             } else if self.keys.is_empty() {
-                if ui
-                    .button(RichText::new("Record keys").size(14.0))
-                    .on_hover_text("Click, then press the keys you want")
-                    .clicked()
-                {
-                    self.recording = Some(0);
-                }
-                ui.label(
-                    RichText::new("No keys: it can still be pressed by name.")
-                        .color(theme::p().text_dim),
-                );
+                self.record_button(ui);
             } else if self.keys.len() < HOTKEY_KEYS_MAX
                 && ui
                     .small_button("+ Other keys")
@@ -357,35 +377,144 @@ impl Editor {
                 self.record_note = None;
             }
         });
-        if let Some(note) = &self.record_note {
-            ui.label(RichText::new(note).color(theme::p().warning));
+    }
+
+    /// The button to record keys for a hotkey that has none.
+    fn record_button(&mut self, ui: &mut Ui) {
+        if ui
+            .button(RichText::new("Record keys").size(14.0))
+            .on_hover_text("Click, then press the keys you want")
+            .clicked()
+        {
+            self.recording = Some(0);
+            self.record_note = None;
         }
-        if let Some(given) = state.hotkeys.keys.assigned.get(&self.id) {
-            let shown: Vec<&str> = given
-                .iter()
-                .map(String::as_str)
-                .filter(|k| !k.is_empty())
-                .collect();
-            if given.len() == self.keys.len() && given.iter().zip(&self.keys).any(|(g, k)| g != k) {
+        ui.label(
+            RichText::new("No keys: it can still be pressed by name.").color(theme::p().text_dim),
+        );
+    }
+
+    /// Where the desktop looks after the keys: each hotkey is one entry in
+    /// its shortcut settings, which takes one suggestion from Weir, and
+    /// where more keys are added. Once saved, the keys shown are the
+    /// desktop's.
+    fn desktop_keys(&mut self, ui: &mut Ui, state: &FullState, actions: &mut Vec<Request>) {
+        let settings = super::settings_name();
+        let keys = &state.hotkeys.keys;
+        let saved = state.hotkeys.hotkeys.iter().find(|h| h.id == self.id);
+        let suggestion_kept = saved.is_some_and(|h| h.keys.first() == self.keys.first());
+        let given = keys
+            .assigned
+            .get(&self.id)
+            .filter(|_| suggestion_kept && self.recording.is_none());
+        if let Some(given) = given {
+            if given.is_empty() {
+                ui.label(
+                    RichText::new(format!("No keys yet: give it some in {settings}."))
+                        .color(theme::p().warning),
+                );
+            }
+            for k in given {
+                ui.horizontal(|ui| key_chips(ui, k, 15.0));
+            }
+            ui.horizontal(|ui| {
+                if keys.configurable
+                    && ui
+                        .button(format!("Add or change keys in {settings}"))
+                        .on_hover_text(
+                            "Each hotkey is one entry there: give it more keys, or change them",
+                        )
+                        .clicked()
+                {
+                    actions.push(Request::OpenShortcutSettings);
+                }
+                if ui
+                    .small_button("Suggest other keys")
+                    .on_hover_text(
+                        "Press keys for Weir to suggest instead. Your desktop asks you to \
+                         confirm them, and they replace the keys it has for this hotkey.",
+                    )
+                    .clicked()
+                {
+                    self.recording = Some(0);
+                    self.record_note = None;
+                }
+                if ui
+                    .small_button("No keys")
+                    .on_hover_text(
+                        "Take its keys away: it leaves your desktop's shortcut settings, and \
+                         can still be pressed by name",
+                    )
+                    .clicked()
+                {
+                    self.keys.clear();
+                }
+            });
+            if !keys.configurable {
                 ui.label(
                     RichText::new(format!(
-                        "Your desktop's settings have these keys for it now: {}",
-                        if shown.is_empty() {
-                            "none".to_string()
-                        } else {
-                            shown.join(", ")
-                        }
+                        "To give it more keys or change them, open {}, where each hotkey is \
+                         one entry.",
+                        super::settings_path()
                     ))
                     .size(12.0)
                     .color(theme::p().text_dim),
                 );
             }
+            return;
         }
-        ui.label(
-            RichText::new(keys_hint(state))
-                .size(12.0)
-                .color(theme::p().text_dim),
-        );
+        // Keys to suggest, or none.
+        ui.horizontal(|ui| match (self.recording, self.keys.first()) {
+            (Some(_), _) => {
+                ui.label(Self::recording_text());
+            }
+            (None, Some(k)) => {
+                key_chips(ui, k, 15.0);
+                ui.add_space(8.0);
+                if ui
+                    .small_button("Change")
+                    .on_hover_text("Press other keys instead")
+                    .clicked()
+                {
+                    self.recording = Some(0);
+                    self.record_note = None;
+                }
+                if ui
+                    .small_button("×")
+                    .on_hover_text("Take the keys away")
+                    .clicked()
+                {
+                    self.keys.clear();
+                }
+            }
+            (None, None) => self.record_button(ui),
+        });
+        let had_keys = saved.is_some_and(|h| !h.keys.is_empty());
+        let note = if self.keys.is_empty() || self.recording.is_some() {
+            None
+        } else if !self.enabled {
+            Some(
+                "It is switched off: your desktop asks you to confirm these keys once you \
+                 switch it on."
+                    .to_string(),
+            )
+        } else if suggestion_kept {
+            // Saved as it is, and the desktop has not said yet.
+            None
+        } else if had_keys {
+            Some(format!(
+                "Saving asks your desktop to give it these keys, in place of the ones \
+                 {settings} has for it."
+            ))
+        } else {
+            Some(format!(
+                "Your desktop asks you to confirm these keys. After saving, you can give it \
+                 more in {settings}."
+            ))
+        };
+        if let Some(note) = note {
+            ui.label(RichText::new(note).size(12.0).color(theme::p().text_dim));
+        }
     }
 
     /// The name, with what it does as the suggestion.

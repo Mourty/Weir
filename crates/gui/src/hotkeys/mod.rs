@@ -70,7 +70,7 @@ impl HotkeysWindow {
                     .show(ctx, |ui| {
                         asked = self.contents(ui, state, actions);
                         ui.separator();
-                        asked = asked.take().or(self.footer(ui));
+                        asked = asked.take().or(self.footer(ui, state, actions));
                     });
                 if !open {
                     self.closed = true;
@@ -82,7 +82,7 @@ impl HotkeysWindow {
                             .fill(theme::p().bg)
                             .inner_margin(egui::Margin::symmetric(16, 10)),
                     )
-                    .show(ctx, |ui| asked = self.footer(ui));
+                    .show(ctx, |ui| asked = self.footer(ui, state, actions));
                 egui::CentralPanel::default()
                     .frame(egui::Frame::new().fill(theme::p().bg).inner_margin(16))
                     .show(ctx, |ui| {
@@ -190,11 +190,16 @@ impl HotkeysWindow {
             // Tall enough for a name and a line of description, so that
             // everything in the row is centered on both.
             ui.set_min_height(38.0);
-            let tip = if h.enabled {
-                "On: its keys work. Click to switch them off."
-            } else {
-                "Off: its keys do nothing, but it can still be pressed by name. Click to \
-                 switch it on."
+            let tip = match (h.enabled, state.hotkeys.keys.method) {
+                (true, _) => "On: its keys work. Click to switch them off.",
+                (false, KeysMethod::Desktop) => {
+                    "Off: its keys do nothing, but your desktop keeps them for it. It can \
+                     still be pressed by name. Click to switch it on."
+                }
+                (false, _) => {
+                    "Off: its keys do nothing, but it can still be pressed by name. Click to \
+                     switch it on."
+                }
             };
             if widgets::switch(ui, h.enabled).on_hover_text(tip).clicked() {
                 actions.push(Request::SetHotkey(Hotkey {
@@ -278,8 +283,14 @@ impl HotkeysWindow {
         asked
     }
 
-    /// The button to add one, and where else hotkeys come from.
-    fn footer(&mut self, ui: &mut Ui) -> Option<ListAction> {
+    /// The button to add one, where else hotkeys come from, and the
+    /// desktop's shortcut settings when it can open them.
+    fn footer(
+        &mut self,
+        ui: &mut Ui,
+        state: &FullState,
+        actions: &mut Vec<Request>,
+    ) -> Option<ListAction> {
         let mut asked = None;
         ui.horizontal(|ui| {
             let add = egui::Button::new(
@@ -291,12 +302,27 @@ impl HotkeysWindow {
             if ui.add(add).clicked() {
                 asked = Some(ListAction::Add);
             }
-            ui.label(
-                RichText::new(
-                    "Or right-click a mute, solo or routing button, or a fader, in the mixer.",
+            let keys = &state.hotkeys.keys;
+            if keys.method == KeysMethod::Desktop
+                && keys.configurable
+                && ui
+                    .button(format!("Keys in {}", settings_name()))
+                    .on_hover_text(
+                        "Each hotkey is one entry there: change its keys, or give it more",
+                    )
+                    .clicked()
+            {
+                actions.push(Request::OpenShortcutSettings);
+            }
+            ui.add(
+                egui::Label::new(
+                    RichText::new(
+                        "Or right-click a mute, solo or routing button, or a fader, in the mixer.",
+                    )
+                    .size(12.0)
+                    .color(theme::p().text_dim),
                 )
-                .size(12.0)
-                .color(theme::p().text_dim),
+                .truncate(),
             );
         });
         asked
@@ -323,13 +349,35 @@ fn status_line(ui: &mut Ui, keys: &KeysStatus) {
         });
 }
 
+/// Whether the desktop is KDE Plasma, going by the session's variables.
+fn on_kde() -> bool {
+    std::env::var("XDG_CURRENT_DESKTOP").is_ok_and(|d| d.to_ascii_uppercase().contains("KDE"))
+}
+
+/// What the desktop's settings are called, to name them in a sentence.
+pub(crate) fn settings_name() -> &'static str {
+    if on_kde() {
+        "System Settings"
+    } else {
+        "your desktop's settings"
+    }
+}
+
+/// Where in the desktop's settings Weir's hotkeys are.
+pub(crate) fn settings_path() -> &'static str {
+    if on_kde() {
+        "System Settings › Keyboard › Shortcuts › Weir"
+    } else {
+        "your desktop's shortcut settings"
+    }
+}
+
 /// What to say under a hotkey's keys about where they work.
 pub(crate) fn keys_hint(state: &FullState) -> String {
     match state.hotkeys.keys.method {
-        KeysMethod::Desktop => "Works whichever window is in front, even a full-screen game. \
-                                The first time, your desktop asks you to confirm new keys, and \
-                                you can change them later in its shortcut settings too."
-            .into(),
+        KeysMethod::Desktop => {
+            "Works whichever window is in front, even a full-screen game.".into()
+        }
         KeysMethod::X11 => "Works whichever window is in front.".into(),
         KeysMethod::Starting => "Hotkeys start working once the desktop is up.".into(),
         KeysMethod::Unavailable => state.hotkeys.keys.message.clone(),
@@ -337,15 +385,14 @@ pub(crate) fn keys_hint(state: &FullState) -> String {
 }
 
 /// A hotkey's keys as they work now: as the desktop has them when it says,
-/// since they can be changed in its settings, or else as Weir has them.
+/// since they can be changed or added to in its settings, or else as Weir
+/// has them.
 fn shown_keys(state: &FullState, h: &Hotkey) -> Vec<String> {
-    match state.hotkeys.keys.assigned.get(&h.id) {
-        Some(given) => given
-            .iter()
-            .flat_map(|k| k.split(", "))
-            .filter(|k| !k.is_empty())
-            .map(str::to_string)
-            .collect(),
+    let keys = &state.hotkeys.keys;
+    match keys.assigned.get(&h.id) {
+        Some(given) => given.clone(),
+        // Only the first keys are suggested to the desktop.
+        None if keys.method == KeysMethod::Desktop => h.keys.iter().take(1).cloned().collect(),
         None => h.keys.clone(),
     }
 }
@@ -470,11 +517,14 @@ mod tests {
     fn the_desktops_keys_show_when_it_gives_them() {
         let mut st = FullState::default();
         let h = Simple::new(StripOrBus::Strip(1), &st).hotkey("Talk", &["F9".into(), "F10".into()]);
+        st.hotkeys.keys.method = KeysMethod::X11;
         assert_eq!(shown_keys(&st, &h), ["F9", "F10"]);
+        st.hotkeys.keys.method = KeysMethod::Desktop;
+        assert_eq!(shown_keys(&st, &h), ["F9"], "only the first is suggested");
         st.hotkeys
             .keys
             .assigned
-            .insert(0, vec!["F9, Ctrl+Alt+I".into(), String::new()]);
+            .insert(0, vec!["F9".into(), "Ctrl+Alt+I".into()]);
         assert_eq!(shown_keys(&st, &h), ["F9", "Ctrl+Alt+I"]);
     }
 }

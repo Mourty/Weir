@@ -290,6 +290,13 @@ impl FxWindow {
                             chosen = Some(p.clone());
                         }
                         if ui
+                            .small_button("export")
+                            .on_hover_text("Save this preset to a file, to share it")
+                            .clicked()
+                        {
+                            self.export_preset = Some(p.name.clone());
+                        }
+                        if ui
                             .small_button("×")
                             .on_hover_text("Delete this preset")
                             .clicked()

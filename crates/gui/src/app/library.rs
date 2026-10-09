@@ -160,6 +160,20 @@ impl App {
             ui.close();
         }
         if ui
+            .small_button("export")
+            .on_hover_text(format!(
+                "Save this {word} to a file, to share it or keep it safe"
+            ))
+            .clicked()
+        {
+            let one = match kind {
+                LibraryKind::Scene => super::transfer::One::Scene(n.to_string()),
+                LibraryKind::Setup => super::transfer::One::Setup(n.to_string()),
+            };
+            self.export_one(ui.ctx(), one);
+            ui.close();
+        }
+        if ui
             .small_button("delete")
             .on_hover_text(format!("Delete this {word}"))
             .clicked()

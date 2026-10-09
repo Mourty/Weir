@@ -127,6 +127,23 @@ impl App {
             });
         });
         ui.separator();
+        if ui
+            .button("Export settings…")
+            .on_hover_text("Save scenes, setups, hotkeys and more to a file")
+            .clicked()
+        {
+            self.open_export();
+            ui.close();
+        }
+        if ui
+            .button("Import settings…")
+            .on_hover_text("Bring in settings from a file Weir exported")
+            .clicked()
+        {
+            self.open_import(ui.ctx());
+            ui.close();
+        }
+        ui.separator();
         if ui.button("Preferences…").clicked() {
             self.show_prefs = true;
             ui.close();

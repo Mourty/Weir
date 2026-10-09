@@ -188,7 +188,7 @@ pub enum Body {
 pub struct Stamp {
     /// Weir's version, such as `1.2.0`.
     pub weir_version: String,
-    /// When, as `config::utc_stamp` writes it.
+    /// When, as `weir_protocol::utc_stamp` writes it.
     pub exported: String,
 }
 

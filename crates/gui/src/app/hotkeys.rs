@@ -60,8 +60,13 @@ impl App {
         }
         if let Some(e) = &mut self.hotkey_editor {
             e.show(ctx, state, error, &mut self.actions);
+            let export = std::mem::take(&mut e.export);
+            let id = e.id();
             if e.closed {
                 self.hotkey_editor = None;
+            }
+            if let Some(h) = state.hotkeys.hotkeys.iter().find(|h| export && h.id == id) {
+                self.export_one(ctx, super::transfer::One::Hotkey(h.id, h.name.clone()));
             }
         }
     }

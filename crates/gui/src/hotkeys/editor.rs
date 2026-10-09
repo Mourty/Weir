@@ -46,6 +46,8 @@ pub struct Editor {
     saving: Option<(Vec<Hotkey>, Instant)>,
     pub raise: bool,
     pub closed: bool,
+    /// Asked to export the hotkey, as saved, for the mixer to ask where.
+    pub export: bool,
 }
 
 impl Editor {
@@ -71,6 +73,7 @@ impl Editor {
             saving: None,
             raise: false,
             closed: false,
+            export: false,
         }
     }
 
@@ -98,6 +101,7 @@ impl Editor {
             saving: None,
             raise: false,
             closed: false,
+            export: false,
         }
     }
 
@@ -844,6 +848,14 @@ impl Editor {
                 }
                 if ui.button("Cancel").clicked() {
                     self.closed = true;
+                }
+                if self.id != 0
+                    && ui
+                        .button("Export…")
+                        .on_hover_text("Save this hotkey, as last saved, to a file to share it")
+                        .clicked()
+                {
+                    self.export = true;
                 }
             });
         });

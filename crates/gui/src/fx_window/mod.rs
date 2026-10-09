@@ -189,6 +189,9 @@ pub struct FxWindow {
     pub view: SpectrumView,
     /// Undo or redo pressed in this window, for the mixer to act on.
     pub history_key: Option<crate::app::HistoryKey>,
+    /// One of the user's presets to export, asked for in the preset menu,
+    /// for the mixer to ask where.
+    pub export_preset: Option<String>,
 }
 
 impl FxWindow {
@@ -218,6 +221,7 @@ impl FxWindow {
             spectrum: None,
             view: SpectrumView::default(),
             history_key: None,
+            export_preset: None,
         }
     }
 

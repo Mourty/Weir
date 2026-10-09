@@ -41,6 +41,7 @@ mod settings;
 mod status;
 mod strip;
 mod top_bar;
+mod transfer;
 
 pub(crate) use history::{history_shortcut, HistoryKey};
 
@@ -101,6 +102,8 @@ struct Snapshot {
     history: HistoryInfo,
     /// A window look just imported.
     window_look: Option<serde_json::Value>,
+    /// Answers to export and import requests.
+    transfers: Vec<(crate::client::Transfer, Result<serde_json::Value, String>)>,
 }
 
 /// The mixer window.
@@ -159,6 +162,13 @@ pub struct App {
     /// The spectra last asked for, to ask again only when that changes.
     spectrum_watch: Vec<StripOrBus>,
     toast: Option<Toast>,
+    /// The Export and Import windows, while open.
+    export_window: Option<crate::transfer::ExportWindow>,
+    import_window: Option<crate::transfer::ImportWindow>,
+    /// One thing's own export, while its dialog is open.
+    export_one: Option<(crate::file_dialog::Dialog, transfer::One)>,
+    /// Who waits for the answers to exports sent, in the order sent.
+    export_waiters: std::collections::VecDeque<transfer::ExportWaiter>,
     /// The Hotkeys window, and the window making or changing one.
     hotkeys_window: Option<crate::hotkeys::HotkeysWindow>,
     hotkey_editor: Option<crate::hotkeys::Editor>,
@@ -223,6 +233,10 @@ impl App {
             duck_views: HashMap::new(),
             clips: HashSet::new(),
             toast: None,
+            export_window: None,
+            import_window: None,
+            export_one: None,
+            export_waiters: std::collections::VecDeque::new(),
             hotkeys_window: None,
             hotkey_editor: None,
             show_rules: false,
@@ -270,6 +284,7 @@ impl App {
                 .collect(),
             history: sh.history.clone(),
             window_look: sh.window_look.take(),
+            transfers: std::mem::take(&mut sh.transfers),
         }
     }
 
@@ -375,6 +390,9 @@ impl App {
             w.show(ctx, state, meters, &mut self.actions);
             if let Some(key) = w.history_key.take() {
                 self.step_history(key);
+            }
+            if let Some(name) = w.export_preset.take() {
+                self.export_one(ctx, transfer::One::EqPreset(name));
             }
             if w.view != self.prefs.spectrum {
                 self.prefs.spectrum = w.view;
@@ -514,6 +532,7 @@ impl eframe::App for App {
             spectra,
             history,
             window_look,
+            transfers,
         } = self.snapshot();
         self.history = history;
         if let Some(look) = window_look {
@@ -559,6 +578,7 @@ impl eframe::App for App {
         self.show_fx_windows(ctx, &state, &spectra);
         if connected {
             self.show_hotkeys(ctx, &state, error_at.as_ref());
+            self.show_transfer(ctx, &state, transfers);
         }
         self.flush(false);
         ctx.request_repaint_after(Duration::from_millis(if connected { 33 } else { 500 }));

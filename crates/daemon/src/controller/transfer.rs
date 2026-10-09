@@ -200,7 +200,7 @@ impl Controller {
             .map_or(0, |d| d.as_secs());
         Stamp {
             weir_version: env!("CARGO_PKG_VERSION").to_string(),
-            exported: config::utc_stamp(secs),
+            exported: utc_stamp(secs),
         }
     }
 

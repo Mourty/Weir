@@ -169,6 +169,19 @@ impl Prefs {
         }
     }
 
+    /// The window's look, to export: the settings `WINDOW_LOOK_KEYS` names.
+    pub fn look(&self) -> serde_json::Value {
+        let mut look = serde_json::Map::new();
+        if let Ok(serde_json::Value::Object(mine)) = serde_json::to_value(self) {
+            for key in weir_protocol::WINDOW_LOOK_KEYS {
+                if let Some(v) = mine.get(*key) {
+                    look.insert(key.to_string(), v.clone());
+                }
+            }
+        }
+        serde_json::Value::Object(look)
+    }
+
     /// Take an imported window look, keeping everything else. A setting
     /// this window cannot read is passed over, keeping its own.
     pub fn take_look(&mut self, look: &serde_json::Value) {
@@ -274,5 +287,30 @@ mod tests {
         state.devices.clear();
         assert!(!p.learn_device_names(&state));
         assert_eq!(p.device_names["alsa_input.usb-Astro"], "Astro Mic");
+    }
+
+    #[test]
+    fn a_window_look_travels_without_the_rest() {
+        let mut p = Prefs {
+            appearance: Appearance::Dark,
+            strip_fx_size: Some([800.0, 600.0]),
+            ..Prefs::default()
+        };
+        p.device_names
+            .insert("alsa_input.x".into(), "Astro Mic".into());
+        let look = p.look();
+        assert_eq!(look["appearance"], "dark");
+        assert!(look.get("strip_fx_size").is_none() && look.get("device_names").is_none());
+
+        // Taken elsewhere: what it carries changes, what it cannot read is
+        // passed over, and this computer's own things stay.
+        let mut there = Prefs::default();
+        there.take_look(&serde_json::json!({
+            "appearance": "dark", "show_app_volume": false, "spectrum": "purple"
+        }));
+        assert_eq!(there.appearance, Appearance::Dark);
+        assert!(!there.show_app_volume);
+        assert_eq!(there.spectrum, SpectrumView::default());
+        assert_eq!(there.strip_fx_size, None);
     }
 }

@@ -237,6 +237,8 @@ pub struct RtBus {
     pub eq: EqParams,
     /// Its limiter.
     pub limiter: Limiter,
+    /// How long it holds its output back, in milliseconds.
+    pub delay_ms: f32,
     /// Its external effects.
     pub insert: RtInsert,
 }
@@ -416,6 +418,7 @@ fn build_bus(b: &Bus, ports: &dyn PortResolver, before: Option<&RtBus>) -> RtBus
             .unwrap_or_else(|| Arc::new(FxState::for_bus(n))),
         eq: EqParams::from_eq(&b.eq),
         limiter: b.limiter,
+        delay_ms: b.delay_ms,
         insert: RtInsert::new(StripOrBus::Bus(b.id), &b.insert, n, ports),
         positions,
     }

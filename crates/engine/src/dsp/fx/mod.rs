@@ -1,6 +1,6 @@
 //! Per-strip and per-bus effects on the real-time thread: noise suppression,
-//! noise gate, equalizer and compressor on strips; equalizer and limiter on
-//! buses; external effects on both; and the feeds a strip sends to
+//! noise gate, equalizer and compressor on strips; equalizer, limiter and
+//! delay on buses; external effects on both; and the feeds a strip sends to
 //! subwoofers and surround speakers.
 //!
 //! Unlike the ramps in [`super::params`], effect state (filter memories, the
@@ -13,10 +13,12 @@
 //! Each effect has a module of its own with its state and its per-sample
 //! work. This one ties them together: [`FxState`] holds one strip's or
 //! bus's effects, [`StripFx::process`] runs a strip's chain, and
-//! [`process_bus_eq`], [`process_bus_limiter`] and [`process_bus_insert`]
+//! [`process_bus_eq`], [`process_bus_limiter`], [`process_bus_delay`] and
+//! [`process_bus_insert`]
 //! run a bus's.
 
 mod compressor;
+mod delay;
 mod denoise;
 mod ducking;
 mod eq;
@@ -34,6 +36,7 @@ pub use tap::Tap;
 
 use super::params::{RtCell, RtInsert, MAX_QUANTUM};
 use compressor::CompRt;
+use delay::DelayRt;
 use ducking::DuckRt;
 use eq::EqRt;
 use feeds::{SubFilter, SurroundFeed, SURROUND_DELAY_LEN};
@@ -159,6 +162,8 @@ struct FxInner {
     gate: GateRt,
     /// Buses only; strips have an empty one.
     limiter: LimiterRt,
+    /// Buses only; strips have an empty one.
+    delay: DelayRt,
     /// Strips only: the low-pass on what they send to subwoofers.
     sub: SubFilter,
     /// Strips only: the low-pass and delay on a passive surround feed.
@@ -181,7 +186,7 @@ impl FxState {
         )
     }
 
-    /// State for a bus: its equalizer and its limiter.
+    /// State for a bus: its equalizer, its limiter and its delay.
     pub fn for_bus(channels: usize) -> Self {
         Self::new(channels, Vec::new(), channels, 0)
     }
@@ -189,7 +194,7 @@ impl FxState {
     fn new(
         channels: usize,
         bufs: Vec<Vec<f32>>,
-        limiter_channels: usize,
+        bus_channels: usize,
         surround_delay: usize,
     ) -> Self {
         Self {
@@ -198,7 +203,8 @@ impl FxState {
                 bufs,
                 eq: EqRt::new(channels),
                 gate: GateRt::new(),
-                limiter: LimiterRt::new(limiter_channels),
+                limiter: LimiterRt::new(bus_channels),
+                delay: DelayRt::new(bus_channels),
                 sub: SubFilter::new(),
                 surround: SurroundFeed::new(surround_delay),
                 comp: CompRt::new(),
@@ -656,4 +662,35 @@ pub unsafe fn process_bus_limiter(
     state
         .limiter_gain
         .fetch_min(lowest.to_bits(), Ordering::Relaxed);
+}
+
+/// Delay a bus's output channels in place by `delay_ms`, after its
+/// limiter and any external effects.
+///
+/// # Safety
+/// Real-time thread only. Output pointers must be valid for `n` samples and
+/// must not alias each other.
+pub unsafe fn process_bus_delay(
+    state: &FxState,
+    delay_ms: f32,
+    n: usize,
+    rate: u32,
+    ramp: usize,
+    output: &dyn Fn(usize) -> *mut f32,
+) {
+    let fx = state.inner.get_mut();
+    if fx.delay.is_idle(delay_ms) {
+        return;
+    }
+    // No allocation here: the channels go in a fixed array, in their own
+    // places, so a channel without a port keeps its delay line.
+    let mut chans: [Option<&mut [f32]>; MAX_LINKED_CHANNELS] = Default::default();
+    let count = state.channels.min(MAX_LINKED_CHANNELS);
+    for (c, slot) in chans.iter_mut().enumerate().take(count) {
+        let out = output(c);
+        if !out.is_null() {
+            *slot = Some(std::slice::from_raw_parts_mut(out, n));
+        }
+    }
+    fx.delay.run(delay_ms, rate, ramp, &mut chans[..count], n);
 }

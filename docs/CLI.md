@@ -161,6 +161,8 @@ Changes a bus, and prints it as it is afterwards.
 | `--gain DB`, `--gain-by DB` | Set or move the fader. |
 | `--mute on\|off\|toggle` | Silence it. |
 | `--mono on\|off\|toggle` | Fold every channel into one. |
+| `--delay MS` | Hold the bus's output back by this many milliseconds, 0 to 500, to line it up with a bus that plays later, such as a Bluetooth speaker. |
+| `--delay-by MS` | Move the delay by this many milliseconds, such as 5 or -5. |
 | `--name NAME`, `--color COLOR`, `--layout LAYOUT` | As for strips. |
 | `--device NAME` | For a hardware bus, the device to play to; `none` for none. |
 | `--eq on\|off` | The equalizer. |
@@ -178,6 +180,8 @@ Changes a bus, and prints it as it is afterwards.
 weirctl bus A1 --gain -3
 weirctl bus Speakers --mute toggle
 weirctl bus "Stream Mic" --limiter on --limiter-ceiling -1
+weirctl bus A1 --delay 180      # wait for a Bluetooth speaker
+weirctl bus A1 --delay-by -5    # a little less
 weirctl bus A1 --downmix matrix --center-level -6
 weirctl bus A2 --device alsa_output.pci-0000_00_1f.3.analog-stereo
 weirctl bus "Stream Mic" --external-effects on --external-effects-at before-limiter

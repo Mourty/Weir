@@ -240,6 +240,15 @@ impl FxWindow {
                         Some(Section::Limiter),
                         "Safety limiter",
                     ),
+                    // After external effects that are after the limiter, whose
+                    // gap is the one before this stage.
+                    Link::switch(
+                        "Delay",
+                        b.delay_ms > 0.0,
+                        p.accent,
+                        Some(Section::Delay),
+                        format!("Delay: {:.0} ms", b.delay_ms),
+                    ),
                 ]
             }
         })

@@ -195,6 +195,8 @@ pub fn bus(c: &mut Client, a: BusArgs, json: bool) -> Result<()> {
         gain_delta_db: a.gain_by,
         mute: flag(a.mute.as_deref())?,
         mono: flag(a.mono.as_deref())?,
+        delay_ms: a.delay,
+        delay_delta_ms: a.delay_by,
         layout: a.layout.as_deref().map(parse_layout).transpose()?,
         device: device_patch(a.device),
         color: a.color.as_deref().map(parse_color_arg).transpose()?,

@@ -320,6 +320,14 @@ pub struct BusArgs {
     /// Fold to mono: on, off or toggle.
     #[arg(long)]
     pub mono: Option<String>,
+    /// Hold the bus's output back by this many milliseconds, 0 to 500: for
+    /// lining it up with a bus that plays later, such as a Bluetooth
+    /// speaker.
+    #[arg(long)]
+    pub delay: Option<f32>,
+    /// Move the delay by this many milliseconds, such as 5 or -5.
+    #[arg(long, allow_negative_numbers = true)]
+    pub delay_by: Option<f32>,
     /// A new name.
     #[arg(long)]
     pub name: Option<String>,

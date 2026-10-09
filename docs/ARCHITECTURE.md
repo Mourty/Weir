@@ -261,7 +261,23 @@ desktop already has, and a switched-off hotkey stays bound if it is one of
 them, so its keys are not lost, but is not bound for the first time while
 off, so examples added switched off do not make the desktop ask about
 keys. Shortcut ids carry a hash of the suggested keys, so changed keys are
-offered afresh. The portal files shortcuts under the program's
+offered afresh.
+
+Plasma's portal backend falls short in three ways: it takes one
+suggestion, never changes a known shortcut's keys, and forgets a shortcut
+left out of a binding only if the same session bound it, which a new
+session never has. So on Plasma Weir also talks to Plasma's own shortcut
+service, kglobalaccel (`kde.rs`), as System Settings does, for its own
+component only: it forgets shortcuts no hotkey has (`unregister`), gives a
+hotkey's shortcut all its keys when they change in Weir
+(`setForeignShortcutKeys`, after asking `globalShortcutsByKey` whether
+another program has one), frees a switched-off hotkey's keys
+(`setInactive`; binding again takes them back), and reads keys as Qt key
+codes rather than as text in the desktop's language. Keys changed in
+System Settings come back into the hotkey's `keys`, so the two never pull
+against each other: Weir only sends keys that changed in Weir since the
+last binding. A hotkey keeps its shortcut id when its keys change, and a
+change of keys alone needs no new binding. The portal files shortcuts under the program's
 name and refuses them without one, but works the name out only for
 programs started from the application menu, not for the daemon started at
 login. So the daemon first tells the portal it is `weir` (its `Register`

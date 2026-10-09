@@ -1266,13 +1266,13 @@ Add a hotkey, or replace one. The parameters are the [Hotkey](#hotkey):
 |---|---|---|
 | `id` | number, *optional* | The hotkey to replace, whole. Left out, or 0, adds a new one. |
 | `name` | string | Unique, ignoring case, up to 60 characters. |
-| `keys` | list of strings, *optional* | Such as `["Ctrl+Alt+M"]`, or several, `["F9", "Ctrl+Alt+T"]`, any of which presses the hotkey: up to 8. See [Keys](#keys). One may be given as a string, `"F9"`. Left out or empty, the hotkey is pressed only by name. Where the desktop looks after the keys, only the first is suggested to it; more are added in its settings (see [KeysStatus](#keysstatus)). |
-| `enabled` | boolean, *optional* | `false` switches its keys off; it can still be pressed by name. `true` when left out. Where the desktop looks after the keys, it keeps them for a hotkey switched off, once it has had them. |
+| `keys` | list of strings, *optional* | Such as `["Ctrl+Alt+M"]`, or several, `["F9", "Ctrl+Alt+T"]`, any of which presses the hotkey: up to 8. See [Keys](#keys). One may be given as a string, `"F9"`. Left out or empty, the hotkey is pressed only by name. Where the desktop looks after the keys, it gets all of them when [KeysStatus](#keysstatus) says `settable` (KDE Plasma), and otherwise only the first is suggested to it, more being added in its settings. |
+| `enabled` | boolean, *optional* | `false` switches its keys off; it can still be pressed by name. `true` when left out. Where the desktop looks after the keys, it keeps them for a hotkey switched off, once it has had them; with `settable`, it lets other programs use them meanwhile. |
 | `steps` | list of [HotkeyStep](#hotkeystep) | What a press does, up to 32. |
 | `each_press` | string, *optional* | `all`: every step at each press (the default). `next`: the next step only, back to the first after the last. |
 | `on_release` | string, *optional* | What letting go does: `nothing` (the default), `restore` (put back what the press changed) or `steps` (do `release_steps`). |
 | `release_steps` | list of [HotkeyStep](#hotkeystep), *optional* | With `on_release` `steps`: what letting go does, up to 32. |
-| `repeat_ms` | number, *optional* | Do the steps again every this many milliseconds while the keys are held, 50 to 2000. The first repeat waits 400 ms, like a keyboard's, or `repeat_ms` if that is longer. |
+| `repeat_ms` | number, *optional* | Do the steps again every this many milliseconds while the keys are held, 20 to 2000. The first repeat waits 400 ms, like a keyboard's, or `repeat_ms` if that is longer. |
 
 Returns the Hotkey as saved: with its id, its keys as a list written the
 usual way, and strips and buses by id.
@@ -1959,10 +1959,11 @@ keys, media keys, `Pause`, `Print` and `ScrollLock` can be on their own.
 
 | Field | Type | |
 |---|---|---|
-| `method` | string | `desktop`: the desktop looks after the keys, through the XDG desktop portal's global shortcuts (KDE Plasma, GNOME 48 and newer, Hyprland). Each hotkey with keys is one entry in the desktop's shortcut settings, suggesting the first of its `keys`, where people change them and add more. `x11`: Weir watches the keys itself, on an X11 desktop. `unavailable`: neither, so hotkeys are pressed only by name, for instance from a shortcut of the desktop's own running `weirctl hotkey run NAME`. `starting`: not known yet, as at login before the desktop is up. |
+| `method` | string | `desktop`: the desktop looks after the keys, through the XDG desktop portal's global shortcuts (KDE Plasma, GNOME 48 and newer, Hyprland). Each hotkey with keys is one entry in the desktop's shortcut settings, suggesting the first of its `keys`, where people change them and add more (see `settable`). `x11`: Weir watches the keys itself, on an X11 desktop. `unavailable`: neither, so hotkeys are pressed only by name, for instance from a shortcut of the desktop's own running `weirctl hotkey run NAME`. `starting`: not known yet, as at login before the desktop is up. |
 | `message` | string | What that means, in a sentence to show people. |
 | `assigned` | object, *optional* | With `desktop`: the keys each hotkey really has, by id, as the desktop writes them, such as `{"1": ["F9", "Ctrl+Alt+I"]}`; an empty list for one it has given none. They can differ from the hotkey's `keys`, since they are changed and added to in the desktop's settings. A hotkey switched off that the desktop never had is left out. |
 | `configurable` | boolean, *optional* | With `desktop`: `true` when [`open_shortcut_settings`](#open_shortcut_settings) can open the desktop's settings at Weir's hotkeys (KDE Plasma 6.5 and newer). |
+| `settable` | boolean, *optional* | With `desktop`: `true` when Weir sets the desktop's keys itself (KDE Plasma). A hotkey's `keys` all work, keys changed in the desktop's settings come back into `keys`, and a key another program has is left out, with a problem saying which. Otherwise only the first of a hotkey's `keys` is suggested. |
 
 ### HistoryInfo
 

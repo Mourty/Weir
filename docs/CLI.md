@@ -320,12 +320,12 @@ HOTKEY is a hotkey's name or id. `add` and `change` take:
 
 | Option | |
 |---|---|
-| `--keys KEYS` | Such as `Ctrl+Alt+M`: any of Ctrl, Alt, Shift and Super, then one key. Letters, numbers and the like need Ctrl, Alt or Super; F1 to F24, media keys and Pause can be on their own. [The full list](API.md#keys). Give it more than once for several, any of which presses the hotkey; where the desktop looks after the keys, only the first is suggested to it. It replaces the keys the hotkey had. |
+| `--keys KEYS` | Such as `Ctrl+Alt+M`: any of Ctrl, Alt, Shift and Super, then one key. Letters, numbers and the like need Ctrl, Alt or Super; F1 to F24, media keys and Pause can be on their own. [The full list](API.md#keys). Give it more than once for several, any of which presses the hotkey; on desktops other than KDE Plasma that look after the keys, only the first is suggested. It replaces the keys the hotkey had. |
 | `--do STEP` | A step: a method and its parameters as JSON, `'set_strip {"id": "Mic", "mute": "toggle"}'`, or a whole [step](API.md#hotkeystep) as JSON, for a fade. Once per step, in order. |
 | `--each-press all\|next` | Every step at each press (the default), or the next one, going round. |
 | `--release nothing\|restore\|steps` | What letting go does: nothing, put back what pressing changed, or the `--release-do` steps. |
 | `--release-do STEP` | A step for letting go, like `--do`. |
-| `--repeat MS` | Do the steps again every MS milliseconds while held, 50 to 2000; `0` not to. |
+| `--repeat MS` | Do the steps again every MS milliseconds while held, 20 to 2000; `0` not to. |
 | `--enabled on\|off\|toggle` | Switch its keys on or off. Off, it can still be run by name. |
 
 ```sh
@@ -343,10 +343,11 @@ weirctl hotkey remove "Fade out"
 
 `weirctl hotkeys` starts with how keys reach Weir. On KDE Plasma and other
 Wayland desktops with a shortcut service, the desktop looks after the keys:
-each hotkey is one entry in its shortcut settings, suggesting the first of
-its keys, and more keys for it are added there. `weirctl hotkeys` then
-shows every key the desktop has for each hotkey, and `weirctl hotkey
-settings` opens those settings.
+each hotkey is one entry in its shortcut settings. On Plasma, Weir gives
+the entry all of a hotkey's keys, and keys changed there come back; on
+other desktops only the first is suggested, and more are added there.
+`weirctl hotkeys` shows every key the desktop has for each hotkey, and
+`weirctl hotkey settings` opens those settings.
 
 ## Settings and the window
 

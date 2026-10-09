@@ -33,7 +33,7 @@ Python and Node.js are in [`examples/`](../examples/).
   * [Equalizer presets and the analyzer](#equalizer-presets-and-the-analyzer): `list_eq_presets`, `apply_eq_preset`, `save_eq_preset`, `delete_eq_preset`, `watch_spectrum`
   * [Scenes and setups](#scenes-and-setups): `save_scene`, `load_scene`, `list_scenes`, `delete_scene` and the same for setups
   * [Undo](#undo): `undo`, `redo`, `history`
-  * [Hotkeys](#hotkeys): `list_hotkeys`, `set_hotkey`, `remove_hotkey`, `run_hotkey`, `press_hotkey`, `release_hotkey`
+  * [Hotkeys](#hotkeys): `list_hotkeys`, `set_hotkey`, `remove_hotkey`, `switch_hotkey`, `move_hotkey`, `run_hotkey`, `press_hotkey`, `release_hotkey`, `add_hotkey_group`, `set_hotkey_group`, `remove_hotkey_group`, `move_hotkey_group`, `open_shortcut_settings`
   * [Settings and the window](#settings-and-the-window): `set_settings`, `show_window`
 * [Notifications](#notifications)
 * [Types](#types)
@@ -1234,8 +1234,12 @@ Steps can name strips and buses; the daemon keeps their ids, so renaming
 one does not break a hotkey. A hotkey working on one that was removed is
 listed in `problems`.
 
-There is one list of hotkeys, whatever scene or setup is loaded. The daemon
-keeps it in `~/.config/weir/hotkeys.json`.
+There is one list of hotkeys, whatever scene or setup is loaded, in an
+order of its own: hotkeys in no group and groups, each group with its
+hotkeys, in any order (`order` in [HotkeysInfo](#hotkeysinfo)). A group is
+switched on and off as one: while it is off, none of its hotkeys' keys
+work, and each keeps its own switch for when the group is on again. The
+daemon keeps the list in `~/.config/weir/hotkeys.json`.
 
 #### `list_hotkeys`
 
@@ -1250,7 +1254,7 @@ weirctl raw list_hotkeys
 info = mixer.call("list_hotkeys")
 print(info["keys"]["message"])
 for hotkey in info["hotkeys"]:
-    print(hotkey["name"], hotkey.get("keys", "(no keys)"))
+    print(hotkey["name"], ", ".join(hotkey.get("keys", [])) or "(no keys)")
 ```
 
 ```js
@@ -1266,25 +1270,26 @@ Add a hotkey, or replace one. The parameters are the [Hotkey](#hotkey):
 |---|---|---|
 | `id` | number, *optional* | The hotkey to replace, whole. Left out, or 0, adds a new one. |
 | `name` | string | Unique, ignoring case, up to 60 characters. |
-| `keys` | string, *optional* | Such as `"Ctrl+Alt+M"`; see [Keys](#keys). Left out, the hotkey is pressed only by name. |
-| `enabled` | boolean, *optional* | `false` switches its keys off; it can still be pressed by name. `true` when left out. |
+| `keys` | list of strings, *optional* | Such as `["Ctrl+Alt+M"]`, or several, `["F9", "Ctrl+Alt+T"]`, any of which presses the hotkey: up to 8. See [Keys](#keys). One may be given as a string, `"F9"`. Left out or empty, the hotkey is pressed only by name. Where the desktop looks after the keys, it gets all of them when [KeysStatus](#keysstatus) says `settable` (KDE Plasma), and otherwise only the first is suggested to it, more being added in its settings. |
+| `group` | number, *optional* | The [group](#add_hotkey_group) it is in, by id, or `0` (the default) for none. Changed to another group, it goes last in it. |
+| `enabled` | boolean, *optional* | `false` switches its keys off; it can still be pressed by name. `true` when left out. Where the desktop looks after the keys, it keeps them for a hotkey switched off, once it has had them; with `settable`, it lets other programs use them meanwhile. |
 | `steps` | list of [HotkeyStep](#hotkeystep) | What a press does, up to 32. |
 | `each_press` | string, *optional* | `all`: every step at each press (the default). `next`: the next step only, back to the first after the last. |
 | `on_release` | string, *optional* | What letting go does: `nothing` (the default), `restore` (put back what the press changed) or `steps` (do `release_steps`). |
 | `release_steps` | list of [HotkeyStep](#hotkeystep), *optional* | With `on_release` `steps`: what letting go does, up to 32. |
-| `repeat_ms` | number, *optional* | Do the steps again every this many milliseconds while the keys are held, 50 to 2000. The first repeat waits 400 ms, like a keyboard's, or `repeat_ms` if that is longer. |
+| `repeat_ms` | number, *optional* | Do the steps again every this many milliseconds while the keys are held, 20 to 2000. The first repeat waits 400 ms, like a keyboard's, or `repeat_ms` if that is longer. |
 
-Returns the Hotkey as saved: with its id, its keys written the usual way,
-and strips and buses by id.
+Returns the Hotkey as saved: with its id, its keys as a list written the
+usual way, and strips and buses by id.
 
 A step can be any request that changes something; requests that only ask
 (`get_state`, `list_*`, `history`), `subscribe`, `watch_spectrum` and the
 hotkey methods themselves cannot be steps. A step is checked as the request
 would be, so a misspelled strip is an error now rather than a dead key
-later. Two hotkeys cannot have the same name or the same keys.
+later. Two hotkeys cannot have the same name, or share any keys.
 
 ```sh
-weirctl raw set_hotkey '{"name": "Push to talk", "keys": "F9", "steps": [{"method": "set_strip", "params": {"id": "Mic", "mute": false}}], "on_release": "restore"}'
+weirctl raw set_hotkey '{"name": "Push to talk", "keys": ["F9", "Ctrl+Alt+T"], "steps": [{"method": "set_strip", "params": {"id": "Mic", "mute": false}}], "on_release": "restore"}'
 ```
 
 Two equalizer presets, a press each, with no keys: for a Stream Deck
@@ -1302,7 +1307,7 @@ The music dipped while a key is held, gently:
 ```js
 await mixer.call("set_hotkey", {
   name: "Dip the music",
-  keys: "Ctrl+Alt+D",
+  keys: ["Ctrl+Alt+D"],
   steps: [{ method: "set_strip", params: { id: "Music", gain_db: -20 }, over_ms: 300 }],
   on_release: "restore",
 });
@@ -1312,7 +1317,7 @@ To change one, send it back with its id:
 
 ```python
 hotkey = weir.find(mixer.call("list_hotkeys")["hotkeys"], "Mute mic")
-hotkey["keys"] = "Ctrl+Alt+M"
+hotkey["keys"] = ["Ctrl+Alt+M"]
 mixer.call("set_hotkey", **hotkey)
 ```
 
@@ -1334,6 +1339,54 @@ mixer.call("remove_hotkey", hotkey="Mute mic")
 
 ```js
 await mixer.call("remove_hotkey", { hotkey: "Mute mic" });
+```
+
+#### `switch_hotkey`
+
+Switch a hotkey's keys on or off, leaving the rest of it as it is.
+
+| Parameter | Type | |
+|---|---|---|
+| `hotkey` | number or string | The hotkey's id or name. |
+| `enabled` | boolean or `"toggle"` | On, off, or the opposite of what it is. |
+
+Returns the [Hotkey](#hotkey).
+
+```sh
+weirctl raw switch_hotkey '{"hotkey": "Mute mic", "enabled": false}'
+```
+
+```python
+mixer.call("switch_hotkey", hotkey="Mute mic", enabled="toggle")
+```
+
+```js
+await mixer.call("switch_hotkey", { hotkey: "Mute mic", enabled: true });
+```
+
+#### `move_hotkey`
+
+Move a hotkey to another place in the list, or into a group.
+
+| Parameter | Type | |
+|---|---|---|
+| `hotkey` | number or string | The hotkey's id or name. |
+| `group` | number or string, *optional* | The group to move it into, by id or name, or `0` for none. Left out, it stays in its group. |
+| `index` | number, *optional* | Where it ends up, counting from 0: among the hotkeys of its group, or, in no group, among the places in the list (each hotkey in no group, and each group, as in `order`). Past the end, or left out, means last. |
+
+Returns the [HotkeysInfo](#hotkeysinfo) as it is now.
+
+```sh
+weirctl raw move_hotkey '{"hotkey": "Mute mic", "group": "Streaming"}'
+weirctl raw move_hotkey '{"hotkey": "Mute mic", "group": 0, "index": 0}'
+```
+
+```python
+mixer.call("move_hotkey", hotkey="Mute mic", index=0)
+```
+
+```js
+await mixer.call("move_hotkey", { hotkey: "Mute mic", group: "Streaming", index: 0 });
 ```
 
 #### `run_hotkey`, `press_hotkey` and `release_hotkey`
@@ -1362,6 +1415,126 @@ mixer.call("release_hotkey", hotkey="Mute mic")
 
 ```js
 await mixer.call("run_hotkey", { hotkey: "Mute mic" });
+```
+
+#### `add_hotkey_group`
+
+Add a group of hotkeys, last in the list. Hotkeys go into it with
+[`move_hotkey`](#move_hotkey), or with `group` in
+[`set_hotkey`](#set_hotkey).
+
+| Parameter | Type | |
+|---|---|---|
+| `name` | string | Unique among groups, ignoring case, up to 60 characters. |
+| `enabled` | boolean, *optional* | Whether its hotkeys' keys work. `true` when left out. |
+
+Returns the [HotkeyGroup](#hotkeygroup), with its id.
+
+```sh
+weirctl raw add_hotkey_group '{"name": "Games"}'
+```
+
+```python
+games = mixer.call("add_hotkey_group", name="Games", enabled=False)
+mixer.call("move_hotkey", hotkey="Mute mic", group=games["id"])
+```
+
+```js
+const group = await mixer.call("add_hotkey_group", { name: "Games" });
+```
+
+#### `set_hotkey_group`
+
+Rename a group of hotkeys, or switch it on or off. Only what is given
+changes.
+
+| Parameter | Type | |
+|---|---|---|
+| `group` | number or string | The group's id or name. |
+| `name` | string, *optional* | A new name. |
+| `enabled` | boolean or `"toggle"`, *optional* | Switch its hotkeys' keys on or off. Each hotkey keeps its own switch. |
+
+Returns the [HotkeyGroup](#hotkeygroup).
+
+```sh
+weirctl raw set_hotkey_group '{"group": "Streaming", "enabled": "toggle"}'
+```
+
+```python
+mixer.call("set_hotkey_group", group="Streaming", enabled=False)
+```
+
+```js
+await mixer.call("set_hotkey_group", { group: "Streaming", name: "Live" });
+```
+
+#### `remove_hotkey_group`
+
+Remove a group of hotkeys. Its hotkeys stay, in no group.
+
+| Parameter | Type | |
+|---|---|---|
+| `group` | number or string | The group's id or name. |
+
+Returns the [HotkeysInfo](#hotkeysinfo) as it is now.
+
+```sh
+weirctl raw remove_hotkey_group '{"group": "Streaming"}'
+```
+
+```python
+mixer.call("remove_hotkey_group", group="Streaming")
+```
+
+```js
+await mixer.call("remove_hotkey_group", { group: "Streaming" });
+```
+
+#### `move_hotkey_group`
+
+Move a group of hotkeys to another place in the list, among the groups
+and the hotkeys in no group.
+
+| Parameter | Type | |
+|---|---|---|
+| `group` | number or string | The group's id or name. |
+| `index` | number | Where it ends up among the places in the list (each hotkey in no group, and each group, as in `order`), counting from 0. Past the end means last. |
+
+Returns the [HotkeysInfo](#hotkeysinfo) as it is now.
+
+```sh
+weirctl raw move_hotkey_group '{"group": "Streaming", "index": 0}'
+```
+
+```python
+mixer.call("add_hotkey_group", name="Games")
+mixer.call("move_hotkey_group", group="Games", index=0)
+```
+
+```js
+await mixer.call("move_hotkey_group", { group: "Streaming", index: 0 });
+```
+
+#### `open_shortcut_settings`
+
+Open the desktop's shortcut settings at Weir's hotkeys, where people change
+their keys and give them more. Takes no parameters. Returns `null`, or an
+error unless [KeysStatus](#keysstatus) says `configurable`.
+
+<!-- not tested: needs a desktop that can open its settings -->
+```sh
+weirctl raw open_shortcut_settings
+```
+
+<!-- not tested: needs a desktop that can open its settings -->
+```python
+if mixer.call("list_hotkeys")["keys"].get("configurable"):
+    mixer.call("open_shortcut_settings")
+```
+
+<!-- not tested: needs a desktop that can open its settings -->
+```js
+await mixer.call("open_shortcut_settings");
 ```
 
 ### Settings and the window
@@ -1887,14 +2060,26 @@ any.
 ### Hotkey
 
 ```json
-{"id": 2, "name": "Push to talk", "keys": "F9",
+{"id": 2, "name": "Push to talk", "keys": ["F9"],
  "steps": [{"method": "set_strip", "params": {"id": 1, "mute": false}}],
  "on_release": "restore"}
 ```
 
 The fields are those of [`set_hotkey`](#set_hotkey). Fields at their
-default are left out: `enabled` when `true`, `each_press` when `all`,
-`on_release` when `nothing`.
+default are left out: `enabled` when `true`, `group` when `0`, `each_press`
+when `all`, `on_release` when `nothing`.
+
+### HotkeyGroup
+
+```json
+{"id": 1, "name": "Streaming", "enabled": false}
+```
+
+| Field | Type | |
+|---|---|---|
+| `id` | number | Given by the daemon. |
+| `name` | string | Unique among groups, ignoring case. |
+| `enabled` | boolean, *optional* | Whether its hotkeys' keys work; left out when `true`. |
 
 ### HotkeyStep
 
@@ -1929,7 +2114,9 @@ keys, media keys, `Pause`, `Print` and `ScrollLock` can be on their own.
 
 | Field | Type | |
 |---|---|---|
-| `hotkeys` | list of [Hotkey](#hotkey) | Every hotkey, in the order they were added. |
+| `hotkeys` | list of [Hotkey](#hotkey) | Every hotkey, in their order in the list, those in a group where their group is. |
+| `groups` | list of [HotkeyGroup](#hotkeygroup), *optional* | Every group, in their order in the list. Left out when there are none. |
+| `order` | list, *optional* | The list as it is shown: each hotkey in no group, as `{"hotkey": id}`, and each group, as `{"group": id}`, in the order they were put in. A group's hotkeys are listed with it, in their order in `hotkeys`. Left out when there are no hotkeys. |
 | `keys` | [KeysStatus](#keysstatus) | How keys reach Weir on this desktop. |
 | `problems` | list of `{"hotkey": id, "problem": string}` | What is wrong with any of them, in sentences for people: keys another program has, a strip that was removed. Left out when there is nothing wrong. |
 
@@ -1937,9 +2124,11 @@ keys, media keys, `Pause`, `Print` and `ScrollLock` can be on their own.
 
 | Field | Type | |
 |---|---|---|
-| `method` | string | `desktop`: the desktop looks after the keys, through the XDG desktop portal's global shortcuts (KDE Plasma, GNOME 48 and newer, Hyprland). People can see and change the keys in the desktop's settings too. `x11`: Weir watches the keys itself, on an X11 desktop. `unavailable`: neither, so hotkeys are pressed only by name, for instance from a shortcut of the desktop's own running `weirctl hotkey run NAME`. `starting`: not known yet, as at login before the desktop is up. |
+| `method` | string | `desktop`: the desktop looks after the keys, through the XDG desktop portal's global shortcuts (KDE Plasma, GNOME 48 and newer, Hyprland). Each hotkey with keys is one entry in the desktop's shortcut settings, suggesting the first of its `keys`, where people change them and add more (see `settable`). `x11`: Weir watches the keys itself, on an X11 desktop. `unavailable`: neither, so hotkeys are pressed only by name, for instance from a shortcut of the desktop's own running `weirctl hotkey run NAME`. `starting`: not known yet, as at login before the desktop is up. |
 | `message` | string | What that means, in a sentence to show people. |
-| `assigned` | object, *optional* | With `desktop`: the keys the desktop gave each hotkey, by id, as the desktop writes them. Changed in the desktop's settings, they can differ from the hotkey's `keys`. |
+| `assigned` | object, *optional* | With `desktop`: the keys each hotkey really has, by id, as the desktop writes them, such as `{"1": ["F9", "Ctrl+Alt+I"]}`; an empty list for one it has given none. They can differ from the hotkey's `keys`, since they are changed and added to in the desktop's settings. A hotkey switched off that the desktop never had is left out. |
+| `configurable` | boolean, *optional* | With `desktop`: `true` when [`open_shortcut_settings`](#open_shortcut_settings) can open the desktop's settings at Weir's hotkeys (KDE Plasma 6.5 and newer). |
+| `settable` | boolean, *optional* | With `desktop`: `true` when Weir sets the desktop's keys itself (KDE Plasma). A hotkey's `keys` all work, keys changed in the desktop's settings come back into `keys`, and a key another program has is left out, with a problem saying which. Otherwise only the first of a hotkey's `keys` is suggested. |
 
 ### HistoryInfo
 
@@ -2030,7 +2219,7 @@ Unmuted while the key is held, as a hotkey: Weir watches the key, and
 letting go puts the mute back as it was.
 
 ```sh
-weirctl raw set_hotkey '{"name": "Talk", "keys": "F9", "steps": [{"method": "set_strip", "params": {"id": "Mic", "mute": false}}], "on_release": "restore"}'
+weirctl raw set_hotkey '{"name": "Talk", "keys": ["F9"], "steps": [{"method": "set_strip", "params": {"id": "Mic", "mute": false}}], "on_release": "restore"}'
 ```
 
 A button on something else, such as a Stream Deck, can hold the same

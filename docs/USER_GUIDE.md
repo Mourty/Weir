@@ -16,6 +16,7 @@ look up when you need it.
 * [Effects](#effects)
 * [Surround sound](#surround-sound)
 * [Scenes and setups](#scenes-and-setups)
+* [Hotkeys](#hotkeys)
 * [Names, colors and order](#names-colors-and-order)
 * [Undo](#undo)
 * [Preferences](#preferences)
@@ -128,6 +129,8 @@ On the right:
 * **+ Strip** and **+ Bus** add one.
 * **Apps** lists the applications playing, and holds the rules.
 * **Scenes** and **Setups** save and bring back how things are.
+* **Hotkeys** lists the keys that do things in the mixer from anywhere
+  (see [Hotkeys](#hotkeys)).
 * **…** has undo and redo, **Recent changes**, **Preferences**, **About**
   and **Quit window**.
 
@@ -538,6 +541,140 @@ Click a name to load it; the one last loaded or saved is highlighted.
 removes it; both ask first. **Save … as** saves under a new name, and says
 as you type if the name will not do. Loading can be undone.
 
+## Hotkeys
+
+A hotkey is keys that do something in the mixer, whichever window is in
+front, even a full-screen game: mute your microphone, push to talk, turn
+the music down, load a scene.
+
+![The Hotkeys window](images/hotkeys.png)
+
+**Hotkeys** at the top opens the list. The line at the top says how keys
+reach Weir on your desktop (see
+[Your desktop and the keys](#your-desktop-and-the-keys)). For each hotkey:
+
+* the **dots** at its left move it: drag it to another place in the list,
+  or into a group. A blue line shows where it will go, wherever the
+  pointer is in the list.
+* the **switch** turns its keys on or off. Off, it can still be pressed by
+  name.
+* its **keys**, one set to a line, and what it does. **while held**,
+  **repeats** and **cycles** say how it behaves.
+* **Try** does what pressing and letting go of its keys would.
+* **Edit** changes it, and **×** removes it, after asking.
+
+With no hotkeys yet, **Add a few examples** adds push to talk, muting the
+microphone, music up and down, dipping the music to talk over it, and
+bringing up the window, all switched off: switch on the ones you want, and
+change their keys if you like.
+
+### Groups
+
+A group keeps hotkeys together, and switches them on and off together: a
+group for streaming, say, switched on only while you stream. **+ Add
+group** under the list adds one; type its name and press Enter. Each
+group is a box holding its hotkeys, and groups and hotkeys in no group can
+go in any order.
+
+* Drag a hotkey into a group's box to put it in the group. The group can
+  also be picked under **Group** when editing a hotkey. Dragging a hotkey
+  out of the box takes it out of its group.
+* A group's **switch** turns all its hotkeys' keys on or off. Its hotkeys
+  are faded while it is off, and each keeps its own switch for when the
+  group is on again.
+* Drag a group by the dots on its header to put it in another place.
+  **Rename** changes its name, and **×** removes it, after asking; its
+  hotkeys stay, in no group.
+
+### Making a hotkey
+
+Click **+ Add hotkey**, or right-click a mute, solo, mono or routing button,
+or a fader, and pick **Add a hotkey…**: the new hotkey starts out doing what
+that control does. The same menu lists the hotkeys already on the control,
+to change one. Each strip's and bus's **…** menu has them too, under
+**Hotkeys**.
+
+![Making a hotkey](images/hotkey-editor.png)
+
+* **When I press**: press the keys you want, such as Ctrl or Alt with a
+  letter. F keys, media keys and Pause can be used on their own. **Esc**
+  stops recording. **+ Other keys** adds more keys that do the same, any
+  of which work, such as a button on a gaming mouse. **Change** records a
+  set again, and **×** takes it away. With no keys at all, a hotkey can
+  still be pressed by name from `weirctl`, a script or a Stream Deck
+  button.
+
+  On GNOME and Hyprland, which let Weir suggest only one set of keys, more
+  are added in the desktop's settings instead (see
+  [below](#your-desktop-and-the-keys)): once saved, the hotkey lists every
+  key the desktop has for it, **Suggest other keys** gives it the keys you
+  press instead of all of those, and **No keys** takes them away.
+* **Do this**: what it does, and to which strip or bus.
+  * **Mute or unmute**, **Solo**, an effect, or **Send to a bus**: switch
+    it each time, always on, always off, or on only **while held**, back
+    as it was when you let go.
+  * **Push to talk**: the strip is unmuted only while you hold the keys.
+    When you let go, **Mute it**, or **Put the mute back how it was**, in
+    which case the keys do nothing while it is already unmuted.
+  * **Turn the volume up or down** by an amount at each press, again and
+    again while the keys are held. **Set the volume** to a level, and put
+    it back when you let go if you like. For a strip, **Fader** picks its
+    own fader, or its level in one bus's mix: turn the music down on your
+    stream and nowhere else.
+  * **Change the equalizer preset**, **Load a scene**, or **Bring up the
+    Weir window**.
+* **Name**: optional. One is made up from what it does.
+
+Each press is one step in [Undo](#undo): **Ctrl+Z** after a push to talk
+takes back the whole of it.
+
+### More options
+
+**More options…** shows every step, since a hotkey can do several things
+at once, such as dipping the music and unmuting the microphone. **+ Add a
+step** picks one the same way as above, and **Up** and **Down** change
+their order.
+
+* **Each press** does every step, or only the next one, going round: one
+  key to step through equalizer presets or scenes.
+* **When I let go**: nothing, put back what pressing changed, or other
+  steps of its own.
+* **While held**: do it again every so many milliseconds.
+* **As API requests** is the hotkey as Weir keeps it. Anything Weir's
+  [control protocol](API.md#hotkeys) can do can be a step, and slow fades
+  (`over_ms`) are set here. Weir checks it when you save.
+
+**Fewer options** goes back to the simple form, when the hotkey fits it.
+
+### Your desktop and the keys
+
+On KDE Plasma, GNOME 48 and newer, and Hyprland, your desktop looks after
+the keys. Each hotkey is one entry in its shortcut settings, under the
+hotkey's name. The first time, the desktop asks you to confirm the keys
+you pressed. Examples get their entry when you first switch them on, and
+removing a hotkey removes its entry.
+
+On Plasma the entries are in **System Settings › Keyboard › Shortcuts ›
+Weir**, and **Keys in System Settings** under the list opens that page
+(Plasma 6.5 and newer). Keys can be changed in either place: those you give
+a hotkey in Weir go into its entry, and those you change there show up in
+Weir. A key another program already uses is left out, and the list says
+which program has it. A switched-off hotkey keeps its entry and keys, ready
+for when you switch it back on, and lets go of the keys meanwhile, so other
+programs can use them. Plasma shows the keys of a new hotkey as its
+*default shortcut*, with a box to switch it off, and other keys as *custom
+shortcuts*.
+
+On GNOME and Hyprland, Weir can suggest only one set of keys for each
+hotkey; give it more, or other ones, in the desktop's settings, and Weir
+lists them. A switched-off hotkey keeps its entry and keys there, and the
+desktop keeps those keys for it meanwhile.
+
+On an X11 desktop, Weir watches the keys itself, and a key another program
+already uses is reported in the list. Anywhere else, hotkeys work only by
+name: add a shortcut in your desktop's keyboard settings that runs
+`weirctl hotkey run "NAME"`.
+
 ## Names, colors and order
 
 * **Rename** a strip or bus by clicking its name. Applications playing into
@@ -628,7 +765,8 @@ next time Weir starts.
 | Application volume | drag, scroll, double-click | as a fader |
 | Level under a fader | drag or click and type | sets the fader exactly |
 | Routing button | click | send or stop sending |
-| | right-click | the level in that mix |
+| | right-click | the level in that mix, or a hotkey |
+| Fader, M, S, mono | right-click | add a hotkey, or change one already on it |
 | NS, Gate, EQ | click / right-click | switch / open the settings window |
 | CLIP | click | clear it |
 | LIM | click / right-click | the limiter's settings / quick menu |

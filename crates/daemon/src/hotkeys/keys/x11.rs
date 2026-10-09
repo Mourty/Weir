@@ -7,7 +7,7 @@
 //! thread of their own; grabs change from the async side, on the same
 //! connection, which x11rb allows.
 
-use super::{status, Registration};
+use super::{add_problem, status, Held, Registration};
 use crate::controller::Controller;
 use crate::hotkeys::Command;
 use std::collections::{BTreeMap, HashMap};
@@ -129,9 +129,10 @@ fn regrab(
     }
     let mut grabs = HashMap::new();
     let mut problems = BTreeMap::new();
-    for r in regs {
+    for r in regs.iter().filter(|r| r.enabled) {
         let Some(key) = keycode_for(conn, r.keys.key.keysym) else {
-            problems.insert(
+            add_problem(
+                &mut problems,
                 r.id,
                 format!("This keyboard has no {} key.", r.keys.key.name),
             );
@@ -172,7 +173,8 @@ fn regrab(
                 }
                 let taken =
                     matches!(&e, ReplyError::X11Error(x) if x.error_kind == ErrorKind::Access);
-                problems.insert(
+                add_problem(
+                    &mut problems,
                     r.id,
                     if taken {
                         format!("Another program already uses {}. Pick other keys.", r.keys)
@@ -198,20 +200,23 @@ fn listen(
     // Which hotkey each key held now pressed: let go of by key alone, since
     // the modifiers may come up first.
     let mut down: HashMap<Keycode, HotkeyId> = HashMap::new();
+    let mut held = Held::default();
     loop {
         match conn.wait_for_event() {
             Ok(Event::KeyPress(e)) => {
                 let mods = u16::from(e.state) & MODIFIERS;
                 let id = grabs.lock().unwrap().get(&(e.detail, mods)).copied();
                 if let Some(id) = id {
-                    if down.insert(e.detail, id).is_none() {
+                    if down.insert(e.detail, id).is_none() && held.down(id, e.detail) {
                         let _ = tx.send(Command::Press(id));
                     }
                 }
             }
             Ok(Event::KeyRelease(e)) => {
                 if let Some(id) = down.remove(&e.detail) {
-                    let _ = tx.send(Command::Release(id));
+                    if held.up(id, &e.detail) {
+                        let _ = tx.send(Command::Release(id));
+                    }
                 }
             }
             Ok(Event::MappingNotify(_)) => {

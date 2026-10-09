@@ -5,6 +5,7 @@ mod appearance;
 mod client;
 mod effects;
 mod fx_window;
+mod hotkeys;
 mod patch;
 mod prefs;
 mod theme;

@@ -9,6 +9,7 @@ use super::controls::{
 use super::mixer::Metrics;
 use super::{bus_label, App, Key};
 use crate::fx_window::FxTarget;
+use crate::hotkeys::simple::{Action, Simple};
 use crate::{theme, widgets};
 use egui::{vec2, Frame, RichText, Ui};
 use weir_protocol::*;
@@ -159,9 +160,15 @@ impl App {
                     let key = Key::Gain(StripOrBus::Strip(s.id));
                     let mut gain = self.value(key, s.gain_db);
                     let fill = own_color(s.color.as_deref()).unwrap_or(theme::p().fader);
-                    if widgets::fader(ui, &mut gain, lay.fader_h, fill).changed() {
+                    let r = widgets::fader(ui, &mut gain, lay.fader_h, fill);
+                    if r.changed() {
                         self.set_value(key, gain);
                     }
+                    r.context_menu(|ui| {
+                        ui.label(RichText::new(format!("{}: volume", s.name)).strong());
+                        let start = Simple::new(StripOrBus::Strip(s.id), state);
+                        self.hotkey_items(ui, state, start.with(Action::VolumeBy));
+                    });
                 }
                 Some(b) => {
                     let key = Key::StripSend(s.id, b.id);
@@ -172,9 +179,18 @@ impl App {
                             ui.set_opacity(0.35);
                         }
                         let color = theme::bus_color(b);
-                        if widgets::fader(ui, &mut level, lay.fader_h, color).changed() {
+                        let r = widgets::fader(ui, &mut level, lay.fader_h, color);
+                        if r.changed() {
                             self.set_value(key, level);
                         }
+                        r.context_menu(|ui| {
+                            ui.label(RichText::new(format!("{} in {}", s.name, b.name)).strong());
+                            let start = Simple {
+                                send: Some(b.id),
+                                ..Simple::new(StripOrBus::Strip(s.id), state)
+                            };
+                            self.hotkey_items(ui, state, start.with(Action::VolumeBy));
+                        });
                     });
                 }
             }
@@ -322,16 +338,20 @@ impl App {
     fn strip_buttons(&mut self, ui: &mut Ui, state: &FullState, s: &Strip, inner_w: f32) {
         ui.horizontal(|ui| {
             let w = (inner_w - 8.0 - 26.0) / 2.0;
-            if widgets::toggle(ui, "M", s.mute, theme::p().mute_on, vec2(w, 22.0))
-                .on_hover_text("Mute")
-                .clicked()
-            {
+            let target = StripOrBus::Strip(s.id);
+            let r = widgets::toggle(ui, "M", s.mute, theme::p().mute_on, vec2(w, 22.0))
+                .on_hover_text("Mute\nRight-click to add a hotkey");
+            if r.clicked() {
                 self.actions.push(Request::SetStrip(StripPatch {
                     id: s.id,
                     mute: Some(Flag::from(!s.mute)),
                     ..Default::default()
                 }));
             }
+            r.context_menu(|ui| {
+                ui.label(RichText::new(format!("{}: mute", s.name)).strong());
+                self.hotkey_items(ui, state, Simple::new(target, state).with(Action::Mute));
+            });
             let solo_tip = match state.settings.solo {
                 SoloMode::Cue(b) => match state.mixer.bus(b) {
                     Some(b) => format!(
@@ -343,16 +363,19 @@ impl App {
                 },
                 SoloMode::Exclusive => "Solo: silence every strip that is not soloed".to_string(),
             };
-            if widgets::toggle(ui, "S", s.solo, theme::p().solo_on, vec2(w, 22.0))
-                .on_hover_text(solo_tip)
-                .clicked()
-            {
+            let r = widgets::toggle(ui, "S", s.solo, theme::p().solo_on, vec2(w, 22.0))
+                .on_hover_text(format!("{solo_tip}\nRight-click to add a hotkey"));
+            if r.clicked() {
                 self.actions.push(Request::SetStrip(StripPatch {
                     id: s.id,
                     solo: Some(Flag::from(!s.solo)),
                     ..Default::default()
                 }));
             }
+            r.context_menu(|ui| {
+                ui.label(RichText::new(format!("{}: solo", s.name)).strong());
+                self.hotkey_items(ui, state, Simple::new(target, state).with(Action::Solo));
+            });
             ui.menu_button("…", |ui| self.strip_menu(ui, state, s));
         });
     }
@@ -380,6 +403,9 @@ impl App {
             self.set_value(Key::StripPan(s.id), 0.0);
             ui.close();
         }
+        ui.menu_button("Hotkeys", |ui| {
+            self.hotkey_items(ui, state, Simple::new(target, state).with(Action::Mute));
+        });
         ui.separator();
         if ui
             .button(RichText::new("Remove strip").color(theme::p().meter_red))
@@ -439,12 +465,15 @@ impl App {
         let mut hover = if on {
             format!(
                 "Sent to {} at {} on top of the fader.\nClick to stop, right-click to set \
-                 the level.",
+                 the level or add a hotkey.",
                 b.name,
                 widgets::short_db(level)
             )
         } else {
-            format!("Send to {}.\nRight-click to set the level.", b.name)
+            format!(
+                "Send to {}.\nRight-click to set the level, or add a hotkey.",
+                b.name
+            )
         };
         if let Some(db) = ducked {
             hover.push_str(&format!("\n\nDucked: turned down {:.0} dB right now.", -db));
@@ -479,6 +508,12 @@ impl App {
                 self.mix_view = Some(b.id);
                 ui.close();
             }
+            ui.separator();
+            let start = Simple {
+                bus: b.id,
+                ..Simple::new(StripOrBus::Strip(s.id), state)
+            };
+            self.hotkey_items(ui, state, start.with(Action::Route));
         });
     }
 

@@ -10,13 +10,15 @@
 //! `WEIR_HOTKEYS=desktop`, `x11` or `none` picks the way by hand, for
 //! testing.
 
+mod kde;
 mod portal;
 mod x11;
 
 use super::Command;
 use crate::controller::Controller;
 use crate::display;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::hash::Hash;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::broadcast::error::RecvError;
@@ -25,28 +27,82 @@ use tokio::sync::watch;
 use tracing::{debug, info, warn};
 use weir_protocol::*;
 
-/// A hotkey whose keys should work.
+/// One key combination of a hotkey.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Registration {
     pub id: HotkeyId,
+    /// Which of the hotkey's combinations, from 0.
+    pub index: usize,
     pub name: String,
     pub keys: KeyCombo,
+    /// Whether the hotkey is switched on, and its group too. On X11 only
+    /// those are grabbed; the desktop keeps the others' shortcuts, so keys
+    /// people set there are not lost, and their presses are ignored.
+    pub enabled: bool,
 }
 
-/// The hotkeys whose keys should work: the enabled ones with keys.
-fn registrations(hotkeys: &[Hotkey]) -> Vec<Registration> {
+/// Every key combination of every hotkey.
+fn registrations(hotkeys: &[Hotkey], groups: &[HotkeyGroup]) -> Vec<Registration> {
     hotkeys
         .iter()
-        .filter(|h| h.enabled)
-        .filter_map(|h| {
-            let keys = KeyCombo::parse(h.keys.as_deref()?).ok()?;
-            Some(Registration {
-                id: h.id,
-                name: h.name.clone(),
-                keys,
+        .flat_map(|h| {
+            let enabled = hotkey_works(h, groups);
+            h.keys.iter().enumerate().filter_map(move |(index, keys)| {
+                Some(Registration {
+                    id: h.id,
+                    index,
+                    name: h.name.clone(),
+                    keys: KeyCombo::parse(keys).ok()?,
+                    enabled,
+                })
             })
         })
         .collect()
+}
+
+/// Which of each hotkey's key combinations are down, so that a hotkey with
+/// several is pressed when the first goes down and let go when the last
+/// comes up: holding two of them is still one press.
+#[derive(Debug)]
+pub struct Held<K>(HashMap<HotkeyId, HashSet<K>>);
+
+impl<K> Default for Held<K> {
+    fn default() -> Self {
+        Self(HashMap::new())
+    }
+}
+
+impl<K: Eq + Hash> Held<K> {
+    /// `combo` of hotkey `id` went down: whether that presses the hotkey.
+    pub fn down(&mut self, id: HotkeyId, combo: K) -> bool {
+        let combos = self.0.entry(id).or_default();
+        let first = combos.is_empty();
+        combos.insert(combo) && first
+    }
+
+    /// `combo` of hotkey `id` came up: whether that lets go of the hotkey.
+    pub fn up(&mut self, id: HotkeyId, combo: &K) -> bool {
+        let Some(combos) = self.0.get_mut(&id) else {
+            return false;
+        };
+        if !combos.remove(combo) || !combos.is_empty() {
+            return false;
+        }
+        self.0.remove(&id);
+        true
+    }
+}
+
+/// Add `problem` to what is wrong with hotkey `id`: one of its several key
+/// combinations may have a problem of its own.
+pub fn add_problem(problems: &mut BTreeMap<HotkeyId, String>, id: HotkeyId, problem: String) {
+    problems
+        .entry(id)
+        .and_modify(|p| {
+            p.push(' ');
+            p.push_str(&problem);
+        })
+        .or_insert(problem);
 }
 
 /// Which way keys reach Weir here.
@@ -76,7 +132,7 @@ pub fn status(method: KeysMethod, message: impl Into<String>) -> KeysStatus {
     KeysStatus {
         method,
         message: message.into(),
-        assigned: BTreeMap::new(),
+        ..Default::default()
     }
 }
 
@@ -87,20 +143,23 @@ const UNAVAILABLE: &str = "Your desktop does not let programs set their own hotk
 
 /// Keep the keys of every hotkey working for as long as the daemon runs.
 pub async fn run(controller: Arc<Controller>, tx: UnboundedSender<Command>) {
-    let (regs_tx, regs_rx) = watch::channel(registrations(&controller.hotkeys()));
+    let (regs_tx, regs_rx) = watch::channel(registrations(
+        &controller.hotkeys(),
+        &controller.hotkey_groups(),
+    ));
     // Follow the hotkeys as they change.
     {
         let controller = controller.clone();
         let mut notes = controller.subscribe();
         tokio::spawn(async move {
             loop {
-                let hotkeys = match notes.recv().await {
-                    Ok(Notification::HotkeysChanged(info)) => info.hotkeys,
-                    Err(RecvError::Lagged(_)) => controller.hotkeys(),
+                let (hotkeys, groups) = match notes.recv().await {
+                    Ok(Notification::HotkeysChanged(info)) => (info.hotkeys, info.groups),
+                    Err(RecvError::Lagged(_)) => (controller.hotkeys(), controller.hotkey_groups()),
                     Err(RecvError::Closed) => break,
                     Ok(_) => continue,
                 };
-                let now = registrations(&hotkeys);
+                let now = registrations(&hotkeys, &groups);
                 regs_tx.send_if_modified(|regs| {
                     let changed = *regs != now;
                     if changed {
@@ -254,4 +313,72 @@ async fn find_way(controller: &Controller) -> (Way, Option<String>) {
         }
     };
     (way, desktop)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn holding_two_combinations_of_a_hotkey_is_one_press() {
+        let mut held = Held::default();
+        assert!(held.down(1, "F9"));
+        assert!(!held.down(1, "Ctrl+Alt+T"), "already pressed");
+        assert!(!held.down(1, "F9"), "a key going down twice");
+        assert!(!held.up(1, &"F9"), "the other is still held");
+        assert!(held.up(1, &"Ctrl+Alt+T"));
+        assert!(!held.up(1, &"Ctrl+Alt+T"), "let go already");
+        assert!(
+            held.down(2, "F9") && held.down(1, "F9"),
+            "hotkeys are apart"
+        );
+    }
+
+    #[test]
+    fn every_combination_is_registered_saying_whether_it_is_on() {
+        let hotkey = |id, enabled, keys: &[&str]| Hotkey {
+            id,
+            name: format!("H{id}"),
+            enabled,
+            group: 0,
+            keys: keys.iter().map(|k| k.to_string()).collect(),
+            steps: Vec::new(),
+            each_press: EachPress::All,
+            on_release: OnRelease::Nothing,
+            release_steps: Vec::new(),
+            repeat_ms: None,
+        };
+        // Hotkey 4 is on, in a group that is off.
+        let in_group = Hotkey {
+            group: 7,
+            ..hotkey(4, true, &["F11"])
+        };
+        let groups = [HotkeyGroup {
+            id: 7,
+            name: "Games".into(),
+            enabled: false,
+        }];
+        let regs = registrations(
+            &[
+                hotkey(1, true, &["F9", "Ctrl+Alt+T"]),
+                hotkey(2, false, &["F10"]),
+                hotkey(3, true, &[]),
+                in_group,
+            ],
+            &groups,
+        );
+        let got: Vec<(HotkeyId, usize, String, bool)> = regs
+            .iter()
+            .map(|r| (r.id, r.index, r.keys.to_string(), r.enabled))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                (1, 0, "F9".into(), true),
+                (1, 1, "Ctrl+Alt+T".into(), true),
+                (2, 0, "F10".into(), false),
+                (4, 0, "F11".into(), false)
+            ]
+        );
+    }
 }

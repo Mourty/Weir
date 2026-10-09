@@ -232,7 +232,14 @@ since its callbacks run on their own task.
 **Hotkeys** (`hotkeys/`) are steps, each an ordinary request, so a hotkey
 can do whatever the protocol can and needs nothing of its own in the
 engine. The controller keeps the list (`controller/hotkeys.rs`: checking,
-saving to `hotkeys.json`, noticing strips that are gone); a **runner**
+saving to `hotkeys.json`, noticing strips that are gone), and the groups
+with it: every change goes through `edit_hotkeys`, which changes a copy,
+saves it, and only then takes it. The list's order is its own, `order`,
+places for each hotkey in no group and each group, so they can be
+arranged among each other; `HotkeyList::tidy` keeps it agreeing with the
+hotkeys and groups after every change, and puts those in its order. A
+hotkey's keys work while it and its group are both on (`hotkey_works`),
+which is all the keys layer is told. A **runner**
 (`hotkeys/runner.rs`) does the work. It is one task with a mailbox that
 key presses, its own repeat and fade timers and a change of hotkeys all
 arrive in; a client pressing a hotkey calls it directly, under its lock,
@@ -250,21 +257,46 @@ The **keys** (`hotkeys/keys/`) come one of two ways. On Wayland no program
 may watch the keyboard, so Weir asks the desktop through the XDG desktop
 portal's global shortcuts (`portal.rs`, with `ashpd`): it suggests keys,
 the desktop decides and says when they go down and up, and people can
-change them in the desktop's settings. A portal session can bind only
-once, so a change of hotkeys closes it and opens a new one; shortcut ids
-carry a hash of the keys, so changed keys are offered afresh. The portal
-files shortcuts under the program's name and refuses them without one, but
-works the name out only for programs started from the application menu,
-not for the daemon started at login. So the daemon first tells the portal
-it is `weir` (its `Register` call), which the portal takes only because
-`weir.desktop` is installed. A portal that restarts forgets both the name
-and the shortcuts, so Weir starts over when it does. On X11 Weir grabs the
-keys on the root window itself (`x11.rs`, with `x11rb`), with and without
-Caps Lock and Num Lock, and asks XKB not to repeat held keys as presses.
-Anywhere else hotkeys are pressed only by name, which the desktop's own
-shortcuts can do with `weirctl hotkey run`. At login the daemon waits for
-the desktop first, as it does for the window. `WEIR_HOTKEYS=desktop`,
-`x11` or `none` picks the way, for testing.
+change them in the desktop's settings. Each hotkey is one shortcut, which
+takes one suggestion, so only its first keys are suggested; people add
+more to the same entry in the desktop's settings, and the window shows
+what the desktop reports. A portal session can bind only once, so a change
+of hotkeys closes it and opens a new one, binding the whole list even when
+empty: the desktop forgets shortcuts left out, which is how a removed
+hotkey leaves its settings. A new session starts with the shortcuts the
+desktop already has, and a switched-off hotkey stays bound if it is one of
+them, so its keys are not lost, but is not bound for the first time while
+off, so examples added switched off do not make the desktop ask about
+keys. Shortcut ids carry a hash of the suggested keys, so changed keys are
+offered afresh.
+
+Plasma's portal backend falls short in three ways: it takes one
+suggestion, never changes a known shortcut's keys, and forgets a shortcut
+left out of a binding only if the same session bound it, which a new
+session never has. So on Plasma Weir also talks to Plasma's own shortcut
+service, kglobalaccel (`kde.rs`), as System Settings does, for its own
+component only: it forgets shortcuts no hotkey has (`unregister`), gives a
+hotkey's shortcut all its keys when they change in Weir
+(`setForeignShortcutKeys`, after asking `globalShortcutsByKey` whether
+another program has one), frees a switched-off hotkey's keys
+(`setInactive`; binding again takes them back), and reads keys as Qt key
+codes rather than as text in the desktop's language. Keys changed in
+System Settings come back into the hotkey's `keys`, so the two never pull
+against each other: Weir only sends keys that changed in Weir since the
+last binding. A hotkey keeps its shortcut id when its keys change, and a
+change of keys alone needs no new binding. The portal files shortcuts under the program's
+name and refuses them without one, but works the name out only for
+programs started from the application menu, not for the daemon started at
+login. So the daemon first tells the portal it is `weir` (its `Register`
+call), which the portal takes only because `weir.desktop` is installed. A
+portal that restarts forgets both the name and the shortcuts, so Weir
+starts over when it does. On X11 Weir grabs the keys on the root window
+itself (`x11.rs`, with `x11rb`), with and without Caps Lock and Num Lock,
+and asks XKB not to repeat held keys as presses. Anywhere else hotkeys are
+pressed only by name, which the desktop's own shortcuts can do with
+`weirctl hotkey run`. At login the daemon waits for the desktop first, as
+it does for the window. `WEIR_HOTKEYS=desktop`, `x11` or `none` picks the
+way, for testing.
 
 **Starting at login** is systemd's to keep, not the configuration's:
 Weir starts at login when its user unit, `weir.service`, is enabled. The
@@ -310,6 +342,14 @@ Each strip's and bus's settings window is a separate native window (an
 egui viewport), so it can sit on another screen. Colors come from two
 palettes, dark and light, and the window follows the desktop's preference
 through the XDG desktop portal.
+
+The Hotkeys window and the hotkey editor (`hotkeys/`) are viewports too.
+Most hotkeys are made in a simple form (`hotkeys/simple.rs`): one action
+on one strip or bus, turned into steps, and read back from them, so a
+hotkey opens in the form it was made in; any other opens with all its
+options, as a list of steps and as JSON. Requests bring the window no
+replies, so after Save the editor stays open until the daemon's hotkeys
+change, or shows the error the daemon sent after it saved.
 
 ## Testing
 

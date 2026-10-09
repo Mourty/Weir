@@ -538,7 +538,7 @@ fn hotkeys_are_checked_kept_by_id_and_saved() {
         }),
     );
     assert_eq!(h["id"], json!(1));
-    assert_eq!(h["keys"], json!("Ctrl+Alt+M"));
+    assert_eq!(h["keys"], json!(["Ctrl+Alt+M"]));
     // The strip is kept by id, so renaming it does not break the hotkey.
     assert_eq!(h["steps"][0]["params"]["id"], json!(1));
     r.ok("set_strip", json!({"id": "Mic", "name": "Voice"}));
@@ -546,11 +546,13 @@ fn hotkeys_are_checked_kept_by_id_and_saved() {
     assert_eq!(info["hotkeys"][0]["steps"][0]["params"]["id"], json!(1));
     assert!(info.get("problems").is_none(), "{info}");
 
-    // A second one with the same name or keys is turned down.
+    // A second one with the same name or keys is turned down, even when
+    // they are only one of its key combinations.
     let step = json!([{"method": "load_scene", "params": {"name": "Gaming"}}]);
     for clash in [
         json!({"name": "mute MIC", "steps": step}),
         json!({"name": "Other", "keys": "Ctrl+Alt+M", "steps": step}),
+        json!({"name": "Other", "keys": ["F9", "Alt+Ctrl+M"], "steps": step}),
     ] {
         assert_eq!(r.code("set_hotkey", clash), RpcError::APPLICATION);
     }
@@ -559,6 +561,8 @@ fn hotkeys_are_checked_kept_by_id_and_saved() {
     // exist.
     for bad in [
         json!({"name": "A", "keys": "M", "steps": step}),
+        json!({"name": "A", "keys": ["F9", "M"], "steps": step}),
+        json!({"name": "A", "keys": ["F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9"], "steps": step}),
         json!({"name": "B", "steps": [{"method": "subscribe", "params": {}}]}),
         json!({"name": "C", "steps": [{"method": "set_strip", "params": {"id": 1, "mute": true}, "over_ms": 100}]}),
         json!({"name": "D", "steps": [{"method": "set_strip", "params": {"id": "Nobody", "mute": true}}]}),
@@ -567,11 +571,142 @@ fn hotkeys_are_checked_kept_by_id_and_saved() {
         assert!(r.call("set_hotkey", bad.clone()).is_err(), "{bad}");
     }
 
+    // Several combinations work alike, written the usual way, without
+    // repeats.
+    let h = r.ok(
+        "set_hotkey",
+        json!({"name": "Talk", "keys": ["f9", " ctrl+alt+t", "F9", ""], "steps": step}),
+    );
+    assert_eq!(h["keys"], json!(["F9", "Ctrl+Alt+T"]));
+    r.ok("remove_hotkey", json!({"hotkey": "Talk"}));
+
     // Saved to its own file, and read back by the next daemon.
     let paths = Paths::resolve(Some(r.dir.join("config.toml")));
     let again = Controller::new(mixer(), None, paths, Settings::default(), Vec::new());
     assert_eq!(again.hotkeys().len(), 1);
     assert_eq!(again.hotkeys()[0].name, "Mute mic");
+}
+
+#[test]
+fn hotkeys_are_ordered_grouped_and_switched() {
+    let mut r = Rig::new("hotkey-groups");
+    let step = json!([{"method": "load_scene", "params": {"name": "Gaming"}}]);
+    for name in ["A", "B", "C"] {
+        r.ok("set_hotkey", json!({"name": name, "steps": step}));
+    }
+    // Each hotkey's name and group, in the list's order.
+    let list = |r: &mut Rig| -> Vec<(String, u64)> {
+        r.ok("list_hotkeys", json!({}))["hotkeys"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|h| {
+                let group = h.get("group").and_then(Value::as_u64).unwrap_or(0);
+                (h["name"].as_str().unwrap().to_string(), group)
+            })
+            .collect()
+    };
+    let named = |pairs: &[(&str, u64)]| -> Vec<(String, u64)> {
+        pairs.iter().map(|&(n, g)| (n.to_string(), g)).collect()
+    };
+    r.ok("move_hotkey", json!({"hotkey": "C", "index": 0}));
+    assert_eq!(list(&mut r), named(&[("C", 0), ("A", 0), ("B", 0)]));
+
+    let g = r.ok("add_hotkey_group", json!({"name": "Games"}));
+    assert_eq!(g, json!({"id": 1, "name": "Games"}));
+    assert_eq!(
+        r.code("add_hotkey_group", json!({"name": "GAMES"})),
+        RpcError::APPLICATION
+    );
+    assert!(r.call("add_hotkey_group", json!({"name": "  "})).is_err());
+    r.ok(
+        "add_hotkey_group",
+        json!({"name": "Stream", "enabled": false}),
+    );
+    // Into a group: last by default, or at a place among its hotkeys.
+    r.ok("move_hotkey", json!({"hotkey": "A", "group": "Games"}));
+    r.ok(
+        "move_hotkey",
+        json!({"hotkey": "B", "group": 1, "index": 0}),
+    );
+    r.ok("move_hotkey", json!({"hotkey": "C", "group": "stream"}));
+    assert_eq!(list(&mut r), named(&[("B", 1), ("A", 1), ("C", 2)]));
+    assert!(r
+        .call(
+            "set_hotkey",
+            json!({"name": "D", "group": 9, "steps": step})
+        )
+        .is_err());
+    // Changed into another group in set_hotkey, it goes last there too.
+    let mut b = r.ok("list_hotkeys", json!({}))["hotkeys"][0].clone();
+    b["group"] = json!(2);
+    r.ok("set_hotkey", b);
+    assert_eq!(list(&mut r), named(&[("A", 1), ("C", 2), ("B", 2)]));
+    r.ok(
+        "move_hotkey",
+        json!({"hotkey": "B", "group": 1, "index": 0}),
+    );
+    assert_eq!(list(&mut r), named(&[("B", 1), ("A", 1), ("C", 2)]));
+
+    let a = r.ok("switch_hotkey", json!({"hotkey": "a", "enabled": "toggle"}));
+    assert_eq!(a["enabled"], json!(false));
+    let g = r.ok(
+        "set_hotkey_group",
+        json!({"group": "Stream", "enabled": "toggle", "name": "Streaming"}),
+    );
+    assert_eq!(g, json!({"id": 2, "name": "Streaming"}));
+    let info = r.ok(
+        "move_hotkey_group",
+        json!({"group": "Streaming", "index": 0}),
+    );
+    assert_eq!(info["groups"][0]["name"], json!("Streaming"));
+    assert_eq!(info["groups"][1]["name"], json!("Games"));
+
+    // Removing a group keeps its hotkeys, in no group, where it was.
+    let info = r.ok("remove_hotkey_group", json!({"group": "Games"}));
+    // A is 1, B 2 and C 3.
+    assert_eq!(
+        info["order"],
+        json!([{"group": 2}, {"hotkey": 2}, {"hotkey": 1}])
+    );
+    assert!(r
+        .call("move_hotkey", json!({"hotkey": "A", "group": "Games"}))
+        .is_err());
+    r.ok("move_hotkey", json!({"hotkey": "C", "group": 0}));
+    assert_eq!(list(&mut r), named(&[("B", 0), ("A", 0), ("C", 0)]));
+
+    // Groups and hotkeys in no group go anywhere among each other.
+    let info = r.ok(
+        "move_hotkey_group",
+        json!({"group": "Streaming", "index": 2}),
+    );
+    assert_eq!(
+        info["order"],
+        json!([{"hotkey": 2}, {"hotkey": 1}, {"group": 2}, {"hotkey": 3}])
+    );
+    let info = r.ok("move_hotkey", json!({"hotkey": "C", "index": 0}));
+    assert_eq!(
+        info["order"],
+        json!([{"hotkey": 3}, {"hotkey": 2}, {"hotkey": 1}, {"group": 2}])
+    );
+    // Into the group, it leaves its place; out again, it takes one.
+    r.ok("move_hotkey", json!({"hotkey": "B", "group": 2}));
+    let info = r.ok(
+        "move_hotkey",
+        json!({"hotkey": "B", "group": 0, "index": 3}),
+    );
+    let order = json!([{"hotkey": 3}, {"hotkey": 1}, {"group": 2}, {"hotkey": 2}]);
+    assert_eq!(info["order"], order);
+    assert_eq!(list(&mut r), named(&[("C", 0), ("A", 0), ("B", 0)]));
+
+    // Saved, groups and order too.
+    let paths = Paths::resolve(Some(r.dir.join("config.toml")));
+    let again = Controller::new(mixer(), None, paths, Settings::default(), Vec::new());
+    let names: Vec<String> = again.hotkeys().into_iter().map(|h| h.name).collect();
+    assert_eq!(names, ["C", "A", "B"]);
+    assert_eq!(again.hotkey_groups().len(), 1);
+    assert_eq!(again.hotkey_groups()[0].name, "Streaming");
+    assert_eq!(to_json(&again.hotkeys_info().order), order);
 }
 
 #[test]

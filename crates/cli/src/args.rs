@@ -454,8 +454,12 @@ pub enum HotkeyCmd {
         #[arg(long)]
         name: Option<String>,
         /// Take its keys away, so it is only pressed by name.
-        #[arg(long, conflicts_with = "keys")]
+        #[arg(long, conflicts_with_all = ["keys", "add_keys"])]
         no_keys: bool,
+        /// Other keys to press it with, keeping the ones it has. Give it
+        /// once per key combination.
+        #[arg(long = "add-keys", value_name = "KEYS")]
+        add_keys: Vec<String>,
         #[command(flatten)]
         opts: HotkeyOpts,
     },
@@ -479,15 +483,103 @@ pub enum HotkeyCmd {
         /// The hotkey, by name or id.
         hotkey: String,
     },
+    /// Switch a hotkey's keys on.
+    On {
+        /// The hotkey, by name or id.
+        hotkey: String,
+    },
+    /// Switch a hotkey's keys off. It can still be run by name.
+    Off {
+        /// The hotkey, by name or id.
+        hotkey: String,
+    },
+    /// Switch a hotkey's keys on if they are off, or off if on.
+    Toggle {
+        /// The hotkey, by name or id.
+        hotkey: String,
+    },
+    /// Move a hotkey to another place in the list, or into a group.
+    Move {
+        /// The hotkey, by name or id.
+        hotkey: String,
+        /// Its place among the hotkeys of its group, or, in no group, among
+        /// the places in the list (each hotkey in no group and each group),
+        /// counting from 0. Left out, it goes last.
+        #[arg(long)]
+        to: Option<usize>,
+        /// Move it into this group, by name or id, or "none" for no group.
+        #[arg(long)]
+        group: Option<String>,
+    },
+    /// Add, switch, rename, move or remove a group of hotkeys.
+    Group {
+        #[command(subcommand)]
+        action: HotkeyGroupCmd,
+    },
+    /// Open the desktop's shortcut settings at Weir's hotkeys, to change
+    /// their keys or add more. On KDE Plasma 6.5 and newer.
+    Settings,
+}
+
+/// What to do with a group of hotkeys.
+#[derive(Subcommand, Debug)]
+pub enum HotkeyGroupCmd {
+    /// Add a group, last in the list.
+    Add {
+        /// Its name: unique, 60 characters at most.
+        name: String,
+        /// Start it switched off.
+        #[arg(long)]
+        off: bool,
+    },
+    /// Switch the keys of a group's hotkeys on.
+    On {
+        /// The group, by name or id.
+        group: String,
+    },
+    /// Switch the keys of a group's hotkeys off. Each keeps its own switch.
+    Off {
+        /// The group, by name or id.
+        group: String,
+    },
+    /// Switch a group on if it is off, or off if on.
+    Toggle {
+        /// The group, by name or id.
+        group: String,
+    },
+    /// Rename a group.
+    Rename {
+        /// The group, by name or id.
+        group: String,
+        /// Its new name.
+        name: String,
+    },
+    /// Move a group to another place in the list.
+    Move {
+        /// The group, by name or id.
+        group: String,
+        /// Its place among the places in the list (each hotkey in no group
+        /// and each group), counting from 0.
+        #[arg(long)]
+        to: usize,
+    },
+    /// Remove a group. Its hotkeys stay, in no group.
+    Remove {
+        /// The group, by name or id.
+        group: String,
+    },
 }
 
 /// A hotkey's settings, for `hotkey add` and `hotkey change`.
 #[derive(Args, Debug)]
 pub struct HotkeyOpts {
     /// The keys, such as "Ctrl+Alt+M": any of Ctrl, Alt, Shift and Super,
-    /// and one key.
+    /// and one key. Give it once per key combination for several, any of
+    /// which presses the hotkey; on desktops other than KDE Plasma that
+    /// look after the keys, only the first is suggested. Replaces the keys
+    /// it had.
     #[arg(long)]
-    pub keys: Option<String>,
+    pub keys: Vec<String>,
     /// A step: a method and its parameters as JSON, such as
     /// 'set_strip {"id": "Mic", "mute": "toggle"}', or a whole step as JSON.
     /// Give it once per step, in order.
@@ -505,10 +597,13 @@ pub struct HotkeyOpts {
     #[arg(long = "release-do", value_name = "STEP")]
     pub release_steps: Vec<String>,
     /// Do the steps again every this many milliseconds while the keys are
-    /// held (50 to 2000), or 0 not to.
+    /// held (20 to 2000), or 0 not to.
     #[arg(long)]
     pub repeat: Option<u32>,
     /// Whether its keys work: on, off or toggle.
     #[arg(long)]
     pub enabled: Option<String>,
+    /// The group it is in, by name or id, or "none" for no group.
+    #[arg(long)]
+    pub group: Option<String>,
 }

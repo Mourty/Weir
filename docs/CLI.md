@@ -309,40 +309,60 @@ the [control protocol](API.md#hotkeys), so a hotkey can do anything
 |---|---|
 | `weirctl hotkeys` | List them, what each does, how keys reach Weir on this desktop, and anything wrong. |
 | `weirctl hotkey add NAME [options]` | Add one. |
-| `weirctl hotkey change HOTKEY [options]` | Change one. Steps given replace all its steps; `--name` renames it, `--no-keys` takes its keys away. |
+| `weirctl hotkey change HOTKEY [options]` | Change one. Steps given replace all its steps; `--name` renames it, `--add-keys KEYS` gives it other keys as well, and `--no-keys` takes its keys away. |
 | `weirctl hotkey remove HOTKEY` | Remove one. |
 | `weirctl hotkey run HOTKEY` | Do what tapping its keys does. |
 | `weirctl hotkey press HOTKEY` | Do what pressing its keys does, until `release`. |
 | `weirctl hotkey release HOTKEY` | Do what letting go of its keys does. |
+| `weirctl hotkey on\|off\|toggle HOTKEY` | Switch its keys on or off. Off, it can still be run by name. |
+| `weirctl hotkey move HOTKEY [--group GROUP] [--to N]` | Move it into a group (`none` for no group), and to place N, counting from 0: among the group's hotkeys, or, in no group, among the places in the list (each hotkey in no group and each group). Last when `--to` is left out. |
+| `weirctl hotkey group add NAME [--off]` | Add a group of hotkeys, last in the list. |
+| `weirctl hotkey group on\|off\|toggle GROUP` | Switch a group's hotkeys' keys on or off. Each hotkey keeps its own switch. |
+| `weirctl hotkey group rename GROUP NAME` | Rename a group. |
+| `weirctl hotkey group move GROUP --to N` | Move a group to place N in the list, among the groups and the hotkeys in no group. |
+| `weirctl hotkey group remove GROUP` | Remove a group. Its hotkeys stay, in no group. |
+| `weirctl hotkey settings` | Open the desktop's shortcut settings at Weir's hotkeys (KDE Plasma 6.5 and newer). |
 
-HOTKEY is a hotkey's name or id. `add` and `change` take:
+HOTKEY is a hotkey's name or id, and GROUP a group's. `add` and `change`
+take:
 
 | Option | |
 |---|---|
-| `--keys KEYS` | Such as `Ctrl+Alt+M`: any of Ctrl, Alt, Shift and Super, then one key. Letters, numbers and the like need Ctrl, Alt or Super; F1 to F24, media keys and Pause can be on their own. [The full list](API.md#keys). |
+| `--keys KEYS` | Such as `Ctrl+Alt+M`: any of Ctrl, Alt, Shift and Super, then one key. Letters, numbers and the like need Ctrl, Alt or Super; F1 to F24, media keys and Pause can be on their own. [The full list](API.md#keys). Give it more than once for several, any of which presses the hotkey; on desktops other than KDE Plasma that look after the keys, only the first is suggested. It replaces the keys the hotkey had. |
 | `--do STEP` | A step: a method and its parameters as JSON, `'set_strip {"id": "Mic", "mute": "toggle"}'`, or a whole [step](API.md#hotkeystep) as JSON, for a fade. Once per step, in order. |
 | `--each-press all\|next` | Every step at each press (the default), or the next one, going round. |
 | `--release nothing\|restore\|steps` | What letting go does: nothing, put back what pressing changed, or the `--release-do` steps. |
 | `--release-do STEP` | A step for letting go, like `--do`. |
-| `--repeat MS` | Do the steps again every MS milliseconds while held, 50 to 2000; `0` not to. |
+| `--repeat MS` | Do the steps again every MS milliseconds while held, 20 to 2000; `0` not to. |
 | `--enabled on\|off\|toggle` | Switch its keys on or off. Off, it can still be run by name. |
+| `--group GROUP` | The group it is in, or `none`. |
 
 ```sh
 weirctl hotkey add "Mic on/off" --keys Ctrl+Alt+M --do 'set_strip {"id": "Mic", "mute": "toggle"}'
-weirctl hotkey add "Talk" --keys F9 --do 'set_strip {"id": "Mic", "mute": false}' --release restore
+weirctl hotkey add "Talk" --keys F9 --keys Ctrl+Alt+T --do 'set_strip {"id": "Mic", "mute": false}' --release restore
 weirctl hotkey add "Music down" --keys Ctrl+Alt+Down --do 'set_strip {"id": "Music", "gain_delta_db": -2}' --repeat 150
 weirctl hotkey add "Fade out" --do '{"method": "set_bus", "params": {"id": "A1", "gain_db": -60}, "over_ms": 3000}'
 weirctl hotkey add "Scenes" --keys Ctrl+Alt+S --each-press next --do 'load_scene {"name": "Streaming"}' --do 'load_scene {"name": "Late night"}'
 weirctl hotkey change "Music down" --keys Ctrl+Shift+Down
+weirctl hotkey change "Music down" --add-keys VolumeDown
 weirctl hotkeys
 weirctl hotkey run "Mic on/off"
+weirctl hotkey off "Mic on/off"
+weirctl hotkey group add Games
+weirctl hotkey move "Music down" --group Games
+weirctl hotkey move "Talk" --to 0
+weirctl hotkey group off Games
+weirctl hotkey group rename Games Gaming
 weirctl hotkey remove "Fade out"
 ```
 
 `weirctl hotkeys` starts with how keys reach Weir. On KDE Plasma and other
-Wayland desktops with a shortcut service, the desktop looks after the keys
-and lists them in its own shortcut settings, where they can be changed too;
-`weirctl hotkeys` then shows the keys the desktop gave.
+Wayland desktops with a shortcut service, the desktop looks after the keys:
+each hotkey is one entry in its shortcut settings. On Plasma, Weir gives
+the entry all of a hotkey's keys, and keys changed there come back; on
+other desktops only the first is suggested, and more are added there.
+`weirctl hotkeys` shows every key the desktop has for each hotkey, and
+`weirctl hotkey settings` opens those settings.
 
 ## Settings and the window
 

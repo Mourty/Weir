@@ -84,7 +84,7 @@ struct Inner {
     inserts: Vec<InsertStatus>,
     /// The hotkeys. `Err` holds why the hotkeys file could not be read, in
     /// which case it is left alone rather than overwritten.
-    hotkeys: Result<Vec<Hotkey>, String>,
+    hotkeys: Result<config::HotkeyList, String>,
     /// How keys reach Weir, as the runner last reported.
     keys_status: KeysStatus,
     /// Hotkeys whose keys do not work, and why, as the runner reported.
@@ -117,6 +117,9 @@ pub struct Controller {
     login: Box<dyn LoginStart>,
     /// The hotkey runner, once it runs.
     hotkey_runner: Mutex<Option<Arc<Mutex<crate::hotkeys::Runner>>>>,
+    /// Asks the desktop's shortcut service to open its settings at Weir's
+    /// hotkeys; the keys task listens.
+    shortcut_settings: tokio::sync::Notify,
 }
 
 impl Controller {
@@ -163,7 +166,7 @@ impl Controller {
                 keys_status: KeysStatus {
                     method: KeysMethod::Starting,
                     message: "Weir is getting hotkeys ready.".into(),
-                    assigned: BTreeMap::new(),
+                    ..Default::default()
                 },
                 key_problems: BTreeMap::new(),
                 target_problems: Vec::new(),
@@ -177,6 +180,7 @@ impl Controller {
             spectrum_watchers: Mutex::new(BTreeMap::new()),
             login: Box::new(login::Systemd),
             hotkey_runner: Mutex::new(None),
+            shortcut_settings: tokio::sync::Notify::new(),
         }
     }
 

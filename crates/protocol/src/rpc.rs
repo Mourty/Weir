@@ -1124,6 +1124,24 @@ pub enum Request {
     SetHotkey(Hotkey),
     /// Removes a hotkey. Returns [`HotkeysInfo`].
     RemoveHotkey(HotkeyRef),
+    /// Switches a hotkey's keys on or off, leaving the rest of it as it
+    /// is. Returns the [`Hotkey`].
+    SwitchHotkey(SwitchHotkeyParams),
+    /// Moves a hotkey to another place in the list, or into another group.
+    /// Returns [`HotkeysInfo`].
+    MoveHotkey(MoveHotkeyParams),
+    /// Adds a group of hotkeys, last in the list. Returns the
+    /// [`HotkeyGroup`], with its id.
+    AddHotkeyGroup(AddHotkeyGroupParams),
+    /// Renames a group of hotkeys, or switches it on or off. Returns the
+    /// [`HotkeyGroup`].
+    SetHotkeyGroup(SetHotkeyGroupParams),
+    /// Removes a group of hotkeys. Its hotkeys stay, in no group. Returns
+    /// [`HotkeysInfo`].
+    RemoveHotkeyGroup(HotkeyGroupRef),
+    /// Moves a group of hotkeys to another place in the list. Returns
+    /// [`HotkeysInfo`].
+    MoveHotkeyGroup(MoveHotkeyGroupParams),
     /// Does what pressing the hotkey's keys does, until `release_hotkey`.
     /// Returns the [`Hotkey`] once its steps are done.
     PressHotkey(HotkeyRef),
@@ -1133,6 +1151,10 @@ pub enum Request {
     /// Presses the hotkey and lets go at once, like a tap on its keys.
     /// Returns the [`Hotkey`] once its steps are done.
     RunHotkey(HotkeyRef),
+    /// Opens the desktop's shortcut settings at Weir's hotkeys, where their
+    /// keys can be changed and more added. Only when [`KeysStatus`] says
+    /// `configurable`. Returns `null`.
+    OpenShortcutSettings,
     /// Start or stop `spectrum` notifications. Returns the targets now
     /// watched.
     WatchSpectrum(WatchSpectrumParams),

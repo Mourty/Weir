@@ -351,29 +351,13 @@ pub(super) fn drag_caption(ui: &mut Ui, text: &str, item: StripOrBus) {
     ui.dnd_drag_source(id, item, |ui| {
         ui.horizontal(|ui| {
             ui.set_min_width(ui.available_width());
-            grip(ui, hovered);
+            crate::widgets::grip(ui, hovered);
             caption(ui, text);
         });
     })
     .response
     .on_hover_cursor(egui::CursorIcon::Grab)
     .on_hover_text("Drag to move it");
-}
-
-/// Six dots in two columns, the usual sign that something can be picked up.
-fn grip(ui: &mut Ui, hovered: bool) {
-    let (rect, _) = ui.allocate_exact_size(vec2(8.0, 12.0), egui::Sense::hover());
-    let color = if hovered {
-        theme::p().text
-    } else {
-        theme::p().text_dim
-    };
-    for col in 0..2 {
-        for row in 0..3 {
-            let c = rect.left_center() + vec2(2.0 + 4.0 * col as f32, 4.0 * (row as f32 - 1.0));
-            ui.painter().circle_filled(c, 1.2, color);
-        }
-    }
 }
 
 /// A strip's or bus's own color, if it has one.

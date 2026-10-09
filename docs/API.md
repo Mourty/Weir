@@ -236,9 +236,10 @@ of the current state.
 ### Steps
 
 Levels can be moved by an amount instead of set: `gain_delta_db` on
-`set_strip` and `set_bus`, `delay_delta_ms` on `set_bus`, `pan_delta` on `set_strip`, `level_delta_db` on
-`set_route` and `volume_delta_db` on `set_app_volume`. That is what a dial
-wants. Given with the absolute value, the step is applied after it.
+`set_strip` and `set_bus`, `delay_delta_ms` on `set_bus`, `pan_delta` on
+`set_strip`, `level_delta_db` on `set_route` and `volume_delta_db` on
+`set_app_volume`. That is what a dial wants. Given with the absolute
+value, the step is applied after it.
 
 ### Units and ranges
 
@@ -638,6 +639,8 @@ weirctl raw set_bus '{"id": "A1", "gain_db": -3}'
 weirctl raw set_bus '{"id": "A1", "gain_delta_db": -1}'
 weirctl raw set_bus '{"id": "Speakers", "mute": "toggle"}'
 weirctl raw set_bus '{"id": "B1", "mono": true}'
+weirctl raw set_bus '{"id": "A1", "delay_ms": 180}'
+weirctl raw set_bus '{"id": "A1", "delay_delta_ms": -5}'
 weirctl raw set_bus '{"id": "B1", "limiter": {"ceiling_db": -3}}'
 weirctl raw set_bus '{"id": "A2", "layout": "surround_5_1", "downmix": {"method": "matrix"}}'
 weirctl raw set_bus '{"id": "A1", "eq": {"enabled": true, "bands": [{"kind": "low_shelf", "freq_hz": 100, "gain_db": 4, "q": 0.707}]}}'

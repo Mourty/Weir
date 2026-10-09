@@ -941,7 +941,7 @@ impl Controller {
                 replace,
             });
         }
-        result.backup = self.back_up_for_import(&plan, replace_all)?;
+        result.backup = self.back_up_for_import(&plan)?;
         self.import_library(&plan, &mut result);
         self.import_presets(&plan, &mut result);
         self.import_rules(&plan, &p, &here, &mut result);
@@ -958,11 +958,7 @@ impl Controller {
     /// Copies of what the import replaces, in a folder of their own under
     /// `backups`: the scenes and setups it writes over, and the files of
     /// presets, hotkeys and settings it changes.
-    fn back_up_for_import(
-        &self,
-        plan: &[Planned],
-        replace_all: bool,
-    ) -> Result<Option<String>, RpcError> {
+    fn back_up_for_import(&self, plan: &[Planned]) -> Result<Option<String>, RpcError> {
         let mut copies: Vec<(PathBuf, String)> = Vec::new();
         let has = |kind: ExportKind| plan.iter().any(|x| x.item.kind == kind);
         for x in plan.iter().filter(|x| x.replace) {
@@ -976,7 +972,7 @@ impl Controller {
                 format!("{folder}/{}.toml", x.name),
             ));
         }
-        if has(ExportKind::Hotkey) || replace_all {
+        if has(ExportKind::Hotkey) {
             copies.push((self.paths.hotkeys_file.clone(), "hotkeys.json".into()));
         }
         if has(ExportKind::EqPreset) {
@@ -1162,7 +1158,9 @@ impl Controller {
                     .push(format!("hotkey '{}': {}", x.name, e.message)),
             }
         }
-        if incoming.is_empty() && !replace_all {
+        // Replacing all of them takes at least one to replace them with:
+        // importing only a scene never clears the hotkeys.
+        if incoming.is_empty() {
             return;
         }
         let groups_file: Vec<GroupFile> = list_file.map(|l| l.groups.clone()).unwrap_or_default();

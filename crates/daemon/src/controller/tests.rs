@@ -910,11 +910,20 @@ fn settings_go_to_another_mixer_by_name() {
         .join("scenes/Gaming.toml")
         .exists());
 
-    // Replacing every hotkey takes the imported ones' order and groups.
+    // Replacing every hotkey takes the imported ones' order and groups,
+    // but only when some come in: importing a scene alone clears nothing.
     let mut c = Rig::new("export-c");
     c.ok(
         "set_hotkey",
         json!({"name": "Old", "keys": "F9", "steps": []}),
+    );
+    c.ok(
+        "import_settings",
+        json!({"path": zip, "hotkeys": "replace_all", "items": ["scenes/Gaming.json"]}),
+    );
+    assert_eq!(
+        c.ok("list_hotkeys", json!({}))["hotkeys"][0]["name"],
+        json!("Old")
     );
     c.ok(
         "import_settings",

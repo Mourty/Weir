@@ -1230,9 +1230,14 @@ changed: a fader moved by hand while the key was held stays where it was
 put, and undoing that fader afterwards does not bring the hotkey's change
 back either.
 
-Steps can name strips and buses; the daemon keeps their ids, so renaming
-one does not break a hotkey. A hotkey working on one that was removed is
-listed in `problems`.
+Steps can give strips and buses by name or by id; the daemon keeps their
+names, and looks them up each time the hotkey runs. So a hotkey works on
+the strip of that name in whichever [setup](#scenes-and-setups) is loaded:
+each setup is a whole mixer of its own, where the same id can be another
+strip. Renaming a strip or bus renames it in every hotkey too (and undoing
+the rename takes it back). A hotkey naming a strip or bus the mixer does
+not have now, removed or only in another setup, is listed in `problems`,
+and that part of it does nothing until a setup with one is loaded.
 
 There is one list of hotkeys, whatever scene or setup is loaded, in an
 order of its own: hotkeys in no group and groups, each group with its
@@ -1280,13 +1285,15 @@ Add a hotkey, or replace one. The parameters are the [Hotkey](#hotkey):
 | `repeat_ms` | number, *optional* | Do the steps again every this many milliseconds while the keys are held, 20 to 2000. The first repeat waits 400 ms, like a keyboard's, or `repeat_ms` if that is longer. |
 
 Returns the Hotkey as saved: with its id, its keys as a list written the
-usual way, and strips and buses by id.
+usual way, and strips and buses by name, as the mixer writes them.
 
 A step can be any request that changes something; requests that only ask
 (`get_state`, `list_*`, `history`), `subscribe`, `watch_spectrum` and the
 hotkey methods themselves cannot be steps. A step is checked as the request
 would be, so a misspelled strip is an error now rather than a dead key
-later. Two hotkeys cannot have the same name, or share any keys.
+later. A strip or bus given by name may be one only a saved setup has; one
+given by id must be in the mixer now. Two hotkeys cannot have the same
+name, or share any keys.
 
 ```sh
 weirctl raw set_hotkey '{"name": "Push to talk", "keys": ["F9", "Ctrl+Alt+T"], "steps": [{"method": "set_strip", "params": {"id": "Mic", "mute": false}}], "on_release": "restore"}'
@@ -2061,7 +2068,7 @@ any.
 
 ```json
 {"id": 2, "name": "Push to talk", "keys": ["F9"],
- "steps": [{"method": "set_strip", "params": {"id": 1, "mute": false}}],
+ "steps": [{"method": "set_strip", "params": {"id": "Mic", "mute": false}}],
  "on_release": "restore"}
 ```
 
@@ -2086,7 +2093,7 @@ when `all`, `on_release` when `nothing`.
 | Field | Type | |
 |---|---|---|
 | `method` | string | The request, such as `set_strip` or `load_scene`. |
-| `params` | object, *optional* | Its parameters, as in the request. |
+| `params` | object, *optional* | Its parameters, as in the request. Strips and buses may be given by name or by id, and are kept by name (see [Hotkeys](#hotkeys)). |
 | `over_ms` | number, *optional* | Fade over this many milliseconds, up to 60000: for `gain_db` in `set_strip` and `set_bus`, and `level_db` in `set_route`. Anything else in the step changes at once. |
 
 ### Keys
@@ -2118,7 +2125,7 @@ keys, media keys, `Pause`, `Print` and `ScrollLock` can be on their own.
 | `groups` | list of [HotkeyGroup](#hotkeygroup), *optional* | Every group, in their order in the list. Left out when there are none. |
 | `order` | list, *optional* | The list as it is shown: each hotkey in no group, as `{"hotkey": id}`, and each group, as `{"group": id}`, in the order they were put in. A group's hotkeys are listed with it, in their order in `hotkeys`. Left out when there are no hotkeys. |
 | `keys` | [KeysStatus](#keysstatus) | How keys reach Weir on this desktop. |
-| `problems` | list of `{"hotkey": id, "problem": string}` | What is wrong with any of them, in sentences for people: keys another program has, a strip that was removed. Left out when there is nothing wrong. |
+| `problems` | list of `{"hotkey": id, "problem": string}` | What is wrong with any of them, in sentences for people: keys another program has, a strip the mixer does not have now. Left out when there is nothing wrong. |
 
 ### KeysStatus
 

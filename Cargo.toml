@@ -44,6 +44,9 @@ ashpd = { version = "0.12", default-features = false, features = ["tokio"] }
 x11rb = { version = "0.13", features = ["xkb"] }
 futures-util = "0.3"
 x11rb-protocol = "0.13"
+# Exported settings are a .zip of JSON files. Only deflate, in pure Rust:
+# the default features bring in C libraries and formats Weir never writes.
+zip = { version = "8.6", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
 [profile.release]
 opt-level = 3

@@ -56,6 +56,9 @@ fn allowed_in_hotkey(req: &Request) -> bool {
             | Request::ReleaseHotkey(_)
             | Request::RunHotkey(_)
             | Request::OpenShortcutSettings
+            | Request::ExportSettings(_)
+            | Request::InspectImport(_)
+            | Request::ImportSettings(_)
     )
 }
 
@@ -100,7 +103,7 @@ impl Controller {
     }
 
     /// Every hotkey and group now.
-    fn hotkey_list(&self) -> HotkeyList {
+    pub(super) fn hotkey_list(&self) -> HotkeyList {
         self.inner
             .lock()
             .unwrap()
@@ -224,9 +227,10 @@ impl Controller {
         }
     }
 
-    /// Check `h`, then add it or replace the one with its id, save, and
-    /// tell the runner and clients.
-    pub(super) fn set_hotkey(&self, mut h: Hotkey) -> Result<Value, RpcError> {
+    /// `h` checked as `set_hotkey` takes it, apart from how it fits with
+    /// the other hotkeys: its name trimmed, its keys parsed and written one
+    /// way, its steps checked, with their strips and buses by id.
+    pub(super) fn checked_hotkey(&self, mut h: Hotkey) -> Result<Hotkey, RpcError> {
         let mixer = self.mixer();
         h.name = h.name.trim().to_string();
         if h.name.is_empty() {
@@ -274,6 +278,13 @@ impl Controller {
                 )));
             }
         }
+        Ok(h)
+    }
+
+    /// Check `h`, then add it or replace the one with its id, save, and
+    /// tell the runner and clients.
+    pub(super) fn set_hotkey(&self, h: Hotkey) -> Result<Value, RpcError> {
+        let mut h = self.checked_hotkey(h)?;
         let saved = self.edit_hotkeys(|list| {
             if h.id != 0 && !list.hotkeys.iter().any(|o| o.id == h.id) {
                 return Err(RpcError::application(format!("no hotkey with id {}", h.id)));
@@ -476,7 +487,7 @@ impl Controller {
     /// Change the hotkeys and their groups with `f`, save them, and tell
     /// the runner and clients. Nothing changes when `f` fails, or saving
     /// does.
-    fn edit_hotkeys<T>(
+    pub(super) fn edit_hotkeys<T>(
         &self,
         f: impl FnOnce(&mut HotkeyList) -> Result<T, RpcError>,
     ) -> Result<T, RpcError> {
@@ -524,7 +535,7 @@ impl Controller {
     }
 
     /// The id of the hotkey `key` names.
-    fn find_hotkey(&self, key: &HotkeyKey) -> Result<HotkeyId, RpcError> {
+    pub(super) fn find_hotkey(&self, key: &HotkeyKey) -> Result<HotkeyId, RpcError> {
         let hotkeys = self.hotkeys();
         let found = match key {
             HotkeyKey::Id(id) => hotkeys.iter().find(|h| h.id == *id),

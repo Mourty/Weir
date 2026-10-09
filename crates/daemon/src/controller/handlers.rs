@@ -17,7 +17,7 @@ use tracing::info;
 use weir_protocol::*;
 
 /// Longest a strip's, bus's or equalizer preset's name may be.
-const NAME_MAX: usize = 40;
+pub(super) const NAME_MAX: usize = 40;
 /// Most channels a strip or bus may have.
 const CHANNELS_MAX: usize = 16;
 
@@ -126,6 +126,9 @@ impl Controller {
             Request::ReleaseHotkey(r) => self.hotkey_action(r, Action::Release),
             Request::RunHotkey(r) => self.hotkey_action(r, Action::Run),
             Request::OpenShortcutSettings => self.open_shortcut_settings(),
+            Request::ExportSettings(p) => self.export_settings(p),
+            Request::InspectImport(p) => self.inspect_import(p),
+            Request::ImportSettings(p) => self.import_settings(p),
             Request::WatchSpectrum(p) => watch_spectrum(subs, p),
             Request::Undo(p) => self.step_history(p.steps, true),
             Request::Redo(p) => self.step_history(p.steps, false),
@@ -157,7 +160,7 @@ impl Controller {
         }
     }
 
-    fn set_app_rules(&self, p: AppRulesParams) -> Result<Value, RpcError> {
+    pub(super) fn set_app_rules(&self, p: AppRulesParams) -> Result<Value, RpcError> {
         let (rules, moves) = {
             let mut inner = self.inner.lock().unwrap();
             let mut rules: Vec<AppRule> = Vec::new();
@@ -253,7 +256,7 @@ impl Controller {
         Ok(Value::Null)
     }
 
-    fn set_settings(&self, p: SettingsPatch) -> Result<Value, RpcError> {
+    pub(super) fn set_settings(&self, p: SettingsPatch) -> Result<Value, RpcError> {
         // Check every field before changing anything: starting at login is
         // changed outside the daemon, and a later field failing could not
         // take that back.
@@ -771,7 +774,7 @@ fn app_error(e: anyhow::Error) -> RpcError {
     RpcError::application(format!("{e:#}"))
 }
 
-fn is_builtin_eq_preset(name: &str) -> bool {
+pub(super) fn is_builtin_eq_preset(name: &str) -> bool {
     builtin_eq_presets()
         .iter()
         .any(|b| b.name.eq_ignore_ascii_case(name))
@@ -796,7 +799,7 @@ fn check_name<'a>(name: &str, mut others: impl Iterator<Item = &'a str>) -> Resu
     Ok(())
 }
 
-fn check_bands(bands: &[EqBand]) -> Result<(), RpcError> {
+pub(super) fn check_bands(bands: &[EqBand]) -> Result<(), RpcError> {
     if bands.len() > EQ_MAX_BANDS {
         return Err(RpcError::invalid_params(format!(
             "an equalizer has at most {EQ_MAX_BANDS} bands"

@@ -99,6 +99,8 @@ struct Snapshot {
     /// Recent spectra, by strip or bus.
     spectra: HashMap<StripOrBus, Spectrum>,
     history: HistoryInfo,
+    /// A window look just imported.
+    window_look: Option<serde_json::Value>,
 }
 
 /// The mixer window.
@@ -234,7 +236,7 @@ impl App {
     }
 
     fn snapshot(&self) -> Snapshot {
-        let sh: std::sync::MutexGuard<'_, Shared> = self.client.shared.lock().unwrap();
+        let mut sh: std::sync::MutexGuard<'_, Shared> = self.client.shared.lock().unwrap();
         let err = sh
             .last_error
             .as_ref()
@@ -267,6 +269,7 @@ impl App {
                 .map(|(t, (s, _))| (*t, s.clone()))
                 .collect(),
             history: sh.history.clone(),
+            window_look: sh.window_look.take(),
         }
     }
 
@@ -510,8 +513,13 @@ impl eframe::App for App {
             quit_requested,
             spectra,
             history,
+            window_look,
         } = self.snapshot();
         self.history = history;
+        if let Some(look) = window_look {
+            self.prefs.take_look(&look);
+            self.prefs.save();
+        }
         if connected && self.prefs.learn_device_names(&state) {
             self.prefs.save();
         }

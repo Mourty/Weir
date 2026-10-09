@@ -169,6 +169,25 @@ impl Prefs {
         }
     }
 
+    /// Take an imported window look, keeping everything else. A setting
+    /// this window cannot read is passed over, keeping its own.
+    pub fn take_look(&mut self, look: &serde_json::Value) {
+        let serde_json::Value::Object(theirs) = look else {
+            return;
+        };
+        for key in weir_protocol::WINDOW_LOOK_KEYS {
+            let (Some(value), Ok(serde_json::Value::Object(mut mine))) =
+                (theirs.get(*key), serde_json::to_value(&*self))
+            else {
+                continue;
+            };
+            mine.insert(key.to_string(), value.clone());
+            if let Ok(taken) = serde_json::from_value(serde_json::Value::Object(mine)) {
+                *self = taken;
+            }
+        }
+    }
+
     /// Note the friendly names of the devices strips and buses use that are
     /// plugged in now. Returns whether any were new or changed, and so need
     /// saving.

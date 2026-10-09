@@ -188,13 +188,19 @@ pub fn load(path: &Path) -> Result<Option<(Config, LoadReport)>> {
 }
 
 /// Write atomically (temp file + rename).
-fn write_atomic(path: &Path, text: &str) -> Result<()> {
+pub fn write_atomic(path: &Path, text: &str) -> Result<()> {
+    write_atomic_bytes(path, text.as_bytes())
+}
+
+/// Write `bytes` to `path` through a temporary file, so that a crash never
+/// leaves half a file.
+pub fn write_atomic_bytes(path: &Path, bytes: &[u8]) -> Result<()> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
     }
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
     let tmp = path.with_extension(format!("{ext}.tmp"));
-    std::fs::write(&tmp, text).with_context(|| format!("writing {}", tmp.display()))?;
+    std::fs::write(&tmp, bytes).with_context(|| format!("writing {}", tmp.display()))?;
     std::fs::rename(&tmp, path).with_context(|| format!("renaming to {}", path.display()))?;
     Ok(())
 }
@@ -266,7 +272,7 @@ pub fn backup(config: &Path, dir: &Path, now_secs: u64) -> Result<Option<PathBuf
 }
 
 /// A Unix time as `2026-09-27T14-30-05Z`: sortable, and fine in a file name.
-fn utc_stamp(secs: u64) -> String {
+pub fn utc_stamp(secs: u64) -> String {
     let (days, rem) = ((secs / 86_400) as i64, secs % 86_400);
     // Howard Hinnant's days-to-civil-date algorithm.
     let z = days + 719_468;

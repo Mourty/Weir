@@ -65,7 +65,7 @@ fn one_or_many<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<String>, D:
 pub struct Hotkey {
     /// Unique, given by the daemon. In `set_hotkey`, 0 or left out adds a
     /// new hotkey; an existing id replaces that one.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub id: HotkeyId,
     /// Unique among hotkeys, ignoring case, up to 60 characters. Scripts and
     /// Stream Deck buttons press hotkeys by name.
@@ -847,11 +847,11 @@ mod tests {
         .unwrap();
         assert!(h.enabled);
         assert_eq!(h.each_press, EachPress::All);
-        // One combination may come as a string, but always goes out as a list.
+        // One combination may come as a string, but always goes out as a
+        // list; a hotkey not saved yet has no id to show.
         assert_eq!(
             serde_json::to_value(&h).unwrap(),
             json!({
-                "id": 0,
                 "name": "Mute mic",
                 "keys": ["Ctrl+Alt+M"],
                 "steps": [{"method": "set_strip", "params": {"id": 1, "mute": "toggle"}}]

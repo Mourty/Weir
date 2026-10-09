@@ -51,6 +51,8 @@ pub struct Shared {
     pub daemon_exit: Option<DaemonExit>,
     /// Start the daemon again: set by the window's Try again button.
     pub retry_spawn: bool,
+    /// A window look imported, for the window to take once.
+    pub window_look: Option<Value>,
 }
 
 /// A daemon started by this window that stopped with an error.
@@ -294,6 +296,7 @@ fn read_loop(
                 Notification::SystemVolumesChanged(v) => sh.state.system_volumes = v,
                 Notification::InsertsChanged(v) => sh.state.inserts = v,
                 Notification::HotkeysChanged(h) => sh.state.hotkeys = h,
+                Notification::WindowLook(look) => sh.window_look = Some(look),
             },
             ServerMessage::Response(r) => {
                 let answer =

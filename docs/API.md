@@ -34,6 +34,7 @@ Python and Node.js are in [`examples/`](../examples/).
   * [Scenes and setups](#scenes-and-setups): `save_scene`, `load_scene`, `list_scenes`, `delete_scene` and the same for setups
   * [Undo](#undo): `undo`, `redo`, `history`
   * [Hotkeys](#hotkeys): `list_hotkeys`, `set_hotkey`, `remove_hotkey`, `switch_hotkey`, `move_hotkey`, `run_hotkey`, `press_hotkey`, `release_hotkey`, `add_hotkey_group`, `set_hotkey_group`, `remove_hotkey_group`, `move_hotkey_group`, `open_shortcut_settings`
+  * [Export and import](#export-and-import): `export_settings`, `inspect_import`, `import_settings`
   * [Settings and the window](#settings-and-the-window): `set_settings`, `show_window`
 * [Notifications](#notifications)
 * [Types](#types)
@@ -1537,6 +1538,163 @@ if mixer.call("list_hotkeys")["keys"].get("configurable"):
 await mixer.call("open_shortcut_settings");
 ```
 
+### Export and import
+
+Settings to keep safe, to take to another computer, or to share: scenes,
+setups, hotkeys, equalizer presets of your own, the app rules and four
+parts of the preferences. [`export_settings`](#export_settings) writes
+them to a `.zip`, or one of them to a `.json`;
+[`inspect_import`](#inspect_import) says what a file holds and what
+importing each thing would meet here, and
+[`import_settings`](#import_settings) brings it in. Paths are whole paths,
+since the daemon does not share your working folder.
+
+Strips and buses go by name in the files, so a hotkey that turns down
+"Music" means the strip called Music on whatever computer imports it. One
+that this mixer has no strip or bus called is either given one of this
+mixer's (`map_strips`, `map_buses`) or left out. Scenes and setups are
+added to the library, never loaded. Before an import replaces anything,
+copies of what it replaces go to `~/.config/weir/backups/import-DATE/`.
+
+The window keeps its look itself, so the daemon takes it in `window_look`
+when exporting, and hands an imported one to the window in a
+[`window_look`](#notifications) notification, or in the answer when no
+window is open.
+
+#### Exported files
+
+A `.zip` holds a manifest, `weir-export.json`, and a folder for each kind:
+`scenes/`, `setups/`, `hotkeys/` (with `groups.json`, the groups and the
+order of the list), `eq-presets/`, `app-rules/` and `preferences/`, one
+JSON file for each thing. Every file starts by saying what it holds, the
+format it is in and the Weir that wrote it, so that one can be imported on
+its own, and edited by hand:
+
+```json
+{
+  "weir": "hotkey",
+  "format": 1,
+  "weir_version": "1.2.0",
+  "exported": "2026-10-10T14-30-05Z",
+  "group": "Streaming",
+  "hotkey": {
+    "name": "Music down",
+    "keys": ["Ctrl+Alt+Down"],
+    "steps": [{"method": "set_strip", "params": {"id": "Music", "gain_delta_db": -3}}]
+  }
+}
+```
+
+`weir` is one of `scene` (with `name` and `scene`, a [Scene](#library)'s
+mix), `setup` (`name`, `setup`: a [MixerState](#mixerstate)), `hotkey`
+(`hotkey`: a [Hotkey](#hotkey) without its id, and the name of its
+`group`), `hotkey_list` (`groups`: names and `enabled`; `order`:
+`{"hotkey": name}` and `{"group": name}`), `eq_preset` (`name`, `bands`),
+`app_rules` (`rules`: `{"app": name, "strip": name}`), `preferences`
+(`window_look`, `mixer`, `audio_timing` and `start_at_login`, each there
+only if exported) or `export`, the manifest (`files`). A file in a later
+`format` than this Weir reads is refused rather than half read.
+
+#### `export_settings`
+
+Write settings to a file. Name each thing, or give `all`.
+
+| Parameter | Type | |
+|---|---|---|
+| `path` | string | The file to write, a whole path: a `.zip`, or a `.json` for one thing alone. A file already there is replaced. |
+| `all` | boolean, *optional* | Everything: every scene, setup, hotkey and preset of your own, the app rules and every part of the preferences. |
+| `scenes` | list of strings, *optional* | Scenes, by name. |
+| `setups` | list of strings, *optional* | Setups, by name. |
+| `hotkeys` | list of numbers or strings, *optional* | Hotkeys, by id or name. Their groups and order go with them. |
+| `eq_presets` | list of strings, *optional* | Presets of your own, by name. |
+| `app_rules` | boolean, *optional* | The app rules. |
+| `preferences` | list of strings, *optional* | Parts of the preferences: `window_look` (light or dark, accent and font, what buses list, app volume sliders, the spectrum), `mixer` (solo, meter speed, the tray icon, what opens at start), `audio_timing` (sample rate and latency) and `start_at_login`. |
+| `window_look` | object, *optional* | The window's look, which only the window knows: its settings named `appearance`, `system_accent`, `system_font`, `bus_sources`, `show_app_volume` and `spectrum`, as in its `gui.toml`. Without it, `window_look` is not exported. |
+
+Returns `{"path": file, "files": [...]}`, the files in it.
+
+```sh
+weirctl raw export_settings '{"path": "/tmp/weir-settings.zip", "all": true}'
+weirctl raw export_settings '{"path": "/tmp/mute.json", "hotkeys": ["Mute mic"]}'
+```
+
+```python
+mixer.call("export_settings", path="/tmp/weir-settings.zip",
+           hotkeys=["Mute mic"], preferences=["mixer", "audio_timing"])
+```
+
+```js
+await mixer.call("export_settings", { path: "/tmp/weir-settings.zip", all: true });
+```
+
+#### `inspect_import`
+
+Read a file to import and say what it holds, and what importing each thing
+would meet here. Changes nothing.
+
+| Parameter | Type | |
+|---|---|---|
+| `path` | string | A `.zip` Weir exported, or one of its `.json` files on its own, as a whole path. |
+
+Returns an [ImportInspection](#importinspection). A file that is not one
+of Weir's, or is from a later Weir, is an error; one damaged file in a
+`.zip` is shown as `broken`, and the rest can still come in.
+
+```sh
+weirctl raw export_settings '{"path": "/tmp/weir-settings.zip", "all": true}'
+weirctl raw inspect_import '{"path": "/tmp/weir-settings.zip"}'
+```
+
+```python
+mixer.call("export_settings", path="/tmp/weir-settings.zip", all=True)
+for item in mixer.call("inspect_import", path="/tmp/weir-settings.zip")["items"]:
+    print(item["kind"], item["name"], "(taken)" if item.get("taken") else "")
+```
+
+```js
+await mixer.call("export_settings", { path: "/tmp/weir-settings.zip", all: true });
+const seen = await mixer.call("inspect_import", { path: "/tmp/weir-settings.zip" });
+```
+
+#### `import_settings`
+
+Import what a file holds, with the choices made. The file is read and
+checked again, so nothing rests on it staying the same after
+`inspect_import`.
+
+| Parameter | Type | |
+|---|---|---|
+| `path` | string | The file, as given to `inspect_import`. |
+| `items` | list of strings, *optional* | The things to import, by the `id`s `inspect_import` gives. Left out, everything that can be. |
+| `choices` | object, *optional* | For things whose name is taken here, by `id`: `"replace"` the one here, `{"rename": "New name"}` to keep both, or `"skip"`. |
+| `when_taken` | string, *optional* | For things whose name is taken and that are not in `choices`: `skip` (the default), `replace`, or `keep_both`, under the `free_name` `inspect_import` gave. |
+| `hotkeys` | string, *optional* | `add` the hotkeys to the ones here (the default), or `replace_all`: remove every hotkey and group here first, and take the imported ones' groups and order. Keys a hotkey here has stay with it; the imported one comes in without them. |
+| `map_strips` | object, *optional* | Strips the file names that this mixer has none called, each to one it has: `{"Music": "Media"}`. Things naming a strip that is neither here nor mapped are left out. |
+| `map_buses` | object, *optional* | The same for buses. |
+
+Returns an [ImportResult](#importresult).
+
+```sh
+weirctl raw export_settings '{"path": "/tmp/weir-settings.zip", "hotkeys": ["Mute mic"]}'
+weirctl raw import_settings '{"path": "/tmp/weir-settings.zip", "when_taken": "keep_both"}'
+```
+
+```python
+mixer.call("export_settings", path="/tmp/mute.json", hotkeys=["Mute mic"])
+done = mixer.call("import_settings", path="/tmp/mute.json",
+                  choices={"mute.json": {"rename": "Mute mic (copy)"}})
+print(done["imported"])
+```
+
+```js
+await mixer.call("export_settings", { path: "/tmp/weir-settings.zip", all: true });
+const done = await mixer.call("import_settings", {
+  path: "/tmp/weir-settings.zip",
+  items: ["hotkeys/Mute mic.json"],
+  choices: { "hotkeys/Mute mic.json": "replace" },
+});
+```
+
 ### Settings and the window
 
 #### `set_settings`
@@ -1621,6 +1779,7 @@ replace its copy.
 | `spectrum` | see [`watch_spectrum`](#watch_spectrum) | [Spectrum](#spectrum) | 30 times a second for each strip or bus watched. |
 | `show_window` | `window` | none | The mixer window should come to the front. |
 | `quit` | `window` | none | The daemon is stopping, or another window is already open; the window should close. |
+| `window_look` | `window` | object | A window look was imported: the window takes these settings (`appearance`, `system_accent`, `system_font`, `bus_sources`, `show_app_volume`, `spectrum`) and saves them. |
 
 For example, after someone mutes the Mic strip:
 
@@ -2139,6 +2298,48 @@ keys, media keys, `Pause`, `Print` and `ScrollLock` can be on their own.
 What `undo` and `redo` would take back or bring back, most recent first, up
 to 25 of each: a label for people, and when it happened, in milliseconds
 since 1970.
+
+### ImportInspection
+
+What [`inspect_import`](#inspect_import) returns.
+
+| Field | Type | |
+|---|---|---|
+| `path` | string | The file. |
+| `weir_version` | string | The version of Weir that exported it. |
+| `exported` | string, *optional* | When, such as `2026-10-10T14-30-05Z`. |
+| `items` | list of [ImportItem](#importitem) | Everything in it, scenes first, then setups, hotkeys, presets, app rules and the parts of the preferences. |
+| `missing` | list of `{"kind": "strip" or "bus", "name": string}`, *optional* | Every strip and bus the items name that this mixer has none called, for `map_strips` and `map_buses`. |
+| `problems` | list of strings, *optional* | Files in it that could not be read and are not any one thing, each with why. |
+
+### ImportItem
+
+| Field | Type | |
+|---|---|---|
+| `id` | string | Names it in `import_settings`: its file, such as `scenes/Gaming.json`, and for a part of the preferences the part after `#`, such as `preferences/preferences.json#audio_timing`. |
+| `kind` | string | `scene`, `setup`, `hotkey`, `eq_preset`, `app_rules` or `preferences`. |
+| `name` | string | Its name; for app rules and the preferences, what it is. |
+| `summary` | string, *optional* | What it is or does, in a line. |
+| `group` | string, *optional* | For a hotkey, its group. One here of the same name is joined; otherwise it is made. |
+| `taken` | boolean, *optional* | Something of its kind here has its name. |
+| `free_name` | string, *optional* | When `taken`, a name nothing has, to keep both under. |
+| `keys_taken` | list of `{"keys": string, "by": name}`, *optional* | For a hotkey, keys a hotkey here has: it comes in without them. |
+| `missing` | list, *optional* | Strips and buses it names that this mixer lacks, as in `ImportInspection`. |
+| `broken` | string, *optional* | Why it cannot be imported, such as a damaged file. |
+| `note` | string, *optional* | Anything else worth knowing first, such as that audio timing suits the computer it came from. |
+
+### ImportResult
+
+What [`import_settings`](#import_settings) returns.
+
+| Field | Type | |
+|---|---|---|
+| `imported` | list of strings | What came in, a line each, such as `scene 'Gaming 2'`. |
+| `skipped` | list of strings, *optional* | What was left out, and why. |
+| `notes` | list of strings, *optional* | Anything else worth knowing, such as keys a hotkey came in without. |
+| `backup` | string, *optional* | The folder with copies of what the import replaced. |
+| `window_look` | object, *optional* | The window look imported. |
+| `window_told` | boolean, *optional* | Whether an open window was sent it. When not, a client may save it in the window's `gui.toml`, as `weirctl import` does. |
 
 ## Errors
 

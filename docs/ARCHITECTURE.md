@@ -257,13 +257,14 @@ files shortcuts under the program's name and refuses them without one, but
 works the name out only for programs started from the application menu,
 not for the daemon started at login. So the daemon first tells the portal
 it is `weir` (its `Register` call), which the portal takes only because
-`weir.desktop` is installed. On X11 Weir grabs the keys on the root window
-itself (`x11.rs`, with `x11rb`), with and without Caps Lock and Num Lock,
-and asks XKB not to repeat held keys as presses. Anywhere else hotkeys are
-pressed only by name, which the desktop's own shortcuts can do with
-`weirctl hotkey run`. At login the daemon waits for the desktop first, as
-it does for the window. `WEIR_HOTKEYS=desktop`, `x11` or `none` picks the
-way, for testing.
+`weir.desktop` is installed. A portal that restarts forgets both the name
+and the shortcuts, so Weir starts over when it does. On X11 Weir grabs the
+keys on the root window itself (`x11.rs`, with `x11rb`), with and without
+Caps Lock and Num Lock, and asks XKB not to repeat held keys as presses.
+Anywhere else hotkeys are pressed only by name, which the desktop's own
+shortcuts can do with `weirctl hotkey run`. At login the daemon waits for
+the desktop first, as it does for the window. `WEIR_HOTKEYS=desktop`,
+`x11` or `none` picks the way, for testing.
 
 **Starting at login** is systemd's to keep, not the configuration's:
 Weir starts at login when its user unit, `weir.service`, is enabled. The

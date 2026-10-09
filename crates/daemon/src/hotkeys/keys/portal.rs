@@ -164,6 +164,12 @@ pub async fn run(
         .receive_shortcuts_changed()
         .await
         .map_err(Failure::Lost)?;
+    // A portal that restarts has forgotten Weir's name and shortcuts, while
+    // the streams above carry on as if nothing happened: start over then.
+    let mut restarted = portal
+        .receive_owner_changed()
+        .await
+        .map_err(|e| Failure::Lost(e.into()))?;
     info!("hotkeys go through the desktop's shortcut service");
     let mut session: Option<ashpd::desktop::Session<'_, GlobalShortcuts<'_>>> = None;
     loop {
@@ -224,6 +230,11 @@ pub async fn run(
                     if let Some(&id) = ids.get(d.shortcut_id()) {
                         let _ = tx.send(Command::Release(id));
                     }
+                }
+                Some(_) = restarted.next() => {
+                    return Err(Failure::Lost(ashpd::Error::Zbus(ashpd::zbus::Error::Failure(
+                        "the shortcut service restarted".into(),
+                    ))));
                 }
                 Some(c) = changed.next() => {
                     let (keys, missing) = assigned(c.shortcuts(), &ids, &current);

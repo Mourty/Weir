@@ -54,6 +54,8 @@ pub struct HotkeysWindow {
     renaming: Option<Renaming>,
     /// The name of a group just added, to rename once the daemon has it.
     added_group: Option<String>,
+    /// Whether dragging to an edge of the list scrolls it yet.
+    scroll_armed: bool,
 }
 
 impl HotkeysWindow {
@@ -65,6 +67,7 @@ impl HotkeysWindow {
             confirm_remove_group: None,
             renaming: None,
             added_group: None,
+            scroll_armed: false,
         }
     }
 
@@ -126,8 +129,8 @@ impl HotkeysWindow {
         asked
     }
 
-    /// How keys reach Weir, then the hotkeys in no group, then each group
-    /// with its own.
+    /// How keys reach Weir, then the list: hotkeys in no group and groups,
+    /// in the order they were put in.
     fn contents(
         &mut self,
         ui: &mut Ui,
@@ -160,49 +163,40 @@ impl HotkeysWindow {
                 self.added_group = None;
             }
         }
-        let grouped = |h: &Hotkey| info.groups.iter().any(|g| g.id == h.group);
-        let loose: Vec<&Hotkey> = info.hotkeys.iter().filter(|h| !grouped(h)).collect();
+        let order = hotkey_order(&info.order, &info.hotkeys, &info.groups);
         let dragged = egui::DragAndDrop::payload::<Dragged>(ui.ctx()).map(|d| *d);
         let mut asked = None;
         egui::ScrollArea::vertical()
             .auto_shrink(false)
             .show(ui, |ui| {
-                // With no hotkey in no group, somewhere else to drop one
-                // out of its group.
-                let out_of_group = matches!(dragged, Some(Dragged::Hotkey(id))
-                    if info.hotkeys.iter().any(|h| h.id == id && grouped(h)));
-                if loose.is_empty() && out_of_group {
-                    loose_drop(ui, actions);
+                if dragged.is_some() {
+                    scroll_at_edges(ui, &mut self.scroll_armed);
+                } else {
+                    self.scroll_armed = false;
                 }
-                let ids: Vec<HotkeyId> = loose.iter().map(|h| h.id).collect();
-                for (i, h) in loose.iter().enumerate() {
-                    let place = Place {
-                        group: 0,
-                        group_on: true,
-                        index: i,
-                        members: &ids,
+                // Every place something dragged could go, found while the
+                // list is drawn.
+                let mut slots = Vec::new();
+                let width = ui.max_rect().x_range();
+                for (i, item) in order.iter().enumerate() {
+                    slots.push(Slot::before(ui, 0, i, width));
+                    let a = match *item {
+                        HotkeyListItem::Hotkey(id) => info
+                            .hotkeys
+                            .iter()
+                            .find(|h| h.id == id)
+                            .and_then(|h| self.row(ui, state, h, None, true, actions)),
+                        HotkeyListItem::Group(id) => info
+                            .groups
+                            .iter()
+                            .find(|g| g.id == id)
+                            .and_then(|g| self.group(ui, state, g, &mut slots, actions)),
                     };
-                    if let Some(a) = self.row(ui, state, h, place, actions) {
-                        asked = Some(a);
-                    }
+                    asked = asked.take().or(a);
                 }
-                let order: Vec<HotkeyGroupId> = info.groups.iter().map(|g| g.id).collect();
-                for (gi, g) in info.groups.iter().enumerate() {
-                    let members: Vec<&Hotkey> =
-                        info.hotkeys.iter().filter(|h| h.group == g.id).collect();
-                    self.group_header(ui, g, gi, &order, members.len(), actions);
-                    let ids: Vec<HotkeyId> = members.iter().map(|h| h.id).collect();
-                    for (i, h) in members.iter().enumerate() {
-                        let place = Place {
-                            group: g.id,
-                            group_on: g.enabled,
-                            index: i,
-                            members: &ids,
-                        };
-                        if let Some(a) = self.row(ui, state, h, place, actions) {
-                            asked = Some(a);
-                        }
-                    }
+                slots.push(Slot::before(ui, 0, order.len(), width));
+                if let Some(dragged) = dragged {
+                    drop_nearest(ui, dragged, &slots, &order, info, actions);
                 }
             });
         asked
@@ -246,16 +240,20 @@ impl HotkeysWindow {
     }
 
     /// One hotkey: a grip to drag it by, its switch, keys, name and what it
-    /// does, and buttons.
+    /// does, and buttons, then a line under it if `line` (a group's last
+    /// hotkey has its group's edge instead). `group` is the group it is
+    /// drawn in, if any.
     fn row(
         &mut self,
         ui: &mut Ui,
         state: &FullState,
         h: &Hotkey,
-        place: Place<'_>,
+        group: Option<&HotkeyGroup>,
+        line: bool,
         actions: &mut Vec<Request>,
     ) -> Option<ListAction> {
         let mut asked = None;
+        let group_on = group.is_none_or(|g| g.enabled);
         let problem = state
             .hotkeys
             .problems
@@ -264,132 +262,195 @@ impl HotkeysWindow {
             .map(|p| p.problem.as_str());
         // Everything lines up at the top, with the first of its keys, since
         // a hotkey with several keys has a line for each.
-        let resp = ui
-            .horizontal_top(|ui| {
-                ui.set_min_height(38.0);
-                if place.group != 0 {
-                    ui.add_space(GROUP_INDENT);
-                }
-                // A switched-off group's hotkeys do nothing: shown faded.
-                if !place.group_on {
-                    ui.multiply_opacity(0.5);
-                }
-                drag_grip(
-                    ui,
-                    Dragged::Hotkey(h.id),
-                    "Drag to move it, or into a group",
-                );
-                let mut tip = match (h.enabled, state.hotkeys.keys.method) {
-                    (true, _) => "On: its keys work. Click to switch them off.".to_string(),
-                    (false, KeysMethod::Desktop) => "Off: its keys do nothing, but your desktop \
+        ui.horizontal_top(|ui| {
+            ui.set_min_height(38.0);
+            // A switched-off group's hotkeys do nothing: shown faded.
+            if !group_on {
+                ui.multiply_opacity(0.5);
+            }
+            drag_grip(
+                ui,
+                Dragged::Hotkey(h.id),
+                "Drag to move it, or into a group",
+            );
+            let mut tip = match (h.enabled, state.hotkeys.keys.method) {
+                (true, _) => "On: its keys work. Click to switch them off.".to_string(),
+                (false, KeysMethod::Desktop) => "Off: its keys do nothing, but your desktop \
                                                      keeps them for it. It can still be pressed \
                                                      by name. Click to switch it on."
-                        .to_string(),
-                    (false, _) => "Off: its keys do nothing, but it can still be pressed by \
+                    .to_string(),
+                (false, _) => "Off: its keys do nothing, but it can still be pressed by \
                                    name. Click to switch it on."
-                        .to_string(),
-                };
-                if !place.group_on {
-                    tip.push_str(" Its group is switched off, so its keys do nothing for now.");
+                    .to_string(),
+            };
+            if !group_on {
+                tip.push_str(" Its group is switched off, so its keys do nothing for now.");
+            }
+            if widgets::switch(ui, h.enabled).on_hover_text(tip).clicked() {
+                actions.push(Request::SwitchHotkey(SwitchHotkeyParams {
+                    hotkey: HotkeyKey::Id(h.id),
+                    enabled: Flag::Set(!h.enabled),
+                }));
+            }
+            ui.add_space(4.0);
+            // Each combination on a line of its own, so that several
+            // never run into the name.
+            let keys = shown_keys(state, h);
+            // Narrower in a group by as much as its box takes in, so that
+            // names line up all down the list.
+            let width = match group {
+                Some(_) => 210.0 - GROUP_INDENT - 1.0,
+                None => 210.0,
+            };
+            ui.allocate_ui_with_layout(vec2(width, 24.0), Layout::top_down(Align::Min), |ui| {
+                ui.set_width(width);
+                ui.spacing_mut().item_spacing.y = 4.0;
+                if keys.is_empty() {
+                    ui.label(RichText::new("no keys").color(theme::p().text_dim));
                 }
-                if widgets::switch(ui, h.enabled).on_hover_text(tip).clicked() {
-                    actions.push(Request::SwitchHotkey(SwitchHotkeyParams {
-                        hotkey: HotkeyKey::Id(h.id),
-                        enabled: Flag::Set(!h.enabled),
-                    }));
+                for k in &keys {
+                    ui.horizontal(|ui| key_chips(ui, k, 12.0));
                 }
-                ui.add_space(4.0);
-                // Each combination on a line of its own, so that several
-                // never run into the name.
-                let keys = shown_keys(state, h);
-                let width = 210.0;
-                ui.allocate_ui_with_layout(vec2(width, 24.0), Layout::top_down(Align::Min), |ui| {
-                    ui.set_width(width);
-                    ui.spacing_mut().item_spacing.y = 4.0;
-                    if keys.is_empty() {
-                        ui.label(RichText::new("no keys").color(theme::p().text_dim));
+            });
+            ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+                if self.confirm_remove == Some(h.id) {
+                    if ui.button("Keep").clicked() {
+                        self.confirm_remove = None;
                     }
-                    for k in &keys {
-                        ui.horizontal(|ui| key_chips(ui, k, 12.0));
+                    if ui
+                        .button(RichText::new("Remove").color(theme::p().meter_red))
+                        .clicked()
+                    {
+                        actions.push(Request::RemoveHotkey(HotkeyRef {
+                            hotkey: HotkeyKey::Id(h.id),
+                        }));
+                        self.confirm_remove = None;
+                    }
+                    ui.label("Remove it?");
+                } else {
+                    if ui.button("×").on_hover_text("Remove this hotkey").clicked() {
+                        self.confirm_remove = Some(h.id);
+                    }
+                    if ui.button("Edit").clicked() {
+                        asked = Some(ListAction::Edit(h.id));
+                    }
+                    if ui
+                        .button("Try")
+                        .on_hover_text("Do what pressing and letting go of its keys does")
+                        .clicked()
+                    {
+                        actions.push(Request::RunHotkey(HotkeyRef {
+                            hotkey: HotkeyKey::Id(h.id),
+                        }));
+                    }
+                }
+                if let Some(tag) = tag(h) {
+                    ui.add(
+                        egui::Button::new(RichText::new(tag).size(11.0).color(theme::p().text))
+                            .fill(theme::p().button_off)
+                            .corner_radius(9)
+                            .sense(egui::Sense::hover()),
+                    );
+                }
+                ui.with_layout(Layout::top_down(Align::Min), |ui| {
+                    ui.add(egui::Label::new(RichText::new(&h.name).strong()).truncate());
+                    let words = describe_hotkey(h, &state.mixer);
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(words).size(12.0).color(theme::p().text_dim),
+                        )
+                        .truncate(),
+                    );
+                    if let Some(p) = problem {
+                        ui.label(RichText::new(p).size(12.0).color(theme::p().warning));
                     }
                 });
-                ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-                    if self.confirm_remove == Some(h.id) {
-                        if ui.button("Keep").clicked() {
-                            self.confirm_remove = None;
-                        }
-                        if ui
-                            .button(RichText::new("Remove").color(theme::p().meter_red))
-                            .clicked()
-                        {
-                            actions.push(Request::RemoveHotkey(HotkeyRef {
-                                hotkey: HotkeyKey::Id(h.id),
-                            }));
-                            self.confirm_remove = None;
-                        }
-                        ui.label("Remove it?");
-                    } else {
-                        if ui.button("×").on_hover_text("Remove this hotkey").clicked() {
-                            self.confirm_remove = Some(h.id);
-                        }
-                        if ui.button("Edit").clicked() {
-                            asked = Some(ListAction::Edit(h.id));
-                        }
-                        if ui
-                            .button("Try")
-                            .on_hover_text("Do what pressing and letting go of its keys does")
-                            .clicked()
-                        {
-                            actions.push(Request::RunHotkey(HotkeyRef {
-                                hotkey: HotkeyKey::Id(h.id),
-                            }));
-                        }
-                    }
-                    if let Some(tag) = tag(h) {
-                        ui.add(
-                            egui::Button::new(RichText::new(tag).size(11.0).color(theme::p().text))
-                                .fill(theme::p().button_off)
-                                .corner_radius(9)
-                                .sense(egui::Sense::hover()),
-                        );
-                    }
-                    ui.with_layout(Layout::top_down(Align::Min), |ui| {
-                        ui.add(egui::Label::new(RichText::new(&h.name).strong()).truncate());
-                        let words = describe_hotkey(h, &state.mixer);
-                        ui.add(
-                            egui::Label::new(
-                                RichText::new(words).size(12.0).color(theme::p().text_dim),
-                            )
-                            .truncate(),
-                        );
-                        if let Some(p) = problem {
-                            ui.label(RichText::new(p).size(12.0).color(theme::p().warning));
-                        }
-                    });
-                });
-            })
-            .response;
-        hotkey_drop(ui, &resp, &place, actions);
-        ui.separator();
+            });
+        });
+        if line {
+            ui.separator();
+        }
         asked
     }
 
-    /// A group's header: a grip to drag it by, its switch, name and how many
-    /// hotkeys it has, and buttons to rename or remove it. Hotkeys dropped
-    /// on it go into it.
+    /// A group: a box holding its header and its hotkeys.
+    fn group(
+        &mut self,
+        ui: &mut Ui,
+        state: &FullState,
+        g: &HotkeyGroup,
+        slots: &mut Vec<Slot>,
+        actions: &mut Vec<Request>,
+    ) -> Option<ListAction> {
+        let members: Vec<&Hotkey> = state
+            .hotkeys
+            .hotkeys
+            .iter()
+            .filter(|h| h.group == g.id)
+            .collect();
+        let mut asked = None;
+        ui.add_space(4.0);
+        egui::Frame::new()
+            .stroke(egui::Stroke::new(1.0_f32, theme::p().grid_major))
+            .corner_radius(6)
+            .show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                self.group_header(ui, g, members.len(), actions);
+                egui::Frame::new()
+                    .inner_margin(egui::Margin {
+                        left: GROUP_INDENT as i8,
+                        right: 8,
+                        top: 4,
+                        bottom: 2,
+                    })
+                    .show(ui, |ui| {
+                        ui.set_width(ui.available_width());
+                        let width = ui.max_rect().x_range();
+                        if members.is_empty() {
+                            slots.push(Slot::before(ui, g.id, 0, width));
+                            ui.label(
+                                RichText::new(
+                                    "Drag hotkeys here, or pick this group when editing one.",
+                                )
+                                .size(12.0)
+                                .color(theme::p().text_dim),
+                            );
+                        }
+                        for (i, h) in members.iter().enumerate() {
+                            slots.push(Slot::before(ui, g.id, i, width));
+                            let last = i + 1 == members.len();
+                            asked =
+                                asked
+                                    .take()
+                                    .or(self.row(ui, state, h, Some(g), !last, actions));
+                        }
+                        if !members.is_empty() {
+                            slots.push(Slot::before(ui, g.id, members.len(), width));
+                        }
+                    });
+            });
+        ui.add_space(4.0);
+        asked
+    }
+
+    /// A group's header, across the top of its box: a grip to drag it by,
+    /// its switch, name and how many hotkeys it has, and buttons to rename or
+    /// remove it.
     fn group_header(
         &mut self,
         ui: &mut Ui,
         g: &HotkeyGroup,
-        index: usize,
-        order: &[HotkeyGroupId],
         count: usize,
         actions: &mut Vec<Request>,
     ) {
-        ui.add_space(6.0);
-        let resp = egui::Frame::new()
+        egui::Frame::new()
             .fill(theme::p().section_fill)
-            .corner_radius(5)
+            .corner_radius(egui::CornerRadius {
+                nw: 5,
+                ne: 5,
+                sw: 0,
+                se: 0,
+            })
             .inner_margin(egui::Margin::symmetric(8, 6))
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
@@ -450,51 +511,7 @@ impl HotkeysWindow {
                         }
                     });
                 });
-            })
-            .response;
-        match resp.dnd_hover_payload::<Dragged>().map(|d| *d) {
-            // A hotkey dropped on the header goes into the group, last.
-            Some(Dragged::Hotkey(id)) => {
-                ui.painter().rect_stroke(
-                    resp.rect,
-                    5.0,
-                    egui::Stroke::new(2.0_f32, theme::p().accent),
-                    egui::StrokeKind::Inside,
-                );
-                if resp.dnd_release_payload::<Dragged>().is_some() {
-                    actions.push(Request::MoveHotkey(MoveHotkeyParams {
-                        hotkey: HotkeyKey::Id(id),
-                        group: Some(HotkeyGroupKey::Id(g.id)),
-                        index: None,
-                    }));
-                }
-            }
-            // A group lands above or below this one.
-            Some(Dragged::Group(id)) => {
-                let after = drop_line(ui, &resp);
-                let from = order.iter().position(|o| *o == id);
-                if resp.dnd_release_payload::<Dragged>().is_some() {
-                    if let Some(to) = from.and_then(|f| widgets::drop_index(f, index, after)) {
-                        actions.push(Request::MoveHotkeyGroup(MoveHotkeyGroupParams {
-                            group: HotkeyGroupKey::Id(id),
-                            index: to,
-                        }));
-                    }
-                }
-            }
-            None => {}
-        }
-        if count == 0 {
-            ui.horizontal(|ui| {
-                ui.add_space(GROUP_INDENT + 4.0);
-                ui.label(
-                    RichText::new("Drag hotkeys here, or pick this group when editing one.")
-                        .size(12.0)
-                        .color(theme::p().text_dim),
-                );
             });
-        }
-        ui.add_space(2.0);
     }
 
     /// A group's name, or the field to type a new one into while it is
@@ -588,13 +605,119 @@ impl HotkeysWindow {
     }
 }
 
-/// Where a hotkey's row is: its group (0 for none), whether that group is
-/// on, its place among the group's hotkeys, and theirs.
-struct Place<'a> {
+/// A place something dragged can land, and where the line showing it goes:
+/// at `index` among the places in the list (`group` 0), or among a group's
+/// hotkeys.
+struct Slot {
     group: HotkeyGroupId,
-    group_on: bool,
     index: usize,
-    members: &'a [HotkeyId],
+    y: f32,
+    x: egui::Rangef,
+}
+
+impl Slot {
+    /// The place just before what `ui` draws next.
+    fn before(ui: &Ui, group: HotkeyGroupId, index: usize, x: egui::Rangef) -> Slot {
+        Slot {
+            group,
+            index,
+            y: ui.cursor().top() - ui.spacing().item_spacing.y / 2.0,
+            x,
+        }
+    }
+}
+
+/// While something is dragged over the list, a line where it would land:
+/// the place nearest the pointer that can take it, so that anywhere in the
+/// list is somewhere. Groups go only among the places in the list, not into
+/// other groups. Dropped, it is moved there.
+fn drop_nearest(
+    ui: &Ui,
+    dragged: Dragged,
+    slots: &[Slot],
+    order: &[HotkeyListItem],
+    info: &HotkeysInfo,
+    actions: &mut Vec<Request>,
+) {
+    let Some(pointer) = ui.ctx().pointer_interact_pos() else {
+        return;
+    };
+    if !ui.clip_rect().expand2(vec2(24.0, 0.0)).contains(pointer) {
+        return;
+    }
+    let takes = |s: &&Slot| s.group == 0 || matches!(dragged, Dragged::Hotkey(_));
+    let Some(slot) = slots
+        .iter()
+        .filter(takes)
+        .min_by(|a, b| (a.y - pointer.y).abs().total_cmp(&(b.y - pointer.y).abs()))
+    else {
+        return;
+    };
+    ui.painter().hline(
+        slot.x,
+        slot.y,
+        egui::Stroke::new(3.0_f32, theme::p().accent),
+    );
+    if !ui.input(|i| i.pointer.any_released()) {
+        return;
+    }
+    egui::DragAndDrop::clear_payload(ui.ctx());
+    // Where it is now among what the place counts, if it is there at all.
+    let from = match (dragged, slot.group) {
+        (Dragged::Hotkey(id), 0) => order.iter().position(|i| *i == HotkeyListItem::Hotkey(id)),
+        (Dragged::Group(id), _) => order.iter().position(|i| *i == HotkeyListItem::Group(id)),
+        (Dragged::Hotkey(id), group) => info
+            .hotkeys
+            .iter()
+            .filter(|h| h.group == group)
+            .position(|h| h.id == id),
+    };
+    let to = match from {
+        Some(from) => match widgets::drop_index(from, slot.index, false) {
+            Some(to) => to,
+            None => return,
+        },
+        None => slot.index,
+    };
+    actions.push(match dragged {
+        Dragged::Hotkey(id) => Request::MoveHotkey(MoveHotkeyParams {
+            hotkey: HotkeyKey::Id(id),
+            group: from.is_none().then_some(HotkeyGroupKey::Id(slot.group)),
+            index: Some(to),
+        }),
+        Dragged::Group(id) => Request::MoveHotkeyGroup(MoveHotkeyGroupParams {
+            group: HotkeyGroupKey::Id(id),
+            index: to,
+        }),
+    });
+}
+
+/// While something is dragged near the top or bottom of the list, scroll
+/// it, so that a long list can be crossed in one drag. Only once `armed`,
+/// when the pointer has been away from both edges in this drag: a drag
+/// starting at an edge must not set the list going straight away.
+fn scroll_at_edges(ui: &Ui, armed: &mut bool) {
+    let Some(p) = ui.ctx().pointer_interact_pos() else {
+        return;
+    };
+    let area = ui.clip_rect();
+    if !area.x_range().contains(p.x) {
+        return;
+    }
+    let edge = 24.0;
+    let speed = if (area.top()..area.top() + edge).contains(&p.y) {
+        6.0
+    } else if (area.bottom() - edge..area.bottom()).contains(&p.y) {
+        -6.0
+    } else {
+        *armed = true;
+        return;
+    };
+    if !*armed {
+        return;
+    }
+    ui.scroll_with_delta_animation(vec2(0.0, speed), egui::style::ScrollAnimation::none());
+    ui.ctx().request_repaint();
 }
 
 /// Six dots to drag `what` by.
@@ -614,84 +737,6 @@ fn drag_grip(ui: &mut Ui, what: Dragged, tip: &str) {
     .response
     .on_hover_cursor(egui::CursorIcon::Grab)
     .on_hover_text(tip);
-}
-
-/// While something is dragged over `resp`, a line above or below it where
-/// it would land, and which: whether below.
-fn drop_line(ui: &Ui, resp: &egui::Response) -> bool {
-    let after = ui
-        .ctx()
-        .pointer_interact_pos()
-        .is_some_and(|p| p.y > resp.rect.center().y);
-    let y = if after {
-        resp.rect.bottom() + 3.0
-    } else {
-        resp.rect.top() - 3.0
-    };
-    ui.painter().hline(
-        resp.rect.x_range(),
-        y,
-        egui::Stroke::new(3.0_f32, theme::p().accent),
-    );
-    after
-}
-
-/// While a hotkey is dragged over the row `resp` of the one at `place`,
-/// show where it would land, and move it there when it is dropped: into
-/// that row's group, before or after it.
-fn hotkey_drop(ui: &Ui, resp: &egui::Response, place: &Place<'_>, actions: &mut Vec<Request>) {
-    let Some(Dragged::Hotkey(id)) = resp.dnd_hover_payload::<Dragged>().map(|d| *d) else {
-        return;
-    };
-    let after = drop_line(ui, resp);
-    if resp.dnd_release_payload::<Dragged>().is_none() {
-        return;
-    }
-    let from = place.members.iter().position(|m| *m == id);
-    let to = match from {
-        Some(from) => match widgets::drop_index(from, place.index, after) {
-            Some(to) => to,
-            None => return,
-        },
-        None => place.index + usize::from(after),
-    };
-    actions.push(Request::MoveHotkey(MoveHotkeyParams {
-        hotkey: HotkeyKey::Id(id),
-        group: from.is_none().then_some(HotkeyGroupKey::Id(place.group)),
-        index: Some(to),
-    }));
-}
-
-/// A place to drop a hotkey out of its group, for when no hotkey is in
-/// none.
-fn loose_drop(ui: &mut Ui, actions: &mut Vec<Request>) {
-    let resp = egui::Frame::new()
-        .stroke(egui::Stroke::new(1.0_f32, theme::p().grid_major))
-        .corner_radius(5)
-        .inner_margin(egui::Margin::symmetric(12, 10))
-        .show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            ui.label(
-                RichText::new("Drop here to take it out of its group").color(theme::p().text_dim),
-            );
-        })
-        .response;
-    if let Some(Dragged::Hotkey(id)) = resp.dnd_hover_payload::<Dragged>().map(|d| *d) {
-        ui.painter().rect_stroke(
-            resp.rect,
-            5.0,
-            egui::Stroke::new(2.0_f32, theme::p().accent),
-            egui::StrokeKind::Inside,
-        );
-        if resp.dnd_release_payload::<Dragged>().is_some() {
-            actions.push(Request::MoveHotkey(MoveHotkeyParams {
-                hotkey: HotkeyKey::Id(id),
-                group: Some(HotkeyGroupKey::Id(0)),
-                index: None,
-            }));
-        }
-    }
-    ui.add_space(6.0);
 }
 
 /// A name for a new group that no group has yet.

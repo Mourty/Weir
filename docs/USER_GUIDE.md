@@ -554,7 +554,8 @@ reach Weir on your desktop (see
 [Your desktop and the keys](#your-desktop-and-the-keys)). For each hotkey:
 
 * the **dots** at its left move it: drag it to another place in the list,
-  or into a group.
+  or into a group. A blue line shows where it will go, wherever the
+  pointer is in the list.
 * the **switch** turns its keys on or off. Off, it can still be pressed by
   name.
 * its **keys**, one set to a line, and what it does. **while held**,
@@ -571,13 +572,13 @@ change their keys if you like.
 
 A group keeps hotkeys together, and switches them on and off together: a
 group for streaming, say, switched on only while you stream. **+ Add
-group** under the list adds one; type its name and press Enter. Groups
-come after the hotkeys in no group, each with its hotkeys under it.
+group** under the list adds one; type its name and press Enter. Each
+group is a box holding its hotkeys, and groups and hotkeys in no group can
+go in any order.
 
-* Drag a hotkey onto a group's header to put it in the group, or between
-  two of its hotkeys. The group can also be picked under **Group** when
-  editing a hotkey. Dragging a hotkey out among those in no group takes it
-  out of its group.
+* Drag a hotkey into a group's box to put it in the group. The group can
+  also be picked under **Group** when editing a hotkey. Dragging a hotkey
+  out of the box takes it out of its group.
 * A group's **switch** turns all its hotkeys' keys on or off. Its hotkeys
   are faded while it is off, and each keeps its own switch for when the
   group is on again.

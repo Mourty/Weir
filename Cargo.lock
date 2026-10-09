@@ -4241,8 +4241,10 @@ version = "1.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "dirs",
  "serde",
  "serde_json",
+ "toml 0.9.12+spec-1.1.0",
  "weir-protocol",
 ]
 

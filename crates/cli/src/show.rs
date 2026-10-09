@@ -674,6 +674,86 @@ pub fn hotkeys(info: &HotkeysInfo, mixer: &MixerState) {
     }
 }
 
+/// What a file to import holds, and what importing each item would meet,
+/// with the options that deal with it.
+pub fn import_inspection(seen: &ImportInspection) {
+    let mut from = String::from("Exported");
+    if !seen.weir_version.is_empty() {
+        from.push_str(&format!(" by Weir {}", seen.weir_version));
+    }
+    if let Some(when) = &seen.exported {
+        from.push_str(&format!(" on {when}"));
+    }
+    println!("{from}.");
+    println!();
+    let mut t = Table::new(&["ID", "What", "Name", "Notes"], &[]);
+    for i in &seen.items {
+        let mut notes = Vec::new();
+        if let Some(reason) = &i.broken {
+            notes.push(format!("cannot be imported: {reason}"));
+        }
+        for m in &i.missing {
+            let (word, flag) = match m.kind {
+                TargetKind::Strip => ("strip", "--map-strip"),
+                TargetKind::Bus => ("bus", "--map-bus"),
+            };
+            notes.push(format!(
+                "this mixer has no {word} '{}': {flag} \"{}=YOURS\"",
+                m.name, m.name
+            ));
+        }
+        if i.taken {
+            let free = i.free_name.as_deref().unwrap_or("another name");
+            notes.push(format!(
+                "you have one called that (keep both as '{free}', or replace)"
+            ));
+        }
+        for k in &i.keys_taken {
+            notes.push(format!("{} is '{}''s here", k.keys, k.by));
+        }
+        if let Some(note) = &i.note {
+            notes.push(note.clone());
+        }
+        t.row(vec![
+            i.id.clone(),
+            i.kind.word().to_string(),
+            i.name.clone(),
+            notes.join("; "),
+        ]);
+    }
+    t.print();
+    for p in &seen.problems {
+        println!("Not read: {p}");
+    }
+}
+
+/// What an import did.
+pub fn import_result(r: &ImportResult, saved_look: bool) {
+    if r.imported.is_empty() {
+        println!("Nothing was imported.");
+    } else {
+        println!("Imported:");
+        for i in &r.imported {
+            println!("  {i}");
+        }
+    }
+    if !r.skipped.is_empty() {
+        println!("Left out:");
+        for s in &r.skipped {
+            println!("  {s}");
+        }
+    }
+    for n in &r.notes {
+        println!("{n}");
+    }
+    if saved_look {
+        println!("The window look is saved for the next time the window opens.");
+    }
+    if let Some(dir) = &r.backup {
+        println!("Copies of what was replaced are in {dir}");
+    }
+}
+
 /// Columns lined up to their widest entry, for the listings.
 struct Table {
     rows: Vec<Vec<String>>,

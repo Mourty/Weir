@@ -15,6 +15,7 @@ mod client;
 mod commands;
 mod parse;
 mod show;
+mod transfer;
 
 use anyhow::Result;
 use args::{Cli, Cmd};
@@ -109,6 +110,8 @@ fn run() -> Result<()> {
         Cmd::Eq { action } => commands::eq(c, action, json),
         Cmd::Hotkeys => commands::hotkeys(c, json),
         Cmd::Hotkey { action } => commands::hotkey(c, action, json),
+        Cmd::Export(a) => transfer::export(c, a, json),
+        Cmd::Import(a) => transfer::import(c, a, json),
         Cmd::Watch { meters } => commands::watch(c, meters, json),
         Cmd::Raw { method, params } => commands::raw(c, &method, params.as_deref()),
     }

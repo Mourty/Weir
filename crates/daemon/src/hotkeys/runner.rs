@@ -73,6 +73,8 @@ struct Press {
     /// Whether it gets a step in the undo history. Not when it undoes or
     /// redoes, which moves through the history itself.
     record: bool,
+    /// Whether it loads a setup, putting another mixer in place.
+    whole: bool,
     /// When the keys went down.
     at: Instant,
 }
@@ -212,10 +214,9 @@ impl Runner {
         let n = self.next_press;
         self.next_press += 1;
         let record = !h
-            .steps
-            .iter()
-            .chain(&h.release_steps)
+            .all_steps()
             .any(|s| s.method == "undo" || s.method == "redo");
+        let whole = h.all_steps().any(|s| s.method == "load_setup");
         self.presses.insert(
             n,
             Press {
@@ -226,6 +227,7 @@ impl Runner {
                 held: false,
                 fades: 0,
                 record,
+                whole,
                 at: Instant::now(),
             },
         );
@@ -307,12 +309,21 @@ impl Runner {
         }
     }
 
-    /// Do `steps` for press `n`, starting fades for those that fade.
+    /// Do `steps` for press `n`, starting fades for those that fade. Each
+    /// step's strips and buses are looked up by name just before it runs,
+    /// after the steps before it, which may have loaded a setup.
     fn do_steps(&mut self, n: u64, steps: &[HotkeyStep]) {
         for step in steps {
+            let step = match self.controller.step_by_id(step) {
+                Ok(step) => step,
+                Err(e) => {
+                    warn!("a hotkey's step {} failed: {}", step.method, e.message);
+                    continue;
+                }
+            };
             if step.over_ms.is_some() {
-                self.start_fade(n, step);
-            } else if let Err(e) = self.controller.run_step(step) {
+                self.start_fade(n, &step);
+            } else if let Err(e) = self.controller.run_step(&step) {
                 warn!("a hotkey's step {} failed: {}", step.method, e.message);
             }
         }
@@ -375,7 +386,7 @@ impl Runner {
             serde_json::from_value(restore::restore(&json(&after), &before, &paths)).ok()
         });
         self.controller
-            .record_change(p.label, &from.unwrap_or(p.before), &after);
+            .record_change(p.label, &from.unwrap_or(p.before), &after, p.whole);
     }
 
     /// Fade as `step` says, for press `n`. Anything else the step changes
@@ -549,6 +560,21 @@ mod tests {
             self.c.mixer().strip(id).unwrap().clone()
         }
 
+        /// A request as a client sends it, names and all.
+        fn call(&self, method: &str, params: Value) -> Value {
+            let mut params = Some(params);
+            self.c.resolve_names(method, &mut params).unwrap();
+            let envelope = RpcRequest {
+                jsonrpc: "2.0".into(),
+                id: Some(json!(1)),
+                method: method.into(),
+                params,
+            };
+            self.c
+                .handle(envelope.parse().unwrap(), &mut Subscriptions::default())
+                .unwrap_or_else(|e| panic!("{method}: {e}"))
+        }
+
         fn undo_labels(&self) -> Vec<String> {
             let info = self
                 .c
@@ -607,6 +633,32 @@ mod tests {
         .unwrap();
         assert!(r.strip(1).mute, "still muted");
         assert_eq!(r.strip(2).gain_db, 0.0, "the fader is back");
+    }
+
+    #[tokio::test]
+    async fn each_step_finds_its_strip_by_name_after_the_steps_before_it() {
+        let r = Rig::new("names");
+        r.call("save_setup", json!({"name": "Home"}));
+        // In this setup strip 2 is another strip.
+        r.call("remove_strip", json!({"id": "Music"}));
+        r.call("add_strip", json!({"name": "Game", "kind": "virtual"}));
+        r.call("save_setup", json!({"name": "Gaming"}));
+        let id = r.add(json!({
+            "name": "Music time",
+            "steps": [
+                {"method": "load_setup", "params": {"name": "Home"}},
+                {"method": "set_strip", "params": {"id": "Music", "gain_db": -10}, "over_ms": 60}
+            ]
+        }));
+        r.send(Command::Run(id)).await;
+        sleep(Duration::from_millis(150)).await;
+        assert_eq!(r.c.mixer().find_strip("Music").unwrap().gain_db, -10.0);
+        assert_eq!(r.undo_labels()[0], "Music time (hotkey)");
+        // Undoing it puts Gaming back, which is not a rename of Music.
+        r.call("undo", json!({}));
+        assert_eq!(r.strip(2).name, "Game");
+        let h = r.c.hotkey(id).unwrap();
+        assert_eq!(h.steps[1].params["id"], json!("Music"));
     }
 
     #[tokio::test]

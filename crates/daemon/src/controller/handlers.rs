@@ -364,7 +364,7 @@ impl Controller {
     fn load_setup(&self, p: NameParams, step: Option<Step>) -> Result<Value, RpcError> {
         let loaded: MixerState =
             config::load_saved(&self.paths.setups_dir, &p.name, "setup").map_err(app_error)?;
-        let result = self.mutate(step, |m| {
+        let result = self.replace_mixer(step, |m| {
             // Strips and buses in both keep the mix they have now.
             let keep = Scene::capture(m);
             *m = loaded;

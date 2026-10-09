@@ -82,7 +82,9 @@ impl App {
             .hotkeys
             .hotkeys
             .iter()
-            .filter(|h| Simple::read(h, &base).is_some_and(|s| s.same_control(&start)))
+            .filter(|h| {
+                Simple::read(h, &base, &state.mixer).is_some_and(|s| s.same_control(&start))
+            })
             .collect();
         if on_this.is_empty() {
             return;

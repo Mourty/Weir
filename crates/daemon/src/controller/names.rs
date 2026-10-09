@@ -1,101 +1,88 @@
-//! Letting clients name strips and buses instead of numbering them.
+//! Letting clients name strips and buses instead of numbering them, and
+//! keeping hotkeys' names up to date when strips and buses are renamed.
 
 use serde_json::{json, Value};
-use weir_protocol::{BusId, MixerState, RpcError};
+use weir_protocol::{visit_targets, MixerState, RpcError, TargetKind};
 
 /// Let clients name strips and buses instead of giving their ids. In
 /// `params`, a `strip` or `bus` given as text, the `id` of the methods about
 /// one strip or bus, the strips and buses a ducking lists, a new strip's
 /// `routes`, the buses of `sends` and a solo `cue` are looked up by name
-/// (buses also by their label, such as `B1`) and replaced by the id.
+/// (buses also by their label, such as `B1`) and replaced by the id. Not
+/// in a hotkey's steps.
 pub(super) fn resolve_names(
     method: &str,
     params: &mut Value,
     m: &MixerState,
 ) -> Result<(), RpcError> {
-    #[derive(Clone, Copy)]
-    enum Kind {
-        Strip,
-        Bus,
+    // A hotkey's steps keep names, which may be those of strips that only a
+    // saved setup has; set_hotkey looks them up itself.
+    if method == "set_hotkey" {
+        return Ok(());
     }
-    fn look(m: &MixerState, kind: Kind, v: &mut Value) -> Result<(), RpcError> {
+    visit_targets(method, params, &mut |kind, v| {
         let Value::String(key) = v else {
             return Ok(());
         };
-        let found = match kind {
-            Kind::Strip => m.find_strip(key).map(|s| s.id),
-            Kind::Bus => m.find_bus(key).map(|b| b.id),
-        };
-        match found {
+        match find(m, kind, key) {
             Some(id) => {
                 *v = json!(id);
                 Ok(())
             }
-            None => Err(RpcError::application(format!(
-                "no {} called '{key}'",
-                match kind {
-                    Kind::Strip => "strip",
-                    Kind::Bus => "bus",
-                }
-            ))),
+            None => Err(no_such(kind, key)),
         }
+    })
+}
+
+/// The id of the strip or bus `key` names in `m`.
+pub(super) fn find(m: &MixerState, kind: TargetKind, key: &str) -> Option<u32> {
+    match kind {
+        TargetKind::Strip => m.find_strip(key).map(|s| s.id),
+        TargetKind::Bus => m.find_bus(key).map(|b| b.id),
     }
-    fn walk(m: &MixerState, v: &mut Value) -> Result<(), RpcError> {
-        match v {
-            Value::Object(map) => {
-                for (k, v) in map.iter_mut() {
-                    match k.as_str() {
-                        "strip" => look(m, Kind::Strip, v)?,
-                        "bus" | "cue" => look(m, Kind::Bus, v)?,
-                        "triggers" => {
-                            if let Value::Array(items) = v {
-                                for item in items {
-                                    look(m, Kind::Strip, item)?;
-                                }
-                            }
-                        }
-                        "buses" | "routes" => {
-                            if let Value::Array(items) = v {
-                                for item in items {
-                                    look(m, Kind::Bus, item)?;
-                                }
-                            }
-                        }
-                        "sends" => {
-                            if let Value::Object(sends) = v {
-                                let mut named = serde_json::Map::new();
-                                for (bus, level) in std::mem::take(sends) {
-                                    let mut key = Value::String(bus.clone());
-                                    if bus.parse::<BusId>().is_err() {
-                                        look(m, Kind::Bus, &mut key)?;
-                                    }
-                                    let key = match key {
-                                        Value::String(s) => s,
-                                        other => other.to_string(),
-                                    };
-                                    named.insert(key, level);
-                                }
-                                *sends = named;
-                            }
-                        }
-                        _ => walk(m, v)?,
-                    }
-                }
-                Ok(())
-            }
-            Value::Array(items) => items.iter_mut().try_for_each(|i| walk(m, i)),
-            _ => Ok(()),
-        }
-    }
-    if let Value::Object(map) = params {
-        let kind = match method {
-            "set_strip" | "remove_strip" | "move_strip" => Some(Kind::Strip),
-            "set_bus" | "remove_bus" | "move_bus" => Some(Kind::Bus),
-            _ => None,
+}
+
+/// "no strip called 'X'".
+pub(super) fn no_such(kind: TargetKind, name: &str) -> RpcError {
+    RpcError::application(format!("no {} called '{name}'", kind.word()))
+}
+
+/// A strip or bus that has another name now: its kind, the name it had and
+/// the one it has.
+pub(super) type Rename = (TargetKind, String, String);
+
+/// The strips and buses that are in both `before` and `after` under other
+/// names: renamed, when `after` is `before` changed rather than another
+/// mixer put in its place.
+pub(super) fn renames(before: &MixerState, after: &MixerState) -> Vec<Rename> {
+    let strips = after.strips.iter().filter_map(|s| {
+        let old = before.strip(s.id)?;
+        (old.name != s.name).then(|| (TargetKind::Strip, old.name.clone(), s.name.clone()))
+    });
+    let buses = after.buses.iter().filter_map(|b| {
+        let old = before.bus(b.id)?;
+        (old.name != b.name).then(|| (TargetKind::Bus, old.name.clone(), b.name.clone()))
+    });
+    strips.chain(buses).collect()
+}
+
+/// Give the strips and buses in `params` their new names. Each name is
+/// looked at once, so two strips swapping names swap in `params` too.
+/// Returns whether anything changed.
+pub(super) fn rename_targets(method: &str, params: &mut Value, renames: &[Rename]) -> bool {
+    let mut changed = false;
+    let _ = visit_targets::<()>(method, params, &mut |kind, v| {
+        let Value::String(name) = v else {
+            return Ok(());
         };
-        if let (Some(kind), Some(id)) = (kind, map.get_mut("id")) {
-            look(m, kind, id)?;
+        if let Some((_, _, new)) = renames
+            .iter()
+            .find(|(k, old, _)| *k == kind && old.eq_ignore_ascii_case(name))
+        {
+            *name = new.clone();
+            changed = true;
         }
-    }
-    walk(m, params)
+        Ok(())
+    });
+    changed
 }

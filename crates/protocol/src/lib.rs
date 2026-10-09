@@ -12,6 +12,7 @@
 //! * [`library`]: scenes and setups, the two kinds of saved mix.
 //! * [`hotkeys`]: keys that do things in the mixer, and their descriptions.
 //! * [`keys`]: key combinations such as `Ctrl+Alt+M`.
+//! * [`targets`]: where requests name strips and buses, and finding them.
 //! * [`rpc`]: every request, response and notification.
 //!
 //! The doc comments here are also the protocol's documentation: the
@@ -26,6 +27,7 @@ pub mod keys;
 pub mod library;
 pub mod model;
 pub mod rpc;
+pub mod targets;
 
 pub use fx::*;
 pub use hotkeys::*;
@@ -33,6 +35,7 @@ pub use keys::*;
 pub use library::*;
 pub use model::*;
 pub use rpc::*;
+pub use targets::*;
 
 /// Version of the control protocol. Bumped on breaking changes.
 pub const PROTOCOL_VERSION: u32 = 1;

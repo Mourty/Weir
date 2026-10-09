@@ -376,7 +376,7 @@ impl App {
                 ui.label(RichText::new(format!("{}: solo", s.name)).strong());
                 self.hotkey_items(ui, state, Simple::new(target, state).with(Action::Solo));
             });
-            ui.menu_button("…", |ui| self.strip_menu(ui, state, s));
+            widgets::field_menu(ui, "…", |ui| self.strip_menu(ui, state, s));
         });
     }
 
@@ -488,7 +488,7 @@ impl App {
                 level_delta_db: None,
             }));
         }
-        r.context_menu(|ui| {
+        widgets::field_context_menu(&r, |ui| {
             ui.label(RichText::new(format!("{} in {}", s.name, b.name)).strong());
             let mut v = self.value(key, s.send_db(b.id));
             ui.horizontal(|ui| {

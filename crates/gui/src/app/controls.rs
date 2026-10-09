@@ -203,12 +203,14 @@ impl App {
                 .clicked()
             {
                 self.actions.push(move_request(target, index - 1));
+                ui.close();
             }
             if ui
                 .add_enabled(index + 1 < count, egui::Button::new("Move right"))
                 .clicked()
             {
                 self.actions.push(move_request(target, index + 1));
+                ui.close();
             }
         });
         ui.menu_button("Color", |ui| {
@@ -284,7 +286,7 @@ impl App {
         if r.clicked() {
             self.open_fx_at(FxTarget::Bus(b.id), Section::Limiter);
         }
-        r.context_menu(|ui| self.limiter_menu(ui, b));
+        widgets::field_context_menu(&r, |ui| self.limiter_menu(ui, b));
     }
 }
 
@@ -310,6 +312,7 @@ fn color_menu(ui: &mut Ui, target: StripOrBus, color: Option<&str>) -> Option<Op
                 }
                 if r.on_hover_text(*name).clicked() {
                     pick = Some(Some(hex.to_string()));
+                    ui.close();
                 }
                 if k % 5 == 4 {
                     ui.end_row();
@@ -318,6 +321,7 @@ fn color_menu(ui: &mut Ui, target: StripOrBus, color: Option<&str>) -> Option<Op
         });
     if ui.selectable_label(color.is_none(), "None").clicked() {
         pick = Some(None);
+        ui.close();
     }
     // Any other color. Drawn in the menu itself: a picker in a popup of its
     // own would close the menu when it opens.

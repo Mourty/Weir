@@ -151,7 +151,7 @@ impl App {
             if handle.changed() {
                 self.set_value(Key::BusCeiling(b.id), ceiling);
             }
-            handle.context_menu(|ui| self.limiter_menu(ui, b));
+            widgets::field_context_menu(&handle, |ui| self.limiter_menu(ui, b));
             let meter = widgets::meter(ui, &lv, &pk, lay.fader_h);
             if b.limiter.enabled {
                 widgets::ceiling_line(ui, meter.rect, ceiling);
@@ -236,7 +236,7 @@ impl App {
                 };
                 self.hotkey_items(ui, state, start.with(Action::Effect));
             });
-            ui.menu_button("…", |ui| self.bus_menu(ui, state, b));
+            widgets::field_menu(ui, "…", |ui| self.bus_menu(ui, state, b));
         });
     }
 

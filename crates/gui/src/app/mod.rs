@@ -20,6 +20,8 @@
 //! * `controls`: what strips and buses both have, such as the name field.
 //! * `meters`: turning the daemon's readings into moving meters.
 //! * `apps`: the Apps menu and the App rules window.
+//! * `hotkeys`: opening the Hotkeys window and the hotkey editor, and the
+//!   "Add a hotkey…" item of controls' right-click menus.
 //! * `library`: scenes and setups.
 //! * `dialogs`: adding and removing strips and buses.
 //! * `settings`: the Preferences and About windows.
@@ -31,6 +33,7 @@ mod bus;
 mod controls;
 mod dialogs;
 mod history;
+mod hotkeys;
 mod library;
 mod meters;
 mod mixer;
@@ -88,6 +91,9 @@ struct Snapshot {
     spawned: bool,
     /// Why the daemon this window started stopped, if it did.
     daemon_exit: Option<DaemonExit>,
+    /// The daemon's last error and when it came, for the hotkey editor to
+    /// tell whether it answers what it sent.
+    error_at: Option<(String, Instant)>,
     show_seq: u64,
     quit_requested: bool,
     /// Recent spectra, by strip or bus.
@@ -151,6 +157,9 @@ pub struct App {
     /// The spectra last asked for, to ask again only when that changes.
     spectrum_watch: Vec<StripOrBus>,
     toast: Option<Toast>,
+    /// The Hotkeys window, and the window making or changing one.
+    hotkeys_window: Option<crate::hotkeys::HotkeysWindow>,
+    hotkey_editor: Option<crate::hotkeys::Editor>,
     /// The App rules window, and the name typed into its "by name" field.
     show_rules: bool,
     rule_name: String,
@@ -212,6 +221,8 @@ impl App {
             duck_views: HashMap::new(),
             clips: HashSet::new(),
             toast: None,
+            hotkeys_window: None,
+            hotkey_editor: None,
             show_rules: false,
             rule_name: String::new(),
             history: HistoryInfo::default(),
@@ -242,6 +253,10 @@ impl App {
             meters,
             spawned: sh.spawned_daemon,
             daemon_exit: sh.daemon_exit.clone(),
+            error_at: sh
+                .last_error
+                .as_ref()
+                .and_then(|(m, t)| t.map(|t| (m.clone(), t))),
             show_seq: sh.show_seq,
             quit_requested: sh.quit_requested,
             // Anything older than this stopped coming; do not draw it frozen.
@@ -490,6 +505,7 @@ impl eframe::App for App {
             meters,
             spawned,
             daemon_exit,
+            error_at,
             show_seq,
             quit_requested,
             spectra,
@@ -533,6 +549,9 @@ impl eframe::App for App {
         self.settings_windows(ctx, &state);
         self.toast_view(ctx);
         self.show_fx_windows(ctx, &state, &spectra);
+        if connected {
+            self.show_hotkeys(ctx, &state, error_at.as_ref());
+        }
         self.flush(false);
         ctx.request_repaint_after(Duration::from_millis(if connected { 33 } else { 500 }));
     }

@@ -46,6 +46,16 @@ impl App {
                     // Right to left, so the first here is the rightmost.
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         ui.menu_button("…", |ui| self.main_menu(ui));
+                        if ui
+                            .add_enabled(connected, egui::Button::new("Hotkeys"))
+                            .on_hover_text(
+                                "Keys that do things in the mixer from anywhere, such as push \
+                                 to talk",
+                            )
+                            .clicked()
+                        {
+                            self.open_hotkeys();
+                        }
                         ui.menu_button("Setups", |ui| {
                             self.library_menu(ui, LibraryKind::Setup, &state.library);
                         });

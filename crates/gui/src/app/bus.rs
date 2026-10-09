@@ -12,6 +12,7 @@ use super::mixer::Metrics;
 use super::strip::db_field;
 use super::{bus_label, App, Key};
 use crate::fx_window::FxTarget;
+use crate::hotkeys::simple::{Action, Fx, Simple};
 use crate::prefs::BusSources;
 use crate::{theme, widgets};
 use egui::{vec2, Frame, RichText, Ui};
@@ -47,7 +48,7 @@ impl App {
                     drag_caption(ui, &title, target);
                     self.name_editor(ui, state, target, &b.name);
                     self.bus_band(ui, state, b, inner_w);
-                    self.bus_fader_row(ui, b, lay, inner_w);
+                    self.bus_fader_row(ui, state, b, lay, inner_w);
                     self.readout_row(ui, inner_w, target, Some(b), |this, ui| {
                         let key = Key::Gain(target);
                         let mut gain = this.value(key, b.gain_db);
@@ -121,7 +122,14 @@ impl App {
     /// The limiter's ceiling handle, the meter with the ceiling marked on
     /// it, and the fader. The handle sits left of the meter, out of the way
     /// of the fader, and can go anywhere on the meter's scale.
-    fn bus_fader_row(&mut self, ui: &mut Ui, b: &Bus, lay: &Metrics, inner_w: f32) {
+    fn bus_fader_row(
+        &mut self,
+        ui: &mut Ui,
+        state: &FullState,
+        b: &Bus,
+        lay: &Metrics,
+        inner_w: f32,
+    ) {
         let n_ch = b.layout.channel_count();
         let row_w = theme::CEILING_W + 4.0 + widgets::meter_width(n_ch) + 8.0 + theme::FADER_W;
         ui.horizontal(|ui| {
@@ -152,9 +160,15 @@ impl App {
             let key = Key::Gain(StripOrBus::Bus(b.id));
             let mut gain = self.value(key, b.gain_db);
             let fill = own_color(b.color.as_deref()).unwrap_or(theme::p().fader);
-            if widgets::fader(ui, &mut gain, lay.fader_h, fill).changed() {
+            let r = widgets::fader(ui, &mut gain, lay.fader_h, fill);
+            if r.changed() {
                 self.set_value(key, gain);
             }
+            r.context_menu(|ui| {
+                ui.label(RichText::new(format!("{}: volume", b.name)).strong());
+                let start = Simple::new(StripOrBus::Bus(b.id), state);
+                self.hotkey_items(ui, state, start.with(Action::VolumeBy));
+            });
         });
     }
 
@@ -191,26 +205,37 @@ impl App {
     fn bus_buttons(&mut self, ui: &mut Ui, state: &FullState, b: &Bus, inner_w: f32) {
         ui.horizontal(|ui| {
             let w = (inner_w - 8.0 - 26.0) / 2.0;
-            if widgets::toggle(ui, "M", b.mute, theme::p().mute_on, vec2(w, 22.0))
-                .on_hover_text("Mute")
-                .clicked()
-            {
+            let target = StripOrBus::Bus(b.id);
+            let r = widgets::toggle(ui, "M", b.mute, theme::p().mute_on, vec2(w, 22.0))
+                .on_hover_text("Mute\nRight-click to add a hotkey");
+            if r.clicked() {
                 self.actions.push(Request::SetBus(BusPatch {
                     id: b.id,
                     mute: Some(Flag::from(!b.mute)),
                     ..Default::default()
                 }));
             }
-            if widgets::toggle(ui, "mono", b.mono, theme::p().mono_on, vec2(w, 22.0))
-                .on_hover_text("Fold to mono")
-                .clicked()
-            {
+            r.context_menu(|ui| {
+                ui.label(RichText::new(format!("{}: mute", b.name)).strong());
+                self.hotkey_items(ui, state, Simple::new(target, state).with(Action::Mute));
+            });
+            let r = widgets::toggle(ui, "mono", b.mono, theme::p().mono_on, vec2(w, 22.0))
+                .on_hover_text("Fold to mono\nRight-click to add a hotkey");
+            if r.clicked() {
                 self.actions.push(Request::SetBus(BusPatch {
                     id: b.id,
                     mono: Some(Flag::from(!b.mono)),
                     ..Default::default()
                 }));
             }
+            r.context_menu(|ui| {
+                ui.label(RichText::new(format!("{}: mono", b.name)).strong());
+                let start = Simple {
+                    fx: Fx::Mono,
+                    ..Simple::new(target, state)
+                };
+                self.hotkey_items(ui, state, start.with(Action::Effect));
+            });
             ui.menu_button("…", |ui| self.bus_menu(ui, state, b));
         });
     }
@@ -230,6 +255,9 @@ impl App {
         let buses = &state.mixer.buses;
         let index = buses.iter().position(|x| x.id == b.id).unwrap_or(0);
         self.arrange_menu(ui, target, index, buses.len(), b.color.as_deref());
+        ui.menu_button("Hotkeys", |ui| {
+            self.hotkey_items(ui, state, Simple::new(target, state).with(Action::Mute));
+        });
         if ui.button("Reset fader to 0 dB").clicked() {
             self.set_value(Key::Gain(target), 0.0);
             ui.close();

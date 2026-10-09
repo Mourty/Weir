@@ -1,5 +1,6 @@
 //! The controls the mixer draws itself: the fader, the meter, the limiter's
-//! ceiling handle, the pan slider, lights, and toggle and routing buttons.
+//! ceiling handle, the pan slider, lights, switches, and toggle and routing
+//! buttons.
 //!
 //! Faders and meters share one scale ([`db_to_t`]), from the bottom of the
 //! fader's range to its top, so a meter's reading lines up with the fader
@@ -587,6 +588,28 @@ pub fn mini_volume(ui: &mut Ui, value_db: &mut f32, width: f32, muted: bool) -> 
         value_db,
         if muted { " (muted)" } else { "" }
     ))
+}
+
+/// A small on/off switch, sliding over when clicked.
+pub fn switch(ui: &mut Ui, on: bool) -> Response {
+    let (rect, response) = ui.allocate_exact_size(vec2(32.0, 18.0), Sense::click());
+    let t = ui.ctx().animate_bool(response.id, on);
+    let p = theme::p();
+    let fill = if on { p.accent } else { p.button_off };
+    let painter = ui.painter();
+    painter.rect_filled(rect, 9.0, fill);
+    let x = egui::lerp((rect.left() + 9.0)..=(rect.right() - 9.0), t);
+    let knob = if on { Color32::WHITE } else { p.text_dim };
+    painter.circle_filled(pos2(x, rect.center().y), 6.5, knob);
+    if response.hovered() {
+        painter.rect_stroke(
+            rect,
+            9.0,
+            Stroke::new(1.0_f32, p.text_dim),
+            egui::StrokeKind::Inside,
+        );
+    }
+    response
 }
 
 #[cfg(test)]

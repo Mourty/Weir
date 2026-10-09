@@ -19,6 +19,8 @@ pub struct Editor {
     id: HotkeyId,
     name: String,
     enabled: bool,
+    /// The group it is in, 0 for none.
+    group: HotkeyGroupId,
     keys: Vec<String>,
     /// The keys being recorded: an index into `keys`, or its length for
     /// another combination.
@@ -53,6 +55,7 @@ impl Editor {
             id: 0,
             name: String::new(),
             enabled: true,
+            group: 0,
             keys: Vec::new(),
             recording: Some(0),
             record_note: None,
@@ -79,6 +82,7 @@ impl Editor {
             id: h.id,
             name: h.name.clone(),
             enabled: h.enabled,
+            group: h.group,
             keys: h.keys.clone(),
             recording: None,
             record_note: None,
@@ -114,6 +118,7 @@ impl Editor {
         h.name = self.name.trim().to_string();
         h.keys = self.keys.clone();
         h.enabled = self.enabled;
+        h.group = self.group;
         h
     }
 
@@ -588,6 +593,38 @@ impl Editor {
             .size(12.0)
             .color(theme::p().text_dim),
         );
+        self.group_row(ui, state);
+    }
+
+    /// Which group it is in, when there are groups.
+    fn group_row(&mut self, ui: &mut Ui, state: &FullState) {
+        let groups = &state.hotkeys.groups;
+        if groups.is_empty() {
+            return;
+        }
+        let name_of = |id: HotkeyGroupId| {
+            groups
+                .iter()
+                .find(|g| g.id == id)
+                .map_or("No group".to_string(), |g| g.name.clone())
+        };
+        ui.horizontal(|ui| {
+            ui.label("Group");
+            egui::ComboBox::from_id_salt("hotkey_group")
+                .selected_text(name_of(self.group))
+                .width(220.0)
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut self.group, 0, "No group");
+                    for g in groups {
+                        let label = if g.enabled {
+                            g.name.clone()
+                        } else {
+                            format!("{} (off)", g.name)
+                        };
+                        ui.selectable_value(&mut self.group, g.id, label);
+                    }
+                });
+        });
     }
 
     /// More options: every step, what each press and letting go do, and the
@@ -743,6 +780,7 @@ impl Editor {
                     self.name = h.name.clone();
                     self.keys = h.keys.clone();
                     self.enabled = h.enabled;
+                    self.group = h.group;
                     self.full = Hotkey { id: self.id, ..h };
                     self.json_of = Some(self.assemble());
                     self.json_error = None;

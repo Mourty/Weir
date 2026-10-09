@@ -3,7 +3,7 @@
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use weir_protocol::{EqBand, EqPreset, Hotkey, MixerState};
+use weir_protocol::{EqBand, EqPreset, Hotkey, HotkeyGroup, MixerState};
 
 /// Daemon settings live in the protocol crate so clients can read and change
 /// them over the control socket.
@@ -381,33 +381,47 @@ pub fn load_eq_presets(path: &Path) -> Result<Vec<EqPreset>> {
         .collect())
 }
 
-/// The hotkeys file: a version, for changes to come, and the hotkeys.
+/// The hotkeys file: a version, for changes to come, the hotkeys, and
+/// their groups, which files from before groups do not have.
 #[derive(Debug, Serialize, Deserialize)]
 struct HotkeysFile {
     version: u32,
     hotkeys: Vec<Hotkey>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    groups: Vec<HotkeyGroup>,
+}
+
+/// Every hotkey and every group of them, each in their order in the list.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct HotkeyList {
+    pub hotkeys: Vec<Hotkey>,
+    pub groups: Vec<HotkeyGroup>,
 }
 
 /// What [`HotkeysFile::version`] is now.
 const HOTKEYS_VERSION: u32 = 1;
 
 /// Read the hotkeys at `path`; none when there is no file.
-pub fn load_hotkeys(path: &Path) -> Result<Vec<Hotkey>> {
+pub fn load_hotkeys(path: &Path) -> Result<HotkeyList> {
     if !path.exists() {
-        return Ok(Vec::new());
+        return Ok(HotkeyList::default());
     }
     let text =
         std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
     let file: HotkeysFile =
         serde_json::from_str(&text).with_context(|| format!("parsing {}", path.display()))?;
-    Ok(file.hotkeys)
+    Ok(HotkeyList {
+        hotkeys: file.hotkeys,
+        groups: file.groups,
+    })
 }
 
-/// Write `hotkeys` to `path`.
-pub fn save_hotkeys(path: &Path, hotkeys: &[Hotkey]) -> Result<()> {
+/// Write `list` to `path`.
+pub fn save_hotkeys(path: &Path, list: &HotkeyList) -> Result<()> {
     let file = HotkeysFile {
         version: HOTKEYS_VERSION,
-        hotkeys: hotkeys.to_vec(),
+        hotkeys: list.hotkeys.clone(),
+        groups: list.groups.clone(),
     };
     let text = serde_json::to_string_pretty(&file).context("serializing hotkeys")?;
     write_atomic(path, &format!("{text}\n"))

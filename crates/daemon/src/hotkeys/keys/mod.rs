@@ -35,24 +35,25 @@ pub struct Registration {
     pub index: usize,
     pub name: String,
     pub keys: KeyCombo,
-    /// Whether the hotkey is switched on. On X11 only those are grabbed;
-    /// the desktop keeps the others' shortcuts, so keys people set there
-    /// are not lost, and their presses are ignored.
+    /// Whether the hotkey is switched on, and its group too. On X11 only
+    /// those are grabbed; the desktop keeps the others' shortcuts, so keys
+    /// people set there are not lost, and their presses are ignored.
     pub enabled: bool,
 }
 
 /// Every key combination of every hotkey.
-fn registrations(hotkeys: &[Hotkey]) -> Vec<Registration> {
+fn registrations(hotkeys: &[Hotkey], groups: &[HotkeyGroup]) -> Vec<Registration> {
     hotkeys
         .iter()
         .flat_map(|h| {
-            h.keys.iter().enumerate().filter_map(|(index, keys)| {
+            let enabled = hotkey_works(h, groups);
+            h.keys.iter().enumerate().filter_map(move |(index, keys)| {
                 Some(Registration {
                     id: h.id,
                     index,
                     name: h.name.clone(),
                     keys: KeyCombo::parse(keys).ok()?,
-                    enabled: h.enabled,
+                    enabled,
                 })
             })
         })
@@ -142,20 +143,23 @@ const UNAVAILABLE: &str = "Your desktop does not let programs set their own hotk
 
 /// Keep the keys of every hotkey working for as long as the daemon runs.
 pub async fn run(controller: Arc<Controller>, tx: UnboundedSender<Command>) {
-    let (regs_tx, regs_rx) = watch::channel(registrations(&controller.hotkeys()));
+    let (regs_tx, regs_rx) = watch::channel(registrations(
+        &controller.hotkeys(),
+        &controller.hotkey_groups(),
+    ));
     // Follow the hotkeys as they change.
     {
         let controller = controller.clone();
         let mut notes = controller.subscribe();
         tokio::spawn(async move {
             loop {
-                let hotkeys = match notes.recv().await {
-                    Ok(Notification::HotkeysChanged(info)) => info.hotkeys,
-                    Err(RecvError::Lagged(_)) => controller.hotkeys(),
+                let (hotkeys, groups) = match notes.recv().await {
+                    Ok(Notification::HotkeysChanged(info)) => (info.hotkeys, info.groups),
+                    Err(RecvError::Lagged(_)) => (controller.hotkeys(), controller.hotkey_groups()),
                     Err(RecvError::Closed) => break,
                     Ok(_) => continue,
                 };
-                let now = registrations(&hotkeys);
+                let now = registrations(&hotkeys, &groups);
                 regs_tx.send_if_modified(|regs| {
                     let changed = *regs != now;
                     if changed {
@@ -336,6 +340,7 @@ mod tests {
             id,
             name: format!("H{id}"),
             enabled,
+            group: 0,
             keys: keys.iter().map(|k| k.to_string()).collect(),
             steps: Vec::new(),
             each_press: EachPress::All,
@@ -343,11 +348,25 @@ mod tests {
             release_steps: Vec::new(),
             repeat_ms: None,
         };
-        let regs = registrations(&[
-            hotkey(1, true, &["F9", "Ctrl+Alt+T"]),
-            hotkey(2, false, &["F10"]),
-            hotkey(3, true, &[]),
-        ]);
+        // Hotkey 4 is on, in a group that is off.
+        let in_group = Hotkey {
+            group: 7,
+            ..hotkey(4, true, &["F11"])
+        };
+        let groups = [HotkeyGroup {
+            id: 7,
+            name: "Games".into(),
+            enabled: false,
+        }];
+        let regs = registrations(
+            &[
+                hotkey(1, true, &["F9", "Ctrl+Alt+T"]),
+                hotkey(2, false, &["F10"]),
+                hotkey(3, true, &[]),
+                in_group,
+            ],
+            &groups,
+        );
         let got: Vec<(HotkeyId, usize, String, bool)> = regs
             .iter()
             .map(|r| (r.id, r.index, r.keys.to_string(), r.enabled))
@@ -357,7 +376,8 @@ mod tests {
             [
                 (1, 0, "F9".into(), true),
                 (1, 1, "Ctrl+Alt+T".into(), true),
-                (2, 0, "F10".into(), false)
+                (2, 0, "F10".into(), false),
+                (4, 0, "F11".into(), false)
             ]
         );
     }

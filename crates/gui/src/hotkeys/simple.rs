@@ -397,6 +397,7 @@ impl Simple {
             id: 0,
             name: name.to_string(),
             enabled: true,
+            group: 0,
             keys: keys.to_vec(),
             steps: Vec::new(),
             each_press: EachPress::All,

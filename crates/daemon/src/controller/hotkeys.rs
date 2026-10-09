@@ -3,7 +3,7 @@
 //! presses on to the runner, which does the work (see [`crate::hotkeys`]).
 
 use super::{names, Controller, Subscriptions};
-use crate::config;
+use crate::config::{self, HotkeyList};
 use crate::history::Step;
 use crate::hotkeys::{Command, Runner};
 use serde_json::Value;
@@ -46,6 +46,12 @@ fn allowed_in_hotkey(req: &Request) -> bool {
             | Request::ListHotkeys
             | Request::SetHotkey(_)
             | Request::RemoveHotkey(_)
+            | Request::SwitchHotkey(_)
+            | Request::MoveHotkey(_)
+            | Request::AddHotkeyGroup(_)
+            | Request::SetHotkeyGroup(_)
+            | Request::RemoveHotkeyGroup(_)
+            | Request::MoveHotkeyGroup(_)
             | Request::PressHotkey(_)
             | Request::ReleaseHotkey(_)
             | Request::RunHotkey(_)
@@ -93,14 +99,24 @@ impl Controller {
         }
     }
 
-    /// Every hotkey now.
-    pub fn hotkeys(&self) -> Vec<Hotkey> {
+    /// Every hotkey and group now.
+    fn hotkey_list(&self) -> HotkeyList {
         self.inner
             .lock()
             .unwrap()
             .hotkeys
             .clone()
             .unwrap_or_default()
+    }
+
+    /// Every hotkey now.
+    pub fn hotkeys(&self) -> Vec<Hotkey> {
+        self.hotkey_list().hotkeys
+    }
+
+    /// Every group of hotkeys now.
+    pub fn hotkey_groups(&self) -> Vec<HotkeyGroup> {
+        self.hotkey_list().groups
     }
 
     /// The hotkey with `id`, if there is one.
@@ -111,7 +127,7 @@ impl Controller {
     /// Every hotkey, how keys reach Weir, and what is wrong.
     pub fn hotkeys_info(&self) -> HotkeysInfo {
         let inner = self.inner.lock().unwrap();
-        let hotkeys = inner.hotkeys.clone().unwrap_or_default();
+        let HotkeyList { hotkeys, groups } = inner.hotkeys.clone().unwrap_or_default();
         let mut problems: Vec<HotkeyProblem> = Vec::new();
         if let Err(e) = &inner.hotkeys {
             problems.push(HotkeyProblem {
@@ -130,6 +146,7 @@ impl Controller {
         problems.extend(target_problems(&hotkeys, &inner.mixer));
         HotkeysInfo {
             hotkeys,
+            groups,
             keys: inner.keys_status.clone(),
             problems,
         }
@@ -154,29 +171,17 @@ impl Controller {
     /// its settings come back, so that `keys` says what works and the next
     /// change made in Weir starts from them.
     pub fn adopt_desktop_keys(&self, id: HotkeyId, keys: Vec<String>) {
-        let name = {
-            let mut inner = self.inner.lock().unwrap();
-            let Ok(list) = inner.hotkeys.as_mut() else {
-                return;
-            };
-            let mut candidate = list.clone();
-            let Some(h) = candidate.iter_mut().find(|h| h.id == id) else {
-                return;
-            };
-            if h.keys == keys {
-                return;
-            }
+        let changed = self.edit_hotkeys(|list| {
+            let h = list.hotkey_mut(id)?;
+            let changed = h.keys != keys;
             h.keys = keys;
-            let name = h.name.clone();
-            if let Err(e) = config::save_hotkeys(&self.paths.hotkeys_file, &candidate) {
-                warn!("could not save the keys the desktop gave '{name}': {e:#}");
-                return;
-            }
-            *list = candidate;
-            name
-        };
-        info!("the desktop's settings changed the keys of '{name}'");
-        self.hotkeys_changed();
+            Ok(changed.then(|| h.name.clone()))
+        });
+        match changed {
+            Ok(Some(name)) => info!("the desktop's settings changed the keys of '{name}'"),
+            Ok(None) => {}
+            Err(e) => warn!("could not take the keys the desktop gave: {}", e.message),
+        }
     }
 
     /// Have the desktop open its shortcut settings at Weir's hotkeys, when
@@ -203,7 +208,7 @@ impl Controller {
     pub(super) fn check_hotkey_targets(&self, mixer: &MixerState) {
         let changed = {
             let mut inner = self.inner.lock().unwrap();
-            let hotkeys = inner.hotkeys.clone().unwrap_or_default();
+            let hotkeys = inner.hotkeys.clone().unwrap_or_default().hotkeys;
             let now = target_problems(&hotkeys, mixer);
             let changed = now != inner.target_problems;
             inner.target_problems = now;
@@ -264,15 +269,15 @@ impl Controller {
                 )));
             }
         }
-        let saved = {
-            let mut inner = self.inner.lock().unwrap();
-            let list = inner.hotkeys.as_mut().map_err(|e| {
-                RpcError::application(format!("hotkeys are read-only until this is fixed: {e}"))
-            })?;
-            if h.id != 0 && !list.iter().any(|o| o.id == h.id) {
+        let saved = self.edit_hotkeys(|list| {
+            if h.id != 0 && !list.hotkeys.iter().any(|o| o.id == h.id) {
                 return Err(RpcError::application(format!("no hotkey with id {}", h.id)));
             }
+            if h.group != 0 {
+                list.group_mut(h.group)?;
+            }
             if let Some(other) = list
+                .hotkeys
                 .iter()
                 .find(|o| o.id != h.id && o.name.eq_ignore_ascii_case(&h.name))
             {
@@ -282,55 +287,196 @@ impl Controller {
                 )));
             }
             for keys in &h.keys {
-                if let Some(other) = list.iter().find(|o| o.id != h.id && o.keys.contains(keys)) {
+                if let Some(other) = list
+                    .hotkeys
+                    .iter()
+                    .find(|o| o.id != h.id && o.keys.contains(keys))
+                {
                     return Err(RpcError::application(format!(
                         "{keys} already belongs to the hotkey '{}'",
                         other.name
                     )));
                 }
             }
-            let mut candidate = list.clone();
             if h.id == 0 {
-                h.id = candidate.iter().map(|o| o.id).max().unwrap_or(0) + 1;
-                candidate.push(h.clone());
-            } else if let Some(slot) = candidate.iter_mut().find(|o| o.id == h.id) {
-                *slot = h.clone();
+                h.id = list.hotkeys.iter().map(|o| o.id).max().unwrap_or(0) + 1;
+                list.hotkeys.push(h.clone());
+            } else {
+                let pos = list.position(h.id)?;
+                if list.hotkeys[pos].group == h.group {
+                    list.hotkeys[pos] = h.clone();
+                } else {
+                    // Into another group: last in it, as moving it there
+                    // would put it.
+                    list.hotkeys.remove(pos);
+                    let at = list
+                        .hotkeys
+                        .iter()
+                        .rposition(|o| o.group == h.group)
+                        .map_or(list.hotkeys.len(), |last| last + 1);
+                    list.hotkeys.insert(at, h.clone());
+                }
             }
-            config::save_hotkeys(&self.paths.hotkeys_file, &candidate)
-                .map_err(|e| RpcError::application(format!("{e:#}")))?;
-            *list = candidate.clone();
-            inner.target_problems = target_problems(&candidate, &inner.mixer);
-            h
-        };
+            Ok(h)
+        })?;
         info!("saved the hotkey '{}'", saved.name);
-        self.hotkeys_changed();
         Ok(to_json(&saved))
     }
 
     /// Remove a hotkey, save, and tell the runner and clients.
     pub(super) fn remove_hotkey(&self, r: HotkeyRef) -> Result<Value, RpcError> {
         let id = self.find_hotkey(&r.hotkey)?;
-        let name = {
+        let gone = self.edit_hotkeys(|list| {
+            let pos = list.position(id)?;
+            Ok(list.hotkeys.remove(pos))
+        })?;
+        info!("removed the hotkey '{}'", gone.name);
+        Ok(to_json(&self.hotkeys_info()))
+    }
+
+    /// Switch a hotkey's keys on or off.
+    pub(super) fn switch_hotkey(&self, p: SwitchHotkeyParams) -> Result<Value, RpcError> {
+        let id = self.find_hotkey(&p.hotkey)?;
+        let h = self.edit_hotkeys(|list| {
+            let h = list.hotkey_mut(id)?;
+            h.enabled = p.enabled.apply(h.enabled);
+            Ok(h.clone())
+        })?;
+        info!(
+            "switched the hotkey '{}' {}",
+            h.name,
+            if h.enabled { "on" } else { "off" }
+        );
+        Ok(to_json(&h))
+    }
+
+    /// Move a hotkey to another place in the list, or into another group:
+    /// to `index` among the hotkeys of its group.
+    pub(super) fn move_hotkey(&self, p: MoveHotkeyParams) -> Result<Value, RpcError> {
+        let id = self.find_hotkey(&p.hotkey)?;
+        let group = match &p.group {
+            Some(key) => Some(self.find_group(key)?),
+            None => None,
+        };
+        self.edit_hotkeys(|list| {
+            let pos = list.position(id)?;
+            let mut h = list.hotkeys.remove(pos);
+            if let Some(group) = group {
+                h.group = group;
+            }
+            let members: Vec<usize> = (0..list.hotkeys.len())
+                .filter(|&i| list.hotkeys[i].group == h.group)
+                .collect();
+            let at = match p.index {
+                Some(i) if i < members.len() => members[i],
+                _ => members.last().map_or(list.hotkeys.len(), |&m| m + 1),
+            };
+            list.hotkeys.insert(at, h);
+            Ok(())
+        })?;
+        Ok(to_json(&self.hotkeys_info()))
+    }
+
+    /// Add a group of hotkeys, last in the list.
+    pub(super) fn add_hotkey_group(&self, p: AddHotkeyGroupParams) -> Result<Value, RpcError> {
+        let name = group_name(&p.name)?;
+        let group = self.edit_hotkeys(|list| {
+            list.check_group_name(0, &name)?;
+            let group = HotkeyGroup {
+                id: list.groups.iter().map(|g| g.id).max().unwrap_or(0) + 1,
+                name,
+                enabled: p.enabled,
+            };
+            list.groups.push(group.clone());
+            Ok(group)
+        })?;
+        info!("added the hotkey group '{}'", group.name);
+        Ok(to_json(&group))
+    }
+
+    /// Rename a group of hotkeys, or switch it on or off.
+    pub(super) fn set_hotkey_group(&self, p: SetHotkeyGroupParams) -> Result<Value, RpcError> {
+        let id = self.find_group(&p.group)?;
+        let name = p.name.as_deref().map(group_name).transpose()?;
+        let group = self.edit_hotkeys(|list| {
+            if let Some(name) = &name {
+                list.check_group_name(id, name)?;
+            }
+            let g = list.group_mut(id)?;
+            if let Some(name) = name {
+                g.name = name;
+            }
+            if let Some(flag) = p.enabled {
+                g.enabled = flag.apply(g.enabled);
+            }
+            Ok(g.clone())
+        })?;
+        Ok(to_json(&group))
+    }
+
+    /// Remove a group of hotkeys; its hotkeys stay, in no group.
+    pub(super) fn remove_hotkey_group(&self, r: HotkeyGroupRef) -> Result<Value, RpcError> {
+        let id = self.find_group(&r.group)?;
+        let gone = self.edit_hotkeys(|list| {
+            let pos = list
+                .groups
+                .iter()
+                .position(|g| g.id == id)
+                .ok_or_else(|| no_group(id))?;
+            for h in list.hotkeys.iter_mut().filter(|h| h.group == id) {
+                h.group = 0;
+            }
+            Ok(list.groups.remove(pos))
+        })?;
+        info!("removed the hotkey group '{}'", gone.name);
+        Ok(to_json(&self.hotkeys_info()))
+    }
+
+    /// Move a group of hotkeys to `index` among the groups.
+    pub(super) fn move_hotkey_group(&self, p: MoveHotkeyGroupParams) -> Result<Value, RpcError> {
+        let id = self.find_group(&p.group)?;
+        self.edit_hotkeys(|list| {
+            let pos = list
+                .groups
+                .iter()
+                .position(|g| g.id == id)
+                .ok_or_else(|| no_group(id))?;
+            let g = list.groups.remove(pos);
+            let at = p.index.min(list.groups.len());
+            list.groups.insert(at, g);
+            Ok(())
+        })?;
+        Ok(to_json(&self.hotkeys_info()))
+    }
+
+    /// Change the hotkeys and their groups with `f`, save them, and tell
+    /// the runner and clients. Nothing changes when `f` fails, or saving
+    /// does.
+    fn edit_hotkeys<T>(
+        &self,
+        f: impl FnOnce(&mut HotkeyList) -> Result<T, RpcError>,
+    ) -> Result<T, RpcError> {
+        let out = {
             let mut inner = self.inner.lock().unwrap();
             let list = inner.hotkeys.as_mut().map_err(|e| {
                 RpcError::application(format!("hotkeys are read-only until this is fixed: {e}"))
             })?;
             let mut candidate = list.clone();
-            let pos = candidate
-                .iter()
-                .position(|h| h.id == id)
-                .expect("found above");
-            let gone = candidate.remove(pos);
+            let out = f(&mut candidate)?;
+            if candidate == *list {
+                return Ok(out);
+            }
             config::save_hotkeys(&self.paths.hotkeys_file, &candidate)
                 .map_err(|e| RpcError::application(format!("{e:#}")))?;
             *list = candidate.clone();
-            inner.key_problems.remove(&id);
-            inner.target_problems = target_problems(&candidate, &inner.mixer);
-            gone.name
+            inner
+                .key_problems
+                .retain(|id, _| candidate.hotkeys.iter().any(|h| h.id == *id));
+            inner.target_problems = target_problems(&candidate.hotkeys, &inner.mixer);
+            out
         };
-        info!("removed the hotkey '{name}'");
         self.hotkeys_changed();
-        Ok(to_json(&self.hotkeys_info()))
+        Ok(out)
     }
 
     /// Press, let go of, or tap a hotkey, for a client. Answers with the
@@ -366,6 +512,24 @@ impl Controller {
                 HotkeyKey::Id(id) => format!("no hotkey with id {id}"),
                 HotkeyKey::Name(name) => format!("no hotkey called '{name}'"),
             })
+        })
+    }
+
+    /// The id of the group `key` names; 0, or an empty name, is no group.
+    fn find_group(&self, key: &HotkeyGroupKey) -> Result<HotkeyGroupId, RpcError> {
+        let groups = self.hotkey_groups();
+        let found = match key {
+            HotkeyGroupKey::Id(0) => return Ok(0),
+            HotkeyGroupKey::Id(id) => groups.iter().find(|g| g.id == *id),
+            HotkeyGroupKey::Name(name) => groups
+                .iter()
+                .find(|g| g.name.eq_ignore_ascii_case(name.trim())),
+        };
+        found.map(|g| g.id).ok_or_else(|| match key {
+            HotkeyGroupKey::Id(id) => no_group(*id),
+            HotkeyGroupKey::Name(name) => {
+                RpcError::application(format!("no hotkey group called '{name}'"))
+            }
         })
     }
 
@@ -423,6 +587,64 @@ impl Controller {
             Ok(())
         }) {
             warn!("could not put the mixer back: {}", e.message);
+        }
+    }
+}
+
+/// The error for a group that is not there.
+fn no_group(id: HotkeyGroupId) -> RpcError {
+    RpcError::application(format!("no hotkey group with id {id}"))
+}
+
+/// `name` as a group's name: trimmed, not empty, not too long.
+fn group_name(name: &str) -> Result<String, RpcError> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(RpcError::invalid_params("a hotkey group needs a name"));
+    }
+    if name.chars().count() > HOTKEY_NAME_MAX {
+        return Err(RpcError::invalid_params(format!(
+            "a hotkey group's name can be at most {HOTKEY_NAME_MAX} characters"
+        )));
+    }
+    Ok(name.to_string())
+}
+
+impl HotkeyList {
+    /// Where hotkey `id` is in the list.
+    fn position(&self, id: HotkeyId) -> Result<usize, RpcError> {
+        self.hotkeys
+            .iter()
+            .position(|h| h.id == id)
+            .ok_or_else(|| RpcError::application(format!("no hotkey with id {id}")))
+    }
+
+    /// Hotkey `id`, to change.
+    fn hotkey_mut(&mut self, id: HotkeyId) -> Result<&mut Hotkey, RpcError> {
+        let pos = self.position(id)?;
+        Ok(&mut self.hotkeys[pos])
+    }
+
+    /// Group `id`, to change.
+    fn group_mut(&mut self, id: HotkeyGroupId) -> Result<&mut HotkeyGroup, RpcError> {
+        self.groups
+            .iter_mut()
+            .find(|g| g.id == id)
+            .ok_or_else(|| no_group(id))
+    }
+
+    /// Refuse `name` for group `id` when another group has it.
+    fn check_group_name(&self, id: HotkeyGroupId, name: &str) -> Result<(), RpcError> {
+        match self
+            .groups
+            .iter()
+            .find(|g| g.id != id && g.name.eq_ignore_ascii_case(name))
+        {
+            Some(other) => Err(RpcError::application(format!(
+                "there is already a hotkey group called '{}'",
+                other.name
+            ))),
+            None => Ok(()),
         }
     }
 }

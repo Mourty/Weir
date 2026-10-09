@@ -9,12 +9,16 @@
 //! to show the same descriptions.
 
 use crate::model::{MixerState, StripOrBus};
+use crate::rpc::Flag;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
 /// Identifies a hotkey. Stable for its whole life.
 pub type HotkeyId = u32;
+/// Identifies a group of hotkeys. Stable for its whole life; 0 is no
+/// group.
+pub type HotkeyGroupId = u32;
 
 /// Longest a hotkey's name may be.
 pub const HOTKEY_NAME_MAX: usize = 60;
@@ -72,6 +76,10 @@ pub struct Hotkey {
     /// meanwhile.
     #[serde(default = "yes", skip_serializing_if = "is_true")]
     pub enabled: bool,
+    /// The group it is in, by id, or 0 for none. Its keys work only while
+    /// its group is switched on too.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub group: HotkeyGroupId,
     /// The keys: one or more combinations, up to 8, such as
     /// `["Ctrl+Alt+M", "F9"]`, each any of Ctrl, Alt, Shift and Super and
     /// one key. Any of them presses the hotkey. Where the desktop looks
@@ -170,12 +178,41 @@ pub enum OnRelease {
     Steps,
 }
 
+/// Hotkeys switched on and off together, and listed together.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct HotkeyGroup {
+    /// Unique, given by the daemon.
+    #[serde(default)]
+    pub id: HotkeyGroupId,
+    /// Unique among groups, ignoring case, up to 60 characters.
+    pub name: String,
+    /// Whether its hotkeys' keys work. Switched off, every hotkey in it is
+    /// as if switched off, and each keeps its own switch for when the group
+    /// is switched on again.
+    #[serde(default = "yes", skip_serializing_if = "is_true")]
+    pub enabled: bool,
+}
+
+/// Whether `h`'s keys work: it is switched on, and so is its group.
+pub fn hotkey_works(h: &Hotkey, groups: &[HotkeyGroup]) -> bool {
+    h.enabled
+        && groups
+            .iter()
+            .find(|g| g.id == h.group)
+            .is_none_or(|g| g.enabled)
+}
+
 /// Every hotkey, and how the keys reach Weir. What `list_hotkeys` returns
 /// and `hotkeys_changed` carries.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct HotkeysInfo {
-    /// Every hotkey, in the order they were added.
+    /// Every hotkey, in their order in the list. Those in a group are
+    /// listed with it, in the same order.
     pub hotkeys: Vec<Hotkey>,
+    /// Every group, in their order in the list, after the hotkeys in no
+    /// group.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub groups: Vec<HotkeyGroup>,
     /// How keys reach Weir on this desktop.
     pub keys: KeysStatus,
     /// What is wrong with any of them, such as keys another program has
@@ -256,6 +293,80 @@ pub enum HotkeyKey {
     Id(HotkeyId),
     /// By name, ignoring case.
     Name(String),
+}
+
+/// Parameters of `switch_hotkey`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct SwitchHotkeyParams {
+    /// The hotkey, by id or by name.
+    pub hotkey: HotkeyKey,
+    /// Whether its keys work: `true`, `false` or `"toggle"`.
+    pub enabled: Flag,
+}
+
+/// Parameters of `move_hotkey`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct MoveHotkeyParams {
+    /// The hotkey, by id or by name.
+    pub hotkey: HotkeyKey,
+    /// The group to move it into, by id or by name, or 0 for none. Left
+    /// out, it stays in its group.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<HotkeyGroupKey>,
+    /// Where it ends up among the hotkeys of its group (or of no group),
+    /// counting from 0. Past the end, or left out, means last.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub index: Option<usize>,
+}
+
+/// A group of hotkeys by id or by name.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(untagged)]
+pub enum HotkeyGroupKey {
+    /// By id.
+    Id(HotkeyGroupId),
+    /// By name, ignoring case.
+    Name(String),
+}
+
+/// Which group of hotkeys a request is about.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct HotkeyGroupRef {
+    /// The group, by id or by name.
+    pub group: HotkeyGroupKey,
+}
+
+/// Parameters of `add_hotkey_group`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct AddHotkeyGroupParams {
+    /// Unique among groups, ignoring case, up to 60 characters.
+    pub name: String,
+    /// Whether its hotkeys' keys work. `true` when left out.
+    #[serde(default = "yes")]
+    pub enabled: bool,
+}
+
+/// Parameters of `set_hotkey_group`. Only what is given changes.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct SetHotkeyGroupParams {
+    /// The group, by id or by name.
+    pub group: HotkeyGroupKey,
+    /// A new name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Switch its hotkeys' keys on or off: `true`, `false` or `"toggle"`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<Flag>,
+}
+
+/// Parameters of `move_hotkey_group`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct MoveHotkeyGroupParams {
+    /// The group, by id or by name.
+    pub group: HotkeyGroupKey,
+    /// Where it ends up among the groups, counting from 0. Past the end
+    /// means last.
+    pub index: usize,
 }
 
 /// The strips and buses `step` works on, by id, for noticing ones that no
@@ -603,12 +714,30 @@ mod tests {
     }
 
     #[test]
+    fn a_group_switched_off_switches_its_hotkeys_off() {
+        let mut h: Hotkey =
+            serde_json::from_value(json!({"name": "Talk", "steps": [], "group": 2})).unwrap();
+        let groups = [HotkeyGroup {
+            id: 2,
+            name: "Games".into(),
+            enabled: false,
+        }];
+        assert!(!hotkey_works(&h, &groups));
+        h.group = 0;
+        assert!(hotkey_works(&h, &groups), "in no group");
+        assert!(serde_json::to_value(&h).unwrap().get("group").is_none());
+        h.enabled = false;
+        assert!(!hotkey_works(&h, &groups));
+    }
+
+    #[test]
     fn whole_hotkeys_read_as_sentences() {
         let m = mixer();
         let mut h = Hotkey {
             id: 1,
             name: "Push to talk".into(),
             enabled: true,
+            group: 0,
             keys: vec!["Ctrl+Alt+Space".into()],
             steps: vec![HotkeyStep::new(
                 "set_strip",

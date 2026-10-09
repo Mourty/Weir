@@ -744,6 +744,7 @@ pub fn hotkey(c: &mut Client, action: HotkeyCmd, json: bool) -> Result<()> {
                 id: 0,
                 name,
                 enabled: true,
+                group: 0,
                 keys: Vec::new(),
                 steps: Vec::new(),
                 each_press: EachPress::All,

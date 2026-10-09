@@ -84,7 +84,7 @@ struct Inner {
     inserts: Vec<InsertStatus>,
     /// The hotkeys. `Err` holds why the hotkeys file could not be read, in
     /// which case it is left alone rather than overwritten.
-    hotkeys: Result<Vec<Hotkey>, String>,
+    hotkeys: Result<config::HotkeyList, String>,
     /// How keys reach Weir, as the runner last reported.
     keys_status: KeysStatus,
     /// Hotkeys whose keys do not work, and why, as the runner reported.

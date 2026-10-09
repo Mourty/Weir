@@ -8,7 +8,7 @@
 //!    subwoofer and surround feeds when it has them. Its meter reads here,
 //!    after the fader.
 //! 3. Each bus folds to mono if asked, runs its equalizer, applies its
-//!    fader, then its limiter, and meters what comes out.
+//!    fader, then its limiter and its delay, and meters what comes out.
 //!
 //! External effects go out and come back wherever they sit in a strip's or
 //! bus's chain.
@@ -303,7 +303,7 @@ impl Processor {
     }
 
     /// Everything a bus does to its mix once every strip is in: the mono
-    /// fold, the equalizer, the fader, the limiter, and the meter.
+    /// fold, the equalizer, the fader, the limiter, the delay, and the meter.
     ///
     /// # Safety
     /// As for [`Processor::process`].
@@ -360,6 +360,9 @@ impl Processor {
         insert(InsertPoint::BeforeLimiter, &mut self.fx_scratch);
         fx::process_bus_limiter(&bus.fx, &bus.limiter, n, rate, ramp, output);
         insert(InsertPoint::AfterLimiter, &mut self.fx_scratch);
+
+        // The delay is the very last thing, so the meter shows what plays.
+        fx::process_bus_delay(&bus.fx, bus.delay_ms, n, rate, ramp, output);
 
         for (o, meter) in bus.peaks.iter().enumerate() {
             let out = output(o);
@@ -1146,6 +1149,110 @@ mod tests {
         rig.inputs[0][0].iter_mut().for_each(|v| *v = 0.5);
         rig.settle(&params);
         assert!(rig.outputs[0][0].iter().all(|&v| close(v, 0.5)));
+    }
+
+    /// A mono mic into a mono bus that delays by `ms`.
+    fn delayed(ms: f32) -> MixerState {
+        let mut st = mic_only();
+        st.buses[0].delay_ms = ms;
+        st
+    }
+
+    /// A snapshot of [`delayed`], taking over the effect state of `prev`.
+    /// A function rather than a closure, whose one inferred lifetime for
+    /// `prev` would keep every earlier snapshot borrowed.
+    fn delayed_params(ms: f32, prev: Option<&RtParams>) -> Arc<RtParams> {
+        build_rt_params(&delayed(ms), SoloMode::Exclusive, &NoPorts, prev)
+    }
+
+    #[test]
+    fn a_bus_delay_holds_the_output_back_by_that_many_milliseconds() {
+        // 25 ms is 1200 samples at 48 kHz: two and a half blocks of 480.
+        let st = delayed(25.0);
+        let params = build_rt_params(&st, SoloMode::Exclusive, &NoPorts, None);
+        let mut rig = Rig::new(&st, 480);
+        rig.settle(&params);
+        let mut heard = Vec::new();
+        for block in 0..6 {
+            rig.inputs[0][0].fill(0.0);
+            if block == 0 {
+                rig.inputs[0][0][100] = 0.5;
+            }
+            rig.run(&params, 8);
+            heard.extend_from_slice(&rig.outputs[0][0]);
+        }
+        let at = heard.iter().position(|v| v.abs() > 0.01).unwrap();
+        assert_eq!(at, 100 + 1200);
+        assert!(close(heard[at], 0.5), "{}", heard[at]);
+        assert!(heard
+            .iter()
+            .enumerate()
+            .all(|(i, v)| i == at || close(*v, 0.0)));
+    }
+
+    #[test]
+    fn a_bus_delay_of_nothing_leaves_the_output_alone() {
+        let st = delayed(0.0);
+        let params = build_rt_params(&st, SoloMode::Exclusive, &NoPorts, None);
+        let mut rig = Rig::new(&st, 64);
+        rig.inputs[0][0].iter_mut().for_each(|v| *v = 0.5);
+        rig.settle(&params);
+        assert!(rig.outputs[0][0].iter().all(|&v| close(v, 0.5)));
+    }
+
+    #[test]
+    fn changing_a_bus_delay_does_not_click() {
+        let mut rig = Rig::new(&delayed(0.0), 480);
+        let mut last = 0.0f32;
+        let mut worst = 0.0f32;
+        let mut current = delayed_params(0.0, None);
+        for block in 0..60 {
+            // 0 -> 20 ms -> 7 ms -> 0, a change every 15 blocks.
+            if block % 15 == 0 && block > 0 {
+                let ms = [0.0, 20.0, 7.0, 0.0][block / 15];
+                let next = delayed_params(ms, Some(&current));
+                current = next;
+            }
+            sine(&mut rig.inputs[0][0], block * 480, 440.0, 0.5);
+            // Ramp of 10 ms, as the engine uses.
+            rig.run(&current, 480);
+            if block > 2 {
+                for v in &rig.outputs[0][0] {
+                    worst = worst.max((v - last).abs());
+                    last = *v;
+                }
+            } else {
+                last = *rig.outputs[0][0].last().unwrap();
+            }
+        }
+        // A 440 Hz sine of 0.5 moves 0.03 per sample at most; a crossfade
+        // between two points of it a little more. A hard switch would jump
+        // by up to 1.0.
+        assert!(worst < 0.05, "clicked: {worst}");
+    }
+
+    #[test]
+    fn a_bus_delay_switched_off_and_on_again_starts_from_silence() {
+        let on = delayed_params(20.0, None);
+        let mut rig = Rig::new(&delayed(20.0), 480);
+        for block in 0..10 {
+            sine(&mut rig.inputs[0][0], block * 480, 440.0, 0.5);
+            rig.run(&on, 8);
+        }
+        // Off, long enough to fade out and go idle.
+        let off = delayed_params(0.0, Some(&on));
+        for block in 10..14 {
+            sine(&mut rig.inputs[0][0], block * 480, 440.0, 0.5);
+            rig.run(&off, 8);
+        }
+        // On again, with nothing playing: none of the old sound may come out.
+        let again = delayed_params(20.0, Some(&off));
+        rig.inputs[0][0].fill(0.0);
+        for i in 0..4 {
+            rig.run(&again, 8);
+            let bad = rig.outputs[0][0].iter().position(|&v| !close(v, 0.0));
+            assert!(bad.is_none(), "block {i}: sound at {bad:?}");
+        }
     }
 
     #[test]

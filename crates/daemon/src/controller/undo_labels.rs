@@ -112,6 +112,9 @@ pub(super) fn undo_step(req: &Request, m: &MixerState) -> Option<Step> {
                 }
                 ["gain_delta_db"] | ["gain_db", "gain_delta_db"] => format!("{name} fader"),
                 ["mono"] => format!("{name} mono"),
+                ["delay_ms"] | ["delay_delta_ms"] | ["delay_delta_ms", "delay_ms"] => {
+                    format!("{name} delay")
+                }
                 ["name"] => format!("Rename {name} to {}", p.name.as_deref().unwrap_or_default()),
                 ["layout"] => format!("{name} channel layout"),
                 ["device"] => format!("{name} device"),

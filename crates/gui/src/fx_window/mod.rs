@@ -29,6 +29,7 @@
 mod chain;
 mod channels;
 mod curve;
+mod delay;
 mod ducking;
 mod dynamics;
 mod eq;
@@ -133,12 +134,13 @@ pub enum Section {
     Upmix,
     Downmix,
     Limiter,
+    Delay,
     /// External effects.
     Insert,
 }
 
 /// How many [`Section`]s there are.
-const SECTIONS: usize = 9;
+const SECTIONS: usize = 10;
 
 /// One settings window, and what is being edited in it.
 pub struct FxWindow {
@@ -151,6 +153,7 @@ pub struct FxWindow {
     gain: Option<Local<f32>>,
     pan: Option<Local<f32>>,
     limiter: Option<Local<Limiter>>,
+    delay: Option<Local<f32>>,
     /// Which sections are unfolded, by [`Section`]. Decided on the first
     /// frame: the effects that are on start unfolded.
     open: Option<[bool; SECTIONS]>,
@@ -200,6 +203,7 @@ impl FxWindow {
             gain: None,
             pan: None,
             limiter: None,
+            delay: None,
             open: None,
             focus: None,
             last_send: Instant::now(),
@@ -354,6 +358,13 @@ impl FxWindow {
                             ..Default::default()
                         }));
                     }
+                    if let Some(ms) = take_unsent(&mut self.delay) {
+                        actions.push(Request::SetBus(BusPatch {
+                            id,
+                            delay_ms: Some(ms),
+                            ..Default::default()
+                        }));
+                    }
                 }
             }
             if actions.len() > before {
@@ -370,6 +381,7 @@ impl FxWindow {
         expire(&mut self.comp);
         expire(&mut self.duck);
         expire(&mut self.gain);
+        expire(&mut self.delay);
         expire(&mut self.pan);
         expire(&mut self.limiter);
     }
@@ -460,6 +472,7 @@ impl FxWindow {
                     match section {
                         Downmix => channels::downmix_section(ui, bus, &state.mixer, o, actions),
                         Limiter => self.limiter_section(ui, bus, meters.limiter, o),
+                        Delay => self.delay_section(ui, bus, o),
                         _ => {}
                     }
                 }
@@ -492,11 +505,11 @@ fn side_order(target: FxTarget, at: InsertPoint) -> Vec<Section> {
             },
         ),
         FxTarget::Bus(_) => (
-            vec![Downmix, Fader, Limiter],
+            vec![Downmix, Fader, Limiter, Delay],
             match at.for_bus() {
                 InsertPoint::BeforeLimiter => Limiter,
                 InsertPoint::AfterLimiter => {
-                    return vec![Downmix, Fader, Limiter, Insert];
+                    return vec![Downmix, Fader, Limiter, Insert, Delay];
                 }
                 _ => Fader,
             },
@@ -528,6 +541,7 @@ fn first_open(target: FxTarget, mixer: &MixerState) -> [bool; SECTIONS] {
         FxTarget::Bus(id) => {
             if let Some(b) = mixer.bus(id) {
                 open[Section::Limiter as usize] = b.limiter.enabled;
+                open[Section::Delay as usize] = b.delay_ms > 0.0;
                 open[Section::Downmix as usize] = !b.downmix.is_default();
                 open[Section::Insert as usize] = b.insert.enabled;
             }
@@ -592,12 +606,36 @@ mod tests {
         let bus = FxTarget::Bus(1);
         assert_eq!(
             side_order(bus, InsertPoint::BeforeEq),
-            [Downmix, Insert, Fader, Limiter]
+            [Downmix, Insert, Fader, Limiter, Delay]
         );
         assert_eq!(
             side_order(bus, InsertPoint::AfterLimiter),
-            [Downmix, Fader, Limiter, Insert]
+            [Downmix, Fader, Limiter, Insert, Delay]
         );
+    }
+
+    #[test]
+    fn a_bus_delay_is_sent_once_and_starts_open_when_there_is_one() {
+        let mut w = FxWindow::new(FxTarget::Bus(2));
+        w.delay = Some(Local::new(191.0));
+        let mut actions = Vec::new();
+        w.flush(&mut actions, true);
+        assert!(matches!(
+            actions.as_slice(),
+            [Request::SetBus(p)] if p.id == 2 && p.delay_ms == Some(191.0)
+        ));
+        actions.clear();
+        w.flush(&mut actions, true);
+        assert!(actions.is_empty(), "nothing changed since");
+
+        let mut bus = Bus::new(2, "Speakers", BusKind::Hardware, ChannelLayout::Stereo);
+        let mixer = |bus: &Bus| MixerState {
+            strips: Vec::new(),
+            buses: vec![bus.clone()],
+        };
+        assert!(!first_open(FxTarget::Bus(2), &mixer(&bus))[Section::Delay as usize]);
+        bus.delay_ms = 191.0;
+        assert!(first_open(FxTarget::Bus(2), &mixer(&bus))[Section::Delay as usize]);
     }
 
     #[test]

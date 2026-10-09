@@ -49,6 +49,7 @@ fn allowed_in_hotkey(req: &Request) -> bool {
             | Request::PressHotkey(_)
             | Request::ReleaseHotkey(_)
             | Request::RunHotkey(_)
+            | Request::OpenShortcutSettings
     )
 }
 
@@ -146,6 +147,25 @@ impl Controller {
             inner.key_problems = problems;
         }
         self.announce(Notification::HotkeysChanged(self.hotkeys_info()));
+    }
+
+    /// Have the desktop open its shortcut settings at Weir's hotkeys, when
+    /// it can.
+    pub(super) fn open_shortcut_settings(&self) -> Result<Value, RpcError> {
+        let status = self.inner.lock().unwrap().keys_status.clone();
+        if status.method == KeysMethod::Desktop && status.configurable {
+            self.shortcut_settings.notify_one();
+            return Ok(Value::Null);
+        }
+        Err(RpcError::application(
+            "your desktop cannot open its shortcut settings from Weir; open them yourself, \
+             such as System Settings, Keyboard, Shortcuts on KDE Plasma",
+        ))
+    }
+
+    /// Wait until a client asks for the desktop's shortcut settings.
+    pub async fn shortcut_settings_wanted(&self) {
+        self.shortcut_settings.notified().await;
     }
 
     /// Tell clients when the mixer changing made a hotkey point at a strip

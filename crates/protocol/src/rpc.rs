@@ -1133,6 +1133,10 @@ pub enum Request {
     /// Presses the hotkey and lets go at once, like a tap on its keys.
     /// Returns the [`Hotkey`] once its steps are done.
     RunHotkey(HotkeyRef),
+    /// Opens the desktop's shortcut settings at Weir's hotkeys, where their
+    /// keys can be changed and more added. Only when [`KeysStatus`] says
+    /// `configurable`. Returns `null`.
+    OpenShortcutSettings,
     /// Start or stop `spectrum` notifications. Returns the targets now
     /// watched.
     WatchSpectrum(WatchSpectrumParams),

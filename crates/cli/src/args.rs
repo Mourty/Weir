@@ -483,6 +483,9 @@ pub enum HotkeyCmd {
         /// The hotkey, by name or id.
         hotkey: String,
     },
+    /// Open the desktop's shortcut settings at Weir's hotkeys, to change
+    /// their keys or add more. On KDE Plasma 6.5 and newer.
+    Settings,
 }
 
 /// A hotkey's settings, for `hotkey add` and `hotkey change`.
@@ -490,7 +493,8 @@ pub enum HotkeyCmd {
 pub struct HotkeyOpts {
     /// The keys, such as "Ctrl+Alt+M": any of Ctrl, Alt, Shift and Super,
     /// and one key. Give it once per key combination for several, any of
-    /// which presses the hotkey. Replaces the keys it had.
+    /// which presses the hotkey; where the desktop looks after the keys,
+    /// only the first is suggested to it. Replaces the keys it had.
     #[arg(long)]
     pub keys: Vec<String>,
     /// A step: a method and its parameters as JSON, such as

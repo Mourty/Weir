@@ -119,6 +119,7 @@ impl Controller {
             Request::PressHotkey(r) => self.hotkey_action(r, Action::Press),
             Request::ReleaseHotkey(r) => self.hotkey_action(r, Action::Release),
             Request::RunHotkey(r) => self.hotkey_action(r, Action::Run),
+            Request::OpenShortcutSettings => self.open_shortcut_settings(),
             Request::WatchSpectrum(p) => watch_spectrum(subs, p),
             Request::Undo(p) => self.step_history(p.steps, true),
             Request::Redo(p) => self.step_history(p.steps, false),

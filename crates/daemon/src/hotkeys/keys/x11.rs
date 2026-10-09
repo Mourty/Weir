@@ -129,7 +129,7 @@ fn regrab(
     }
     let mut grabs = HashMap::new();
     let mut problems = BTreeMap::new();
-    for r in regs {
+    for r in regs.iter().filter(|r| r.enabled) {
         let Some(key) = keycode_for(conn, r.keys.key.keysym) else {
             add_problem(
                 &mut problems,

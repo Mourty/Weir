@@ -776,6 +776,10 @@ pub fn hotkey(c: &mut Client, action: HotkeyCmd, json: bool) -> Result<()> {
         HotkeyCmd::Run { hotkey } => act(c, &hotkey, Request::RunHotkey, "ran"),
         HotkeyCmd::Press { hotkey } => act(c, &hotkey, Request::PressHotkey, "pressed"),
         HotkeyCmd::Release { hotkey } => act(c, &hotkey, Request::ReleaseHotkey, "let go of"),
+        HotkeyCmd::Settings => call(c, &Request::OpenShortcutSettings, json, |_: Value| {
+            println!("opened your desktop's shortcut settings");
+            Ok(())
+        }),
     }
 }
 

@@ -26,7 +26,7 @@ use tokio::sync::watch;
 use tracing::{debug, info, warn};
 use weir_protocol::*;
 
-/// One key combination of a hotkey, which should work.
+/// One key combination of a hotkey.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Registration {
     pub id: HotkeyId,
@@ -34,13 +34,16 @@ pub struct Registration {
     pub index: usize,
     pub name: String,
     pub keys: KeyCombo,
+    /// Whether the hotkey is switched on. On X11 only those are grabbed;
+    /// the desktop keeps the others' shortcuts, so keys people set there
+    /// are not lost, and their presses are ignored.
+    pub enabled: bool,
 }
 
-/// The key combinations that should work: those of the enabled hotkeys.
+/// Every key combination of every hotkey.
 fn registrations(hotkeys: &[Hotkey]) -> Vec<Registration> {
     hotkeys
         .iter()
-        .filter(|h| h.enabled)
         .flat_map(|h| {
             h.keys.iter().enumerate().filter_map(|(index, keys)| {
                 Some(Registration {
@@ -48,6 +51,7 @@ fn registrations(hotkeys: &[Hotkey]) -> Vec<Registration> {
                     index,
                     name: h.name.clone(),
                     keys: KeyCombo::parse(keys).ok()?,
+                    enabled: h.enabled,
                 })
             })
         })
@@ -126,7 +130,7 @@ pub fn status(method: KeysMethod, message: impl Into<String>) -> KeysStatus {
     KeysStatus {
         method,
         message: message.into(),
-        assigned: BTreeMap::new(),
+        ..Default::default()
     }
 }
 
@@ -326,7 +330,7 @@ mod tests {
     }
 
     #[test]
-    fn every_combination_of_an_enabled_hotkey_is_registered() {
+    fn every_combination_is_registered_saying_whether_it_is_on() {
         let hotkey = |id, enabled, keys: &[&str]| Hotkey {
             id,
             name: format!("H{id}"),
@@ -343,10 +347,17 @@ mod tests {
             hotkey(2, false, &["F10"]),
             hotkey(3, true, &[]),
         ]);
-        let got: Vec<(HotkeyId, usize, String)> = regs
+        let got: Vec<(HotkeyId, usize, String, bool)> = regs
             .iter()
-            .map(|r| (r.id, r.index, r.keys.to_string()))
+            .map(|r| (r.id, r.index, r.keys.to_string(), r.enabled))
             .collect();
-        assert_eq!(got, [(1, 0, "F9".into()), (1, 1, "Ctrl+Alt+T".into())]);
+        assert_eq!(
+            got,
+            [
+                (1, 0, "F9".into(), true),
+                (1, 1, "Ctrl+Alt+T".into(), true),
+                (2, 0, "F10".into(), false)
+            ]
+        );
     }
 }

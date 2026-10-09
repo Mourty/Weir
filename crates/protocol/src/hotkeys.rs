@@ -65,14 +65,18 @@ pub struct Hotkey {
     /// Unique among hotkeys, ignoring case, up to 60 characters. Scripts and
     /// Stream Deck buttons press hotkeys by name.
     pub name: String,
-    /// Whether its keys work. Off, it can still be pressed by name.
+    /// Whether its keys work. Off, it can still be pressed by name. Where
+    /// the desktop looks after the keys, it keeps them for a hotkey that is
+    /// off, once it has had them.
     #[serde(default = "yes", skip_serializing_if = "is_true")]
     pub enabled: bool,
     /// The keys: one or more combinations, up to 8, such as
     /// `["Ctrl+Alt+M", "F9"]`, each any of Ctrl, Alt, Shift and Super and
-    /// one key. Any of them presses the hotkey. A single combination may be
-    /// given as a string. Left out or empty, the hotkey has no keys and is
-    /// only pressed by name.
+    /// one key. Any of them presses the hotkey. Where the desktop looks
+    /// after the keys, only the first is suggested to it, and more are
+    /// added in its shortcut settings: see [`KeysStatus`]. A single
+    /// combination may be given as a string. Left out or empty, the hotkey
+    /// has no keys and is only pressed by name.
     #[serde(
         default,
         skip_serializing_if = "Vec::is_empty",
@@ -187,13 +191,18 @@ pub struct KeysStatus {
     pub method: KeysMethod,
     /// What that means, in a sentence for people.
     pub message: String,
-    /// With `desktop`: the keys each hotkey really has, by id, as the
-    /// desktop describes them, one for each of the hotkey's `keys` in the
-    /// same order, and empty for one the desktop gave no keys. People can
-    /// change them in the desktop's settings, so they can differ from the
-    /// hotkey's `keys`.
+    /// With `desktop`: the keys each hotkey with keys really has, by id, as
+    /// the desktop writes them, such as `["F9", "Ctrl+Alt+I"]`; empty when
+    /// it has none. Each hotkey is one entry in the desktop's shortcut
+    /// settings, where people change its keys and add more, so these can
+    /// differ from the hotkey's `keys`.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub assigned: BTreeMap<HotkeyId, Vec<String>>,
+    /// With `desktop`: whether `open_shortcut_settings` can open the
+    /// desktop's shortcut settings at Weir's hotkeys (KDE Plasma 6.5 and
+    /// newer, and other desktops with version 2 of the portal).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub configurable: bool,
 }
 
 /// Which way keys reach Weir.
@@ -205,7 +214,8 @@ pub enum KeysMethod {
     /// Not known yet: the desktop has not started, or Weir is still asking.
     #[default]
     Starting,
-    /// The desktop's shortcut service looks after the keys.
+    /// The desktop's shortcut service looks after the keys: each hotkey
+    /// with keys is one entry in its shortcut settings.
     Desktop,
     /// Weir watches the keys itself, on an X11 desktop.
     X11,

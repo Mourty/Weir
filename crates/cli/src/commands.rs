@@ -3,7 +3,9 @@
 //! Every command prints the daemon's JSON answer as it is when `json` is
 //! set, and something for people otherwise.
 
-use crate::args::{BusArgs, EqCmd, EqTarget, HotkeyCmd, HotkeyOpts, LibraryCmd, StripArgs};
+use crate::args::{
+    BusArgs, EqCmd, EqTarget, HotkeyCmd, HotkeyGroupCmd, HotkeyOpts, LibraryCmd, StripArgs,
+};
 use crate::client::Client;
 use crate::parse::*;
 use crate::show;
@@ -689,7 +691,10 @@ pub fn hotkeys(c: &mut Client, json: bool) -> Result<()> {
 }
 
 /// Apply the settings in `opts` to `h`. Steps given replace its steps.
-fn apply_hotkey_opts(h: &mut Hotkey, opts: HotkeyOpts) -> Result<()> {
+fn apply_hotkey_opts(c: &mut Client, h: &mut Hotkey, opts: HotkeyOpts) -> Result<()> {
+    if let Some(group) = &opts.group {
+        h.group = find_group(c, group)?.map_or(0, |g| g.id);
+    }
     if !opts.keys.is_empty() {
         h.keys = opts.keys;
     }
@@ -752,7 +757,7 @@ pub fn hotkey(c: &mut Client, action: HotkeyCmd, json: bool) -> Result<()> {
                 release_steps: Vec::new(),
                 repeat_ms: None,
             };
-            apply_hotkey_opts(&mut h, opts)?;
+            apply_hotkey_opts(c, &mut h, opts)?;
             save_hotkey(c, &h, "added", json)
         }
         HotkeyCmd::Change {
@@ -769,7 +774,7 @@ pub fn hotkey(c: &mut Client, action: HotkeyCmd, json: bool) -> Result<()> {
             if no_keys {
                 h.keys.clear();
             }
-            apply_hotkey_opts(&mut h, opts)?;
+            apply_hotkey_opts(c, &mut h, opts)?;
             h.keys.extend(add_keys);
             save_hotkey(c, &h, "changed", json)
         }
@@ -777,11 +782,156 @@ pub fn hotkey(c: &mut Client, action: HotkeyCmd, json: bool) -> Result<()> {
         HotkeyCmd::Run { hotkey } => act(c, &hotkey, Request::RunHotkey, "ran"),
         HotkeyCmd::Press { hotkey } => act(c, &hotkey, Request::PressHotkey, "pressed"),
         HotkeyCmd::Release { hotkey } => act(c, &hotkey, Request::ReleaseHotkey, "let go of"),
+        HotkeyCmd::On { hotkey } => switch_hotkey(c, &hotkey, Flag::Set(true), json),
+        HotkeyCmd::Off { hotkey } => switch_hotkey(c, &hotkey, Flag::Set(false), json),
+        HotkeyCmd::Toggle { hotkey } => switch_hotkey(c, &hotkey, Flag::Toggle, json),
+        HotkeyCmd::Move { hotkey, to, group } => {
+            let h = find_hotkey(c, &hotkey)?;
+            let group = match group {
+                Some(g) => Some(find_group(c, &g)?),
+                None => None,
+            };
+            let req = Request::MoveHotkey(MoveHotkeyParams {
+                hotkey: HotkeyKey::Id(h.id),
+                group: group
+                    .as_ref()
+                    .map(|g| HotkeyGroupKey::Id(g.as_ref().map_or(0, |g| g.id))),
+                index: to,
+            });
+            call(c, &req, json, |_: Value| {
+                match group {
+                    Some(Some(g)) => println!("moved the hotkey '{}' into '{}'", h.name, g.name),
+                    Some(None) => println!("moved the hotkey '{}' out of its group", h.name),
+                    None => println!("moved the hotkey '{}'", h.name),
+                }
+                Ok(())
+            })
+        }
+        HotkeyCmd::Group { action } => hotkey_group(c, action, json),
         HotkeyCmd::Settings => call(c, &Request::OpenShortcutSettings, json, |_: Value| {
             println!("opened your desktop's shortcut settings");
             Ok(())
         }),
     }
+}
+
+/// Switch a hotkey's keys on or off, and say which.
+fn switch_hotkey(c: &mut Client, hotkey: &str, enabled: Flag, json: bool) -> Result<()> {
+    let h = find_hotkey(c, hotkey)?;
+    let req = Request::SwitchHotkey(SwitchHotkeyParams {
+        hotkey: HotkeyKey::Id(h.id),
+        enabled,
+    });
+    call(c, &req, json, |h: Hotkey| {
+        let state = if h.enabled { "on" } else { "off" };
+        println!("switched the hotkey '{}' {state}", h.name);
+        Ok(())
+    })
+}
+
+/// Add, switch, rename, move or remove a group of hotkeys.
+fn hotkey_group(c: &mut Client, action: HotkeyGroupCmd, json: bool) -> Result<()> {
+    // The group named on the command line; "none" is not one here.
+    let group = |c: &mut Client, text: &str| -> Result<HotkeyGroup> {
+        find_group(c, text)?.ok_or_else(|| anyhow!("'{text}' is no group"))
+    };
+    let switch = |c: &mut Client, g: HotkeyGroup, enabled: Flag| {
+        let req = Request::SetHotkeyGroup(SetHotkeyGroupParams {
+            group: HotkeyGroupKey::Id(g.id),
+            name: None,
+            enabled: Some(enabled),
+        });
+        call(c, &req, json, |g: HotkeyGroup| {
+            let state = if g.enabled { "on" } else { "off" };
+            println!("switched the hotkey group '{}' {state}", g.name);
+            Ok(())
+        })
+    };
+    match action {
+        HotkeyGroupCmd::Add { name, off } => {
+            let req = Request::AddHotkeyGroup(AddHotkeyGroupParams {
+                name,
+                enabled: !off,
+            });
+            call(c, &req, json, |g: HotkeyGroup| {
+                println!("added the hotkey group '{}'", g.name);
+                Ok(())
+            })
+        }
+        HotkeyGroupCmd::On { group: g } => {
+            let g = group(c, &g)?;
+            switch(c, g, Flag::Set(true))
+        }
+        HotkeyGroupCmd::Off { group: g } => {
+            let g = group(c, &g)?;
+            switch(c, g, Flag::Set(false))
+        }
+        HotkeyGroupCmd::Toggle { group: g } => {
+            let g = group(c, &g)?;
+            switch(c, g, Flag::Toggle)
+        }
+        HotkeyGroupCmd::Rename { group: g, name } => {
+            let g = group(c, &g)?;
+            let req = Request::SetHotkeyGroup(SetHotkeyGroupParams {
+                group: HotkeyGroupKey::Id(g.id),
+                name: Some(name),
+                enabled: None,
+            });
+            call(c, &req, json, |new: HotkeyGroup| {
+                println!("renamed the hotkey group '{}' to '{}'", g.name, new.name);
+                Ok(())
+            })
+        }
+        HotkeyGroupCmd::Move { group: g, to } => {
+            let g = group(c, &g)?;
+            let req = Request::MoveHotkeyGroup(MoveHotkeyGroupParams {
+                group: HotkeyGroupKey::Id(g.id),
+                index: to,
+            });
+            call(c, &req, json, |_: Value| {
+                println!("moved the hotkey group '{}'", g.name);
+                Ok(())
+            })
+        }
+        HotkeyGroupCmd::Remove { group: g } => {
+            let g = group(c, &g)?;
+            let req = Request::RemoveHotkeyGroup(HotkeyGroupRef {
+                group: HotkeyGroupKey::Id(g.id),
+            });
+            call(c, &req, json, |_: Value| {
+                println!(
+                    "removed the hotkey group '{}'; its hotkeys are in no group now",
+                    g.name
+                );
+                Ok(())
+            })
+        }
+    }
+}
+
+/// The group `text` names: the one with that id when it is a number, or
+/// else the one with that name, ignoring case; none for "none" or 0.
+fn find_group(c: &mut Client, text: &str) -> Result<Option<HotkeyGroup>> {
+    let text = text.trim();
+    if text.eq_ignore_ascii_case("none") || text == "0" {
+        return Ok(None);
+    }
+    let info: HotkeysInfo = serde_json::from_value(c.call(&Request::ListHotkeys)?)?;
+    let id = text.parse::<HotkeyGroupId>().ok();
+    info.groups
+        .iter()
+        .find(|g| Some(g.id) == id)
+        .or_else(|| {
+            info.groups
+                .iter()
+                .find(|g| g.name.eq_ignore_ascii_case(text))
+        })
+        .cloned()
+        .map(Some)
+        .ok_or_else(|| match id {
+            Some(id) => anyhow!("no hotkey group with id {id}"),
+            None => anyhow!("no hotkey group called '{text}'"),
+        })
 }
 
 /// The hotkey `text` names: the one with that id when it is a number, or

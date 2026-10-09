@@ -594,37 +594,54 @@ pub fn meters(m: &Meters) {
 /// The hotkeys, what they do, and what is wrong with any of them.
 pub fn hotkeys(info: &HotkeysInfo, mixer: &MixerState) {
     println!("{}", info.keys.message);
-    if info.hotkeys.is_empty() {
+    if info.hotkeys.is_empty() && info.groups.is_empty() {
         println!("(no hotkeys)");
         return;
     }
-    println!();
-    let mut t = Table::new(&["ID", "Name", "Keys", "What it does"], &[0]);
-    for h in &info.hotkeys {
-        // The desktop's keys when it says, since they can be changed there.
-        let keys = match info.keys.assigned.get(&h.id) {
-            Some(given) => given
-                .iter()
-                .filter(|k| !k.is_empty())
-                .cloned()
-                .collect::<Vec<_>>()
-                .join(", "),
-            None => h.keys.join(", "),
-        };
-        let keys = if keys.is_empty() { "-".into() } else { keys };
-        let keys = if h.enabled {
-            keys
-        } else {
-            format!("{keys} (off)")
-        };
-        t.row(vec![
-            h.id.to_string(),
-            h.name.clone(),
-            keys,
-            describe_hotkey(h, mixer),
-        ]);
+    // The hotkeys in no group, then each group with its own.
+    let table = |group: HotkeyGroupId| {
+        let mut t = Table::new(&["ID", "Name", "Keys", "What it does"], &[0]);
+        for h in info.hotkeys.iter().filter(|h| h.group == group) {
+            // The desktop's keys when it says, since they can be changed
+            // there.
+            let keys = match info.keys.assigned.get(&h.id) {
+                Some(given) => given
+                    .iter()
+                    .filter(|k| !k.is_empty())
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                None => h.keys.join(", "),
+            };
+            let keys = if keys.is_empty() { "-".into() } else { keys };
+            let keys = if h.enabled {
+                keys
+            } else {
+                format!("{keys} (off)")
+            };
+            t.row(vec![
+                h.id.to_string(),
+                h.name.clone(),
+                keys,
+                describe_hotkey(h, mixer),
+            ]);
+        }
+        t
+    };
+    if info.hotkeys.iter().any(|h| h.group == 0) {
+        println!();
+        table(0).print();
     }
-    t.print();
+    for g in &info.groups {
+        println!();
+        let state = if g.enabled { "" } else { ", switched off" };
+        println!("Group '{}' (id {}{state}):", g.name, g.id);
+        if info.hotkeys.iter().any(|h| h.group == g.id) {
+            table(g.id).print();
+        } else {
+            println!("(no hotkeys)");
+        }
+    }
     for p in &info.problems {
         let name = info
             .hotkeys

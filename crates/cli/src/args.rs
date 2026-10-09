@@ -483,9 +483,89 @@ pub enum HotkeyCmd {
         /// The hotkey, by name or id.
         hotkey: String,
     },
+    /// Switch a hotkey's keys on.
+    On {
+        /// The hotkey, by name or id.
+        hotkey: String,
+    },
+    /// Switch a hotkey's keys off. It can still be run by name.
+    Off {
+        /// The hotkey, by name or id.
+        hotkey: String,
+    },
+    /// Switch a hotkey's keys on if they are off, or off if on.
+    Toggle {
+        /// The hotkey, by name or id.
+        hotkey: String,
+    },
+    /// Move a hotkey to another place in the list, or into a group.
+    Move {
+        /// The hotkey, by name or id.
+        hotkey: String,
+        /// Its place among the hotkeys of its group, counting from 0. Left
+        /// out, it goes last.
+        #[arg(long)]
+        to: Option<usize>,
+        /// Move it into this group, by name or id, or "none" for no group.
+        #[arg(long)]
+        group: Option<String>,
+    },
+    /// Add, switch, rename, move or remove a group of hotkeys.
+    Group {
+        #[command(subcommand)]
+        action: HotkeyGroupCmd,
+    },
     /// Open the desktop's shortcut settings at Weir's hotkeys, to change
     /// their keys or add more. On KDE Plasma 6.5 and newer.
     Settings,
+}
+
+/// What to do with a group of hotkeys.
+#[derive(Subcommand, Debug)]
+pub enum HotkeyGroupCmd {
+    /// Add a group, last in the list.
+    Add {
+        /// Its name: unique, 60 characters at most.
+        name: String,
+        /// Start it switched off.
+        #[arg(long)]
+        off: bool,
+    },
+    /// Switch the keys of a group's hotkeys on.
+    On {
+        /// The group, by name or id.
+        group: String,
+    },
+    /// Switch the keys of a group's hotkeys off. Each keeps its own switch.
+    Off {
+        /// The group, by name or id.
+        group: String,
+    },
+    /// Switch a group on if it is off, or off if on.
+    Toggle {
+        /// The group, by name or id.
+        group: String,
+    },
+    /// Rename a group.
+    Rename {
+        /// The group, by name or id.
+        group: String,
+        /// Its new name.
+        name: String,
+    },
+    /// Move a group to another place in the list.
+    Move {
+        /// The group, by name or id.
+        group: String,
+        /// Its place among the groups, counting from 0.
+        #[arg(long)]
+        to: usize,
+    },
+    /// Remove a group. Its hotkeys stay, in no group.
+    Remove {
+        /// The group, by name or id.
+        group: String,
+    },
 }
 
 /// A hotkey's settings, for `hotkey add` and `hotkey change`.
@@ -521,4 +601,7 @@ pub struct HotkeyOpts {
     /// Whether its keys work: on, off or toggle.
     #[arg(long)]
     pub enabled: Option<String>,
+    /// The group it is in, by name or id, or "none" for no group.
+    #[arg(long)]
+    pub group: Option<String>,
 }

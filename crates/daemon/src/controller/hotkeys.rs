@@ -177,14 +177,22 @@ impl Controller {
                 "a hotkey's name can be at most {HOTKEY_NAME_MAX} characters"
             )));
         }
-        h.keys = match h.keys.as_deref().map(str::trim) {
-            None | Some("") => None,
-            Some(text) => Some(
-                KeyCombo::parse(text)
-                    .map_err(RpcError::invalid_params)?
-                    .to_string(),
-            ),
-        };
+        let mut keys: Vec<String> = Vec::new();
+        for text in h.keys.iter().map(|k| k.trim()).filter(|k| !k.is_empty()) {
+            let combo = KeyCombo::parse(text)
+                .map_err(RpcError::invalid_params)?
+                .to_string();
+            // The same keys twice would only be registered twice.
+            if !keys.contains(&combo) {
+                keys.push(combo);
+            }
+        }
+        if keys.len() > HOTKEY_KEYS_MAX {
+            return Err(RpcError::invalid_params(format!(
+                "a hotkey can have at most {HOTKEY_KEYS_MAX} key combinations"
+            )));
+        }
+        h.keys = keys;
         for steps in [&mut h.steps, &mut h.release_steps] {
             if steps.len() > HOTKEY_STEPS_MAX {
                 return Err(RpcError::invalid_params(format!(
@@ -223,11 +231,8 @@ impl Controller {
                     other.name
                 )));
             }
-            if let Some(keys) = &h.keys {
-                if let Some(other) = list
-                    .iter()
-                    .find(|o| o.id != h.id && o.keys.as_ref() == Some(keys))
-                {
+            for keys in &h.keys {
+                if let Some(other) = list.iter().find(|o| o.id != h.id && o.keys.contains(keys)) {
                     return Err(RpcError::application(format!(
                         "{keys} already belongs to the hotkey '{}'",
                         other.name

@@ -1250,7 +1250,7 @@ weirctl raw list_hotkeys
 info = mixer.call("list_hotkeys")
 print(info["keys"]["message"])
 for hotkey in info["hotkeys"]:
-    print(hotkey["name"], hotkey.get("keys", "(no keys)"))
+    print(hotkey["name"], ", ".join(hotkey.get("keys", [])) or "(no keys)")
 ```
 
 ```js
@@ -1266,7 +1266,7 @@ Add a hotkey, or replace one. The parameters are the [Hotkey](#hotkey):
 |---|---|---|
 | `id` | number, *optional* | The hotkey to replace, whole. Left out, or 0, adds a new one. |
 | `name` | string | Unique, ignoring case, up to 60 characters. |
-| `keys` | string, *optional* | Such as `"Ctrl+Alt+M"`; see [Keys](#keys). Left out, the hotkey is pressed only by name. |
+| `keys` | list of strings, *optional* | Such as `["Ctrl+Alt+M"]`, or several, `["F9", "Ctrl+Alt+T"]`, any of which presses the hotkey: up to 8. See [Keys](#keys). One may be given as a string, `"F9"`. Left out or empty, the hotkey is pressed only by name. |
 | `enabled` | boolean, *optional* | `false` switches its keys off; it can still be pressed by name. `true` when left out. |
 | `steps` | list of [HotkeyStep](#hotkeystep) | What a press does, up to 32. |
 | `each_press` | string, *optional* | `all`: every step at each press (the default). `next`: the next step only, back to the first after the last. |
@@ -1274,17 +1274,17 @@ Add a hotkey, or replace one. The parameters are the [Hotkey](#hotkey):
 | `release_steps` | list of [HotkeyStep](#hotkeystep), *optional* | With `on_release` `steps`: what letting go does, up to 32. |
 | `repeat_ms` | number, *optional* | Do the steps again every this many milliseconds while the keys are held, 50 to 2000. The first repeat waits 400 ms, like a keyboard's, or `repeat_ms` if that is longer. |
 
-Returns the Hotkey as saved: with its id, its keys written the usual way,
-and strips and buses by id.
+Returns the Hotkey as saved: with its id, its keys as a list written the
+usual way, and strips and buses by id.
 
 A step can be any request that changes something; requests that only ask
 (`get_state`, `list_*`, `history`), `subscribe`, `watch_spectrum` and the
 hotkey methods themselves cannot be steps. A step is checked as the request
 would be, so a misspelled strip is an error now rather than a dead key
-later. Two hotkeys cannot have the same name or the same keys.
+later. Two hotkeys cannot have the same name, or share any keys.
 
 ```sh
-weirctl raw set_hotkey '{"name": "Push to talk", "keys": "F9", "steps": [{"method": "set_strip", "params": {"id": "Mic", "mute": false}}], "on_release": "restore"}'
+weirctl raw set_hotkey '{"name": "Push to talk", "keys": ["F9", "Ctrl+Alt+T"], "steps": [{"method": "set_strip", "params": {"id": "Mic", "mute": false}}], "on_release": "restore"}'
 ```
 
 Two equalizer presets, a press each, with no keys: for a Stream Deck
@@ -1302,7 +1302,7 @@ The music dipped while a key is held, gently:
 ```js
 await mixer.call("set_hotkey", {
   name: "Dip the music",
-  keys: "Ctrl+Alt+D",
+  keys: ["Ctrl+Alt+D"],
   steps: [{ method: "set_strip", params: { id: "Music", gain_db: -20 }, over_ms: 300 }],
   on_release: "restore",
 });
@@ -1312,7 +1312,7 @@ To change one, send it back with its id:
 
 ```python
 hotkey = weir.find(mixer.call("list_hotkeys")["hotkeys"], "Mute mic")
-hotkey["keys"] = "Ctrl+Alt+M"
+hotkey["keys"] = ["Ctrl+Alt+M"]
 mixer.call("set_hotkey", **hotkey)
 ```
 
@@ -1887,7 +1887,7 @@ any.
 ### Hotkey
 
 ```json
-{"id": 2, "name": "Push to talk", "keys": "F9",
+{"id": 2, "name": "Push to talk", "keys": ["F9"],
  "steps": [{"method": "set_strip", "params": {"id": 1, "mute": false}}],
  "on_release": "restore"}
 ```
@@ -1939,7 +1939,7 @@ keys, media keys, `Pause`, `Print` and `ScrollLock` can be on their own.
 |---|---|---|
 | `method` | string | `desktop`: the desktop looks after the keys, through the XDG desktop portal's global shortcuts (KDE Plasma, GNOME 48 and newer, Hyprland). People can see and change the keys in the desktop's settings too. `x11`: Weir watches the keys itself, on an X11 desktop. `unavailable`: neither, so hotkeys are pressed only by name, for instance from a shortcut of the desktop's own running `weirctl hotkey run NAME`. `starting`: not known yet, as at login before the desktop is up. |
 | `message` | string | What that means, in a sentence to show people. |
-| `assigned` | object, *optional* | With `desktop`: the keys the desktop gave each hotkey, by id, as the desktop writes them. Changed in the desktop's settings, they can differ from the hotkey's `keys`. |
+| `assigned` | object, *optional* | With `desktop`: the keys the desktop gave each hotkey, by id, as the desktop writes them: a list with one entry for each of the hotkey's `keys`, in the same order, and `""` for one the desktop gave no keys. Changed in the desktop's settings, they can differ from the hotkey's `keys`, and one entry can hold several, such as `"F9, Ctrl+Alt+I"`. |
 
 ### HistoryInfo
 
@@ -2030,7 +2030,7 @@ Unmuted while the key is held, as a hotkey: Weir watches the key, and
 letting go puts the mute back as it was.
 
 ```sh
-weirctl raw set_hotkey '{"name": "Talk", "keys": "F9", "steps": [{"method": "set_strip", "params": {"id": "Mic", "mute": false}}], "on_release": "restore"}'
+weirctl raw set_hotkey '{"name": "Talk", "keys": ["F9"], "steps": [{"method": "set_strip", "params": {"id": "Mic", "mute": false}}], "on_release": "restore"}'
 ```
 
 A button on something else, such as a Stream Deck, can hold the same

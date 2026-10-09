@@ -601,11 +601,17 @@ pub fn hotkeys(info: &HotkeysInfo, mixer: &MixerState) {
     println!();
     let mut t = Table::new(&["ID", "Name", "Keys", "What it does"], &[0]);
     for h in &info.hotkeys {
-        let keys = match (info.keys.assigned.get(&h.id), &h.keys) {
-            (Some(given), _) => given.clone(),
-            (None, Some(keys)) => keys.clone(),
-            (None, None) => "-".into(),
+        // The desktop's keys when it says, since they can be changed there.
+        let keys = match info.keys.assigned.get(&h.id) {
+            Some(given) => given
+                .iter()
+                .filter(|k| !k.is_empty())
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(", "),
+            None => h.keys.join(", "),
         };
+        let keys = if keys.is_empty() { "-".into() } else { keys };
         let keys = if h.enabled {
             keys
         } else {

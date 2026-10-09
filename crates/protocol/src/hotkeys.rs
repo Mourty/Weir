@@ -24,6 +24,8 @@ pub const HOTKEY_STEPS_MAX: usize = 32;
 pub const HOTKEY_REPEAT_MS: (u32, u32) = (50, 2000);
 /// The longest a step may take to fade, in ms.
 pub const HOTKEY_FADE_MS_MAX: u32 = 60_000;
+/// Most key combinations a hotkey may have.
+pub const HOTKEY_KEYS_MAX: usize = 8;
 
 fn yes() -> bool {
     true
@@ -35,6 +37,22 @@ fn is_true(b: &bool) -> bool {
 
 fn is_default<T: Default + PartialEq>(v: &T) -> bool {
     *v == T::default()
+}
+
+/// A list, or a single item on its own: hotkeys had one key combination
+/// before they could have several, written as a string.
+fn one_or_many<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<String>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum OneOrMany {
+        One(String),
+        Many(Vec<String>),
+    }
+    Ok(match Option::<OneOrMany>::deserialize(d)? {
+        None => Vec::new(),
+        Some(OneOrMany::One(s)) => vec![s],
+        Some(OneOrMany::Many(v)) => v,
+    })
 }
 
 /// Keys and what they do.
@@ -50,11 +68,17 @@ pub struct Hotkey {
     /// Whether its keys work. Off, it can still be pressed by name.
     #[serde(default = "yes", skip_serializing_if = "is_true")]
     pub enabled: bool,
-    /// The keys, such as `Ctrl+Alt+M`: any of Ctrl, Alt, Shift and Super,
-    /// and one key. Left out, the hotkey has no keys and is only pressed by
-    /// name.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub keys: Option<String>,
+    /// The keys: one or more combinations, up to 8, such as
+    /// `["Ctrl+Alt+M", "F9"]`, each any of Ctrl, Alt, Shift and Super and
+    /// one key. Any of them presses the hotkey. A single combination may be
+    /// given as a string. Left out or empty, the hotkey has no keys and is
+    /// only pressed by name.
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        deserialize_with = "one_or_many"
+    )]
+    pub keys: Vec<String>,
     /// What pressing it does, in order.
     pub steps: Vec<HotkeyStep>,
     /// Whether each press does every step (`all`), or only the next one,
@@ -164,10 +188,12 @@ pub struct KeysStatus {
     /// What that means, in a sentence for people.
     pub message: String,
     /// With `desktop`: the keys each hotkey really has, by id, as the
-    /// desktop describes them. People can change them in the desktop's
-    /// settings, so they can differ from the hotkey's `keys`.
+    /// desktop describes them, one for each of the hotkey's `keys` in the
+    /// same order, and empty for one the desktop gave no keys. People can
+    /// change them in the desktop's settings, so they can differ from the
+    /// hotkey's `keys`.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub assigned: BTreeMap<HotkeyId, String>,
+    pub assigned: BTreeMap<HotkeyId, Vec<String>>,
 }
 
 /// Which way keys reach Weir.
@@ -564,7 +590,7 @@ mod tests {
             id: 1,
             name: "Push to talk".into(),
             enabled: true,
-            keys: Some("Ctrl+Alt+Space".into()),
+            keys: vec!["Ctrl+Alt+Space".into()],
             steps: vec![HotkeyStep::new(
                 "set_strip",
                 json!({"id": 1, "mute": false}),
@@ -597,15 +623,25 @@ mod tests {
         .unwrap();
         assert!(h.enabled);
         assert_eq!(h.each_press, EachPress::All);
+        // One combination may come as a string, but always goes out as a list.
         assert_eq!(
             serde_json::to_value(&h).unwrap(),
             json!({
                 "id": 0,
                 "name": "Mute mic",
-                "keys": "Ctrl+Alt+M",
+                "keys": ["Ctrl+Alt+M"],
                 "steps": [{"method": "set_strip", "params": {"id": 1, "mute": "toggle"}}]
             })
         );
+        let two: Hotkey = serde_json::from_value(json!({
+            "name": "Talk", "keys": ["F9", "Ctrl+Alt+T"], "steps": []
+        }))
+        .unwrap();
+        assert_eq!(two.keys, ["F9", "Ctrl+Alt+T"]);
+        let none: Hotkey =
+            serde_json::from_value(json!({"name": "Intro", "keys": null, "steps": []})).unwrap();
+        assert!(none.keys.is_empty());
+        assert!(serde_json::to_value(&none).unwrap().get("keys").is_none());
         let r: HotkeyRef = serde_json::from_value(json!({"hotkey": "Mute mic"})).unwrap();
         assert_eq!(r.hotkey, HotkeyKey::Name("Mute mic".into()));
         let r: HotkeyRef = serde_json::from_value(json!({"hotkey": 4})).unwrap();

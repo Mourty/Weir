@@ -454,8 +454,12 @@ pub enum HotkeyCmd {
         #[arg(long)]
         name: Option<String>,
         /// Take its keys away, so it is only pressed by name.
-        #[arg(long, conflicts_with = "keys")]
+        #[arg(long, conflicts_with_all = ["keys", "add_keys"])]
         no_keys: bool,
+        /// Other keys to press it with, keeping the ones it has. Give it
+        /// once per key combination.
+        #[arg(long = "add-keys", value_name = "KEYS")]
+        add_keys: Vec<String>,
         #[command(flatten)]
         opts: HotkeyOpts,
     },
@@ -485,9 +489,10 @@ pub enum HotkeyCmd {
 #[derive(Args, Debug)]
 pub struct HotkeyOpts {
     /// The keys, such as "Ctrl+Alt+M": any of Ctrl, Alt, Shift and Super,
-    /// and one key.
+    /// and one key. Give it once per key combination for several, any of
+    /// which presses the hotkey. Replaces the keys it had.
     #[arg(long)]
-    pub keys: Option<String>,
+    pub keys: Vec<String>,
     /// A step: a method and its parameters as JSON, such as
     /// 'set_strip {"id": "Mic", "mute": "toggle"}', or a whole step as JSON.
     /// Give it once per step, in order.

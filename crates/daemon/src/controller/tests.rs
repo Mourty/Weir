@@ -538,7 +538,7 @@ fn hotkeys_are_checked_kept_by_id_and_saved() {
         }),
     );
     assert_eq!(h["id"], json!(1));
-    assert_eq!(h["keys"], json!("Ctrl+Alt+M"));
+    assert_eq!(h["keys"], json!(["Ctrl+Alt+M"]));
     // The strip is kept by id, so renaming it does not break the hotkey.
     assert_eq!(h["steps"][0]["params"]["id"], json!(1));
     r.ok("set_strip", json!({"id": "Mic", "name": "Voice"}));
@@ -546,11 +546,13 @@ fn hotkeys_are_checked_kept_by_id_and_saved() {
     assert_eq!(info["hotkeys"][0]["steps"][0]["params"]["id"], json!(1));
     assert!(info.get("problems").is_none(), "{info}");
 
-    // A second one with the same name or keys is turned down.
+    // A second one with the same name or keys is turned down, even when
+    // they are only one of its key combinations.
     let step = json!([{"method": "load_scene", "params": {"name": "Gaming"}}]);
     for clash in [
         json!({"name": "mute MIC", "steps": step}),
         json!({"name": "Other", "keys": "Ctrl+Alt+M", "steps": step}),
+        json!({"name": "Other", "keys": ["F9", "Alt+Ctrl+M"], "steps": step}),
     ] {
         assert_eq!(r.code("set_hotkey", clash), RpcError::APPLICATION);
     }
@@ -559,6 +561,8 @@ fn hotkeys_are_checked_kept_by_id_and_saved() {
     // exist.
     for bad in [
         json!({"name": "A", "keys": "M", "steps": step}),
+        json!({"name": "A", "keys": ["F9", "M"], "steps": step}),
+        json!({"name": "A", "keys": ["F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9"], "steps": step}),
         json!({"name": "B", "steps": [{"method": "subscribe", "params": {}}]}),
         json!({"name": "C", "steps": [{"method": "set_strip", "params": {"id": 1, "mute": true}, "over_ms": 100}]}),
         json!({"name": "D", "steps": [{"method": "set_strip", "params": {"id": "Nobody", "mute": true}}]}),
@@ -566,6 +570,15 @@ fn hotkeys_are_checked_kept_by_id_and_saved() {
     ] {
         assert!(r.call("set_hotkey", bad.clone()).is_err(), "{bad}");
     }
+
+    // Several combinations work alike, written the usual way, without
+    // repeats.
+    let h = r.ok(
+        "set_hotkey",
+        json!({"name": "Talk", "keys": ["f9", " ctrl+alt+t", "F9", ""], "steps": step}),
+    );
+    assert_eq!(h["keys"], json!(["F9", "Ctrl+Alt+T"]));
+    r.ok("remove_hotkey", json!({"hotkey": "Talk"}));
 
     // Saved to its own file, and read back by the next daemon.
     let paths = Paths::resolve(Some(r.dir.join("config.toml")));

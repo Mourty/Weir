@@ -309,7 +309,7 @@ the [control protocol](API.md#hotkeys), so a hotkey can do anything
 |---|---|
 | `weirctl hotkeys` | List them, what each does, how keys reach Weir on this desktop, and anything wrong. |
 | `weirctl hotkey add NAME [options]` | Add one. |
-| `weirctl hotkey change HOTKEY [options]` | Change one. Steps given replace all its steps; `--name` renames it, `--no-keys` takes its keys away. |
+| `weirctl hotkey change HOTKEY [options]` | Change one. Steps given replace all its steps; `--name` renames it, `--add-keys KEYS` gives it other keys as well, and `--no-keys` takes its keys away. |
 | `weirctl hotkey remove HOTKEY` | Remove one. |
 | `weirctl hotkey run HOTKEY` | Do what tapping its keys does. |
 | `weirctl hotkey press HOTKEY` | Do what pressing its keys does, until `release`. |
@@ -319,7 +319,7 @@ HOTKEY is a hotkey's name or id. `add` and `change` take:
 
 | Option | |
 |---|---|
-| `--keys KEYS` | Such as `Ctrl+Alt+M`: any of Ctrl, Alt, Shift and Super, then one key. Letters, numbers and the like need Ctrl, Alt or Super; F1 to F24, media keys and Pause can be on their own. [The full list](API.md#keys). |
+| `--keys KEYS` | Such as `Ctrl+Alt+M`: any of Ctrl, Alt, Shift and Super, then one key. Letters, numbers and the like need Ctrl, Alt or Super; F1 to F24, media keys and Pause can be on their own. [The full list](API.md#keys). Give it more than once for several, any of which presses the hotkey; it replaces the keys the hotkey had. |
 | `--do STEP` | A step: a method and its parameters as JSON, `'set_strip {"id": "Mic", "mute": "toggle"}'`, or a whole [step](API.md#hotkeystep) as JSON, for a fade. Once per step, in order. |
 | `--each-press all\|next` | Every step at each press (the default), or the next one, going round. |
 | `--release nothing\|restore\|steps` | What letting go does: nothing, put back what pressing changed, or the `--release-do` steps. |
@@ -329,11 +329,12 @@ HOTKEY is a hotkey's name or id. `add` and `change` take:
 
 ```sh
 weirctl hotkey add "Mic on/off" --keys Ctrl+Alt+M --do 'set_strip {"id": "Mic", "mute": "toggle"}'
-weirctl hotkey add "Talk" --keys F9 --do 'set_strip {"id": "Mic", "mute": false}' --release restore
+weirctl hotkey add "Talk" --keys F9 --keys Ctrl+Alt+T --do 'set_strip {"id": "Mic", "mute": false}' --release restore
 weirctl hotkey add "Music down" --keys Ctrl+Alt+Down --do 'set_strip {"id": "Music", "gain_delta_db": -2}' --repeat 150
 weirctl hotkey add "Fade out" --do '{"method": "set_bus", "params": {"id": "A1", "gain_db": -60}, "over_ms": 3000}'
 weirctl hotkey add "Scenes" --keys Ctrl+Alt+S --each-press next --do 'load_scene {"name": "Streaming"}' --do 'load_scene {"name": "Late night"}'
 weirctl hotkey change "Music down" --keys Ctrl+Shift+Down
+weirctl hotkey change "Music down" --add-keys VolumeDown
 weirctl hotkeys
 weirctl hotkey run "Mic on/off"
 weirctl hotkey remove "Fade out"

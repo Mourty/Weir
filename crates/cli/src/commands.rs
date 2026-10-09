@@ -690,8 +690,8 @@ pub fn hotkeys(c: &mut Client, json: bool) -> Result<()> {
 
 /// Apply the settings in `opts` to `h`. Steps given replace its steps.
 fn apply_hotkey_opts(h: &mut Hotkey, opts: HotkeyOpts) -> Result<()> {
-    if let Some(keys) = opts.keys {
-        h.keys = Some(keys);
+    if !opts.keys.is_empty() {
+        h.keys = opts.keys;
     }
     if !opts.steps.is_empty() {
         h.steps = opts
@@ -744,7 +744,7 @@ pub fn hotkey(c: &mut Client, action: HotkeyCmd, json: bool) -> Result<()> {
                 id: 0,
                 name,
                 enabled: true,
-                keys: None,
+                keys: Vec::new(),
                 steps: Vec::new(),
                 each_press: EachPress::All,
                 on_release: OnRelease::Nothing,
@@ -758,6 +758,7 @@ pub fn hotkey(c: &mut Client, action: HotkeyCmd, json: bool) -> Result<()> {
             hotkey,
             name,
             no_keys,
+            add_keys,
             opts,
         } => {
             let mut h = find_hotkey(c, &hotkey)?;
@@ -765,9 +766,10 @@ pub fn hotkey(c: &mut Client, action: HotkeyCmd, json: bool) -> Result<()> {
                 h.name = name;
             }
             if no_keys {
-                h.keys = None;
+                h.keys.clear();
             }
             apply_hotkey_opts(&mut h, opts)?;
+            h.keys.extend(add_keys);
             save_hotkey(c, &h, "changed", json)
         }
         HotkeyCmd::Remove { hotkey } => act(c, &hotkey, Request::RemoveHotkey, "removed"),
@@ -806,7 +808,10 @@ fn save_hotkey(c: &mut Client, h: &Hotkey, done: &str, json: bool) -> Result<()>
     }
     let saved: Hotkey = serde_json::from_value(v)?;
     let mixer = c.state()?.mixer;
-    let keys = saved.keys.as_deref().unwrap_or("no keys");
+    let keys = match saved.keys.join(", ") {
+        k if k.is_empty() => "no keys".to_string(),
+        k => k,
+    };
     println!("{done} the hotkey '{}' ({keys})", saved.name);
     println!("  {}", describe_hotkey(&saved, &mixer));
     Ok(())

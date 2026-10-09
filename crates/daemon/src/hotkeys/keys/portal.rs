@@ -13,7 +13,7 @@
 //! keys in Weir makes a new shortcut, which the desktop then offers with
 //! the new keys, rather than keeping the old ones it remembers.
 
-use super::{status, Registration};
+use super::{add_problem, status, Held, Registration};
 use crate::controller::Controller;
 use crate::hotkeys::Command;
 use ashpd::desktop::global_shortcuts::{GlobalShortcuts, NewShortcut, Shortcut};
@@ -61,32 +61,53 @@ fn message(desktop: Option<&str>) -> String {
     }
 }
 
-/// The keys the desktop gave each hotkey, and the hotkeys it gave none.
-fn assigned(
-    shortcuts: &[Shortcut],
-    ids: &HashMap<String, HotkeyId>,
-    regs: &[Registration],
-) -> (BTreeMap<HotkeyId, String>, BTreeMap<HotkeyId, String>) {
-    let mut keys = BTreeMap::new();
+/// How a combination is listed in the desktop's settings: the hotkey's
+/// name, numbered after the first when it has several.
+fn description(r: &Registration) -> String {
+    match r.index {
+        0 => r.name.clone(),
+        i => format!("{} ({})", r.name, i + 1),
+    }
+}
+
+/// Note the keys the desktop says `shortcuts` have, by shortcut id. It may
+/// tell of only the ones that changed.
+fn remember(given: &mut HashMap<String, String>, shortcuts: &[Shortcut]) {
     for s in shortcuts {
-        if let Some(&id) = ids.get(s.id()) {
-            if !s.trigger_description().is_empty() {
-                keys.insert(id, s.trigger_description().to_string());
-            }
+        given.insert(s.id().to_string(), s.trigger_description().to_string());
+    }
+}
+
+/// The keys the desktop gave each hotkey's combinations, in order, and the
+/// combinations it gave none.
+fn assigned(
+    given: &HashMap<String, String>,
+    regs: &[Registration],
+) -> (BTreeMap<HotkeyId, Vec<String>>, BTreeMap<HotkeyId, String>) {
+    let mut keys: BTreeMap<HotkeyId, Vec<String>> = BTreeMap::new();
+    let mut problems = BTreeMap::new();
+    for r in regs {
+        let got = given
+            .get(&shortcut_id(r))
+            .map(String::as_str)
+            .unwrap_or_default();
+        let list = keys.entry(r.id).or_default();
+        if list.len() <= r.index {
+            list.resize(r.index + 1, String::new());
+        }
+        list[r.index] = got.to_string();
+        if got.is_empty() {
+            add_problem(
+                &mut problems,
+                r.id,
+                format!(
+                    "The desktop has not given {} to this hotkey yet. Set it in its shortcut \
+                     settings, or pick other keys.",
+                    r.keys
+                ),
+            );
         }
     }
-    let problems = regs
-        .iter()
-        .filter(|r| !keys.contains_key(&r.id))
-        .map(|r| {
-            (
-                r.id,
-                "The desktop has not given this hotkey any keys yet. Set them in its shortcut \
-                 settings, or pick other keys."
-                    .to_string(),
-            )
-        })
-        .collect();
     (keys, problems)
 }
 
@@ -181,6 +202,8 @@ pub async fn run(
         }
         let ids: HashMap<String, HotkeyId> =
             current.iter().map(|r| (shortcut_id(r), r.id)).collect();
+        let mut given = HashMap::new();
+        let mut held = Held::default();
         let mut keys_status = status(KeysMethod::Desktop, message(desktop));
         let mut problems = BTreeMap::new();
         if !current.is_empty() {
@@ -188,7 +211,7 @@ pub async fn run(
             let shortcuts: Vec<NewShortcut> = current
                 .iter()
                 .map(|r| {
-                    NewShortcut::new(shortcut_id(r), r.name.clone())
+                    NewShortcut::new(shortcut_id(r), description(r))
                         .preferred_trigger(r.keys.to_xdg().as_str())
                 })
                 .collect();
@@ -198,7 +221,8 @@ pub async fn run(
                 .and_then(|request| request.response())
             {
                 Ok(bound) => {
-                    let (keys, missing) = assigned(bound.shortcuts(), &ids, &current);
+                    remember(&mut given, bound.shortcuts());
+                    let (keys, missing) = assigned(&given, &current);
                     debug!("the desktop gave these keys: {keys:?}");
                     keys_status.assigned = keys;
                     problems = missing;
@@ -223,12 +247,16 @@ pub async fn run(
             tokio::select! {
                 Some(a) = activated.next() => {
                     if let Some(&id) = ids.get(a.shortcut_id()) {
-                        let _ = tx.send(Command::Press(id));
+                        if held.down(id, a.shortcut_id().to_string()) {
+                            let _ = tx.send(Command::Press(id));
+                        }
                     }
                 }
                 Some(d) = deactivated.next() => {
                     if let Some(&id) = ids.get(d.shortcut_id()) {
-                        let _ = tx.send(Command::Release(id));
+                        if held.up(id, &d.shortcut_id().to_string()) {
+                            let _ = tx.send(Command::Release(id));
+                        }
                     }
                 }
                 Some(_) = restarted.next() => {
@@ -237,7 +265,8 @@ pub async fn run(
                     ))));
                 }
                 Some(c) = changed.next() => {
-                    let (keys, missing) = assigned(c.shortcuts(), &ids, &current);
+                    remember(&mut given, c.shortcuts());
+                    let (keys, missing) = assigned(&given, &current);
                     info!("the desktop's keys for the hotkeys changed: {keys:?}");
                     keys_status.assigned = keys;
                     controller.set_keys_status(keys_status.clone(), missing);
@@ -250,5 +279,37 @@ pub async fn run(
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn reg(id: HotkeyId, index: usize, keys: &str) -> Registration {
+        Registration {
+            id,
+            index,
+            name: "Talk".into(),
+            keys: KeyCombo::parse(keys).unwrap(),
+        }
+    }
+
+    #[test]
+    fn the_desktops_keys_line_up_with_each_combination() {
+        let regs = [reg(1, 0, "F9"), reg(1, 1, "Ctrl+Alt+T"), reg(2, 0, "F10")];
+        assert_eq!(description(&regs[0]), "Talk");
+        assert_eq!(description(&regs[1]), "Talk (2)");
+        // Each combination has its own shortcut, so changing one hotkey's
+        // keys leaves the others' as the desktop has them.
+        assert_ne!(shortcut_id(&regs[0]), shortcut_id(&regs[1]));
+        let mut given = HashMap::new();
+        given.insert(shortcut_id(&regs[0]), "F9, Ctrl+Alt+I".to_string());
+        given.insert(shortcut_id(&regs[1]), String::new());
+        let (keys, problems) = assigned(&given, &regs);
+        assert_eq!(keys[&1], ["F9, Ctrl+Alt+I", ""]);
+        assert_eq!(keys[&2], [""]);
+        assert!(problems[&1].contains("Ctrl+Alt+T"), "{problems:?}");
+        assert!(problems[&2].contains("F10"), "{problems:?}");
     }
 }

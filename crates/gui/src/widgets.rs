@@ -639,6 +639,28 @@ pub fn drop_index(from: usize, index: usize, after: bool) -> Option<usize> {
     (to != from).then_some(to)
 }
 
+/// egui closes a menu on any click, inside it as well as outside, so
+/// clicking a field in one to type into it closed the menu first. Menus
+/// holding fields or a color picker close only on a click outside them, on
+/// Esc, or when one of their items calls `ui.close()`, as each of their
+/// buttons must.
+const FIELD_MENU_CLOSE: egui::PopupCloseBehavior = egui::PopupCloseBehavior::CloseOnClickOutside;
+
+/// A menu button whose menu holds fields: see [`FIELD_MENU_CLOSE`]. Its
+/// submenus close the same way.
+pub fn field_menu(ui: &mut Ui, text: &str, add_contents: impl FnOnce(&mut Ui)) {
+    egui::containers::menu::MenuButton::new(text)
+        .config(egui::containers::menu::MenuConfig::new().close_behavior(FIELD_MENU_CLOSE))
+        .ui(ui, add_contents);
+}
+
+/// A right-click menu holding fields: see [`FIELD_MENU_CLOSE`].
+pub fn field_context_menu(r: &Response, add_contents: impl FnOnce(&mut Ui)) {
+    egui::Popup::context_menu(r)
+        .close_behavior(FIELD_MENU_CLOSE)
+        .show(add_contents);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

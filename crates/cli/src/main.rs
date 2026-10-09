@@ -107,6 +107,8 @@ fn run() -> Result<()> {
         Cmd::Setup { action } => commands::library(c, action, false, json),
         Cmd::Scene { action } => commands::library(c, action, true, json),
         Cmd::Eq { action } => commands::eq(c, action, json),
+        Cmd::Hotkeys => commands::hotkeys(c, json),
+        Cmd::Hotkey { action } => commands::hotkey(c, action, json),
         Cmd::Watch { meters } => commands::watch(c, meters, json),
         Cmd::Raw { method, params } => commands::raw(c, &method, params.as_deref()),
     }

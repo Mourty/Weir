@@ -8,8 +8,12 @@ Without documents it checks docs/API.md and docs/CLI.md.
 Each shell, Python and JavaScript block is run on its own, after the mixer
 is put back as it was when the check started, so the examples can rely on
 the strips and buses a new install has. Use a daemon started with a fresh
-configuration (`weir-daemon --config /tmp/weir-test/config.toml ...`): the
-examples save scenes and presets and change settings.
+configuration and with hotkeys' keys off, since the examples save scenes and
+presets, change settings and add hotkeys:
+
+    WEIR_HOTKEYS=none weir-daemon --config /tmp/weir-test/config.toml ...
+
+Each example starts with one hotkey, "Mute mic", with no keys.
 
 The application examples need an application called Firefox to be playing,
 and use 87 for its id; the check puts in its real one. For instance:
@@ -44,6 +48,8 @@ sys.path.insert(0, str(ROOT / "examples" / "python"))
 import weir  # noqa: E402
 
 BASELINE = "docs-check-baseline"
+BASELINE_HOTKEY = {"name": "Mute mic", "steps": [
+    {"method": "set_strip", "params": {"id": "Mic", "mute": "toggle"}}]}
 FOREVER_SECONDS = 2
 TIMEOUT_SECONDS = 20
 
@@ -74,7 +80,8 @@ def blocks(markdown):
 
 
 def reset(mixer):
-    """Put the mixer, the settings and the rules back as they were."""
+    """Put the mixer, the settings, the rules and the hotkeys back as they
+    were."""
     mixer.batch(
         ("load_setup", {"name": BASELINE}),
         ("load_scene", {"name": BASELINE}),
@@ -83,6 +90,9 @@ def reset(mixer):
                           "meter_rate_hz": 30, "startup": "window",
                           "tray_icon": "color"}),
     )
+    for hotkey in mixer.call("list_hotkeys")["hotkeys"]:
+        mixer.call("remove_hotkey", hotkey=hotkey["id"])
+    mixer.call("set_hotkey", **BASELINE_HOTKEY)
 
 
 def run(argv, forever, env, cwd):
@@ -186,6 +196,8 @@ def main():
     reset(mixer)
     for kind in ("setup", "scene"):
         mixer.call(f"delete_{kind}", name=BASELINE)
+    for hotkey in mixer.call("list_hotkeys")["hotkeys"]:
+        mixer.call("remove_hotkey", hotkey=hotkey["id"])
     print(f"{count - failures} of {count} examples passed")
     sys.exit(1 if failures else 0)
 

@@ -26,3 +26,7 @@ tokio.workspace = true
 dirs.workspace = true
 ksni.workspace = true
 libc.workspace = true
+ashpd.workspace = true
+x11rb.workspace = true
+futures-util.workspace = true
+x11rb-protocol.workspace = true

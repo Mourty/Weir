@@ -3,7 +3,7 @@
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use weir_protocol::{EqBand, EqPreset, MixerState};
+use weir_protocol::{EqBand, EqPreset, Hotkey, MixerState};
 
 /// Daemon settings live in the protocol crate so clients can read and change
 /// them over the control socket.
@@ -123,6 +123,9 @@ pub struct Paths {
     pub eq_presets_file: PathBuf,
     /// Copies of the config file from recent starts.
     pub backups_dir: PathBuf,
+    /// Hotkeys, as JSON: their steps are requests, which may hold `null`,
+    /// and TOML has no null.
+    pub hotkeys_file: PathBuf,
 }
 
 impl Paths {
@@ -144,6 +147,7 @@ impl Paths {
             scenes_dir: base.join("scenes"),
             eq_presets_file: base.join("eq-presets.toml"),
             backups_dir: base.join("backups"),
+            hotkeys_file: base.join("hotkeys.json"),
         }
     }
 }
@@ -186,7 +190,8 @@ fn write_atomic(path: &Path, text: &str) -> Result<()> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
     }
-    let tmp = path.with_extension("toml.tmp");
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    let tmp = path.with_extension(format!("{ext}.tmp"));
     std::fs::write(&tmp, text).with_context(|| format!("writing {}", tmp.display()))?;
     std::fs::rename(&tmp, path).with_context(|| format!("renaming to {}", path.display()))?;
     Ok(())
@@ -374,6 +379,38 @@ pub fn load_eq_presets(path: &Path) -> Result<Vec<EqPreset>> {
             builtin: false,
         })
         .collect())
+}
+
+/// The hotkeys file: a version, for changes to come, and the hotkeys.
+#[derive(Debug, Serialize, Deserialize)]
+struct HotkeysFile {
+    version: u32,
+    hotkeys: Vec<Hotkey>,
+}
+
+/// What [`HotkeysFile::version`] is now.
+const HOTKEYS_VERSION: u32 = 1;
+
+/// Read the hotkeys at `path`; none when there is no file.
+pub fn load_hotkeys(path: &Path) -> Result<Vec<Hotkey>> {
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let text =
+        std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+    let file: HotkeysFile =
+        serde_json::from_str(&text).with_context(|| format!("parsing {}", path.display()))?;
+    Ok(file.hotkeys)
+}
+
+/// Write `hotkeys` to `path`.
+pub fn save_hotkeys(path: &Path, hotkeys: &[Hotkey]) -> Result<()> {
+    let file = HotkeysFile {
+        version: HOTKEYS_VERSION,
+        hotkeys: hotkeys.to_vec(),
+    };
+    let text = serde_json::to_string_pretty(&file).context("serializing hotkeys")?;
+    write_atomic(path, &format!("{text}\n"))
 }
 
 /// Write the user's own equalizer presets to `path`.

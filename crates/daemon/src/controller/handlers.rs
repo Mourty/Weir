@@ -3,6 +3,7 @@
 //! [`Controller::mutate`], which checks nothing broke, records undo and
 //! tells everyone.
 
+use super::hotkeys::Action;
 use super::rules::rule_moves;
 use super::undo_labels::undo_step;
 use super::{Controller, Subscriptions, MAX_SPECTRUM_TARGETS};
@@ -41,6 +42,7 @@ const CAPABILITIES: &[&str] = &[
     "app_rules",
     "system_volumes",
     "external_effects",
+    "hotkeys",
     "toggle",
     "deltas",
     "names",
@@ -52,7 +54,23 @@ impl Controller {
     /// Carry out one request for the connection whose subscriptions are
     /// `subs`, and return its result.
     pub fn handle(&self, req: Request, subs: &mut Subscriptions) -> Result<Value, RpcError> {
-        let step = undo_step(&req, &self.inner.lock().unwrap().mixer);
+        self.handle_as(req, subs, true)
+    }
+
+    /// Carry out one request, with its own step in the undo history when
+    /// `record` is true. Hotkeys run their steps without, and record each
+    /// press as a whole.
+    pub(super) fn handle_as(
+        &self,
+        req: Request,
+        subs: &mut Subscriptions,
+        record: bool,
+    ) -> Result<Value, RpcError> {
+        let step = if record {
+            undo_step(&req, &self.inner.lock().unwrap().mixer)
+        } else {
+            None
+        };
         match req {
             Request::Hello => Ok(to_json(&HelloResult {
                 protocol_version: PROTOCOL_VERSION,
@@ -95,6 +113,12 @@ impl Controller {
             Request::SaveEqPreset(p) => self.save_eq_preset(p),
             Request::DeleteEqPreset(p) => self.delete_eq_preset(p),
             Request::ApplyEqPreset(p) => self.apply_eq_preset(p, step),
+            Request::ListHotkeys => Ok(to_json(&self.hotkeys_info())),
+            Request::SetHotkey(h) => self.set_hotkey(h),
+            Request::RemoveHotkey(r) => self.remove_hotkey(r),
+            Request::PressHotkey(r) => self.hotkey_action(r, Action::Press),
+            Request::ReleaseHotkey(r) => self.hotkey_action(r, Action::Release),
+            Request::RunHotkey(r) => self.hotkey_action(r, Action::Run),
             Request::WatchSpectrum(p) => watch_spectrum(subs, p),
             Request::Undo(p) => self.step_history(p.steps, true),
             Request::Redo(p) => self.step_history(p.steps, false),
@@ -109,6 +133,7 @@ impl Controller {
     fn full_state(&self) -> FullState {
         let eq_presets = self.eq_presets();
         let library = self.library();
+        let hotkeys = self.hotkeys_info();
         let inner = self.inner.lock().unwrap();
         FullState {
             mixer: inner.mixer.clone(),
@@ -121,6 +146,7 @@ impl Controller {
             library,
             system_volumes: inner.system_volumes.clone(),
             inserts: inner.inserts.clone(),
+            hotkeys,
         }
     }
 

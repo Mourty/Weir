@@ -293,6 +293,7 @@ fn read_loop(
                 Notification::LibraryChanged(l) => sh.state.library = l,
                 Notification::SystemVolumesChanged(v) => sh.state.system_volumes = v,
                 Notification::InsertsChanged(v) => sh.state.inserts = v,
+                Notification::HotkeysChanged(h) => sh.state.hotkeys = h,
             },
             ServerMessage::Response(r) => {
                 let answer =

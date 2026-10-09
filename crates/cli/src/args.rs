@@ -173,6 +173,13 @@ pub enum Cmd {
         #[command(subcommand)]
         action: EqCmd,
     },
+    /// List the hotkeys, and how keys reach Weir on this desktop.
+    Hotkeys,
+    /// Add, change, remove or press a hotkey.
+    Hotkey {
+        #[command(subcommand)]
+        action: HotkeyCmd,
+    },
     /// Stream notifications until interrupted.
     Watch {
         /// Include meter updates.
@@ -427,4 +434,81 @@ pub enum EqCmd {
     },
     /// Delete a preset of your own.
     Delete { name: String },
+}
+
+/// What to do with a hotkey.
+#[derive(Subcommand, Debug)]
+pub enum HotkeyCmd {
+    /// Add a hotkey.
+    Add {
+        /// Its name: unique, 60 characters at most.
+        name: String,
+        #[command(flatten)]
+        opts: HotkeyOpts,
+    },
+    /// Change a hotkey. Steps given replace all of its steps.
+    Change {
+        /// The hotkey, by name or id.
+        hotkey: String,
+        /// A new name.
+        #[arg(long)]
+        name: Option<String>,
+        /// Take its keys away, so it is only pressed by name.
+        #[arg(long, conflicts_with = "keys")]
+        no_keys: bool,
+        #[command(flatten)]
+        opts: HotkeyOpts,
+    },
+    /// Remove a hotkey.
+    Remove {
+        /// The hotkey, by name or id.
+        hotkey: String,
+    },
+    /// Do what tapping a hotkey's keys does: press and let go at once.
+    Run {
+        /// The hotkey, by name or id.
+        hotkey: String,
+    },
+    /// Do what pressing a hotkey's keys does, until `release`.
+    Press {
+        /// The hotkey, by name or id.
+        hotkey: String,
+    },
+    /// Do what letting go of a hotkey's keys does.
+    Release {
+        /// The hotkey, by name or id.
+        hotkey: String,
+    },
+}
+
+/// A hotkey's settings, for `hotkey add` and `hotkey change`.
+#[derive(Args, Debug)]
+pub struct HotkeyOpts {
+    /// The keys, such as "Ctrl+Alt+M": any of Ctrl, Alt, Shift and Super,
+    /// and one key.
+    #[arg(long)]
+    pub keys: Option<String>,
+    /// A step: a method and its parameters as JSON, such as
+    /// 'set_strip {"id": "Mic", "mute": "toggle"}', or a whole step as JSON.
+    /// Give it once per step, in order.
+    #[arg(long = "do", value_name = "STEP")]
+    pub steps: Vec<String>,
+    /// all (every step at each press, the default) or next (the next step
+    /// at each press, going round).
+    #[arg(long)]
+    pub each_press: Option<String>,
+    /// What letting go does: nothing, restore (put back what pressing
+    /// changed) or steps (the --release-do steps).
+    #[arg(long)]
+    pub release: Option<String>,
+    /// A step for letting go, like --do. Implies --release steps.
+    #[arg(long = "release-do", value_name = "STEP")]
+    pub release_steps: Vec<String>,
+    /// Do the steps again every this many milliseconds while the keys are
+    /// held (50 to 2000), or 0 not to.
+    #[arg(long)]
+    pub repeat: Option<u32>,
+    /// Whether its keys work: on, off or toggle.
+    #[arg(long)]
+    pub enabled: Option<String>,
 }

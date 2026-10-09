@@ -3,7 +3,7 @@
 //! Every command prints the daemon's JSON answer as it is when `json` is
 //! set, and something for people otherwise.
 
-use crate::args::{BusArgs, EqCmd, EqTarget, LibraryCmd, StripArgs};
+use crate::args::{BusArgs, EqCmd, EqTarget, HotkeyCmd, HotkeyOpts, LibraryCmd, StripArgs};
 use crate::client::Client;
 use crate::parse::*;
 use crate::show;
@@ -679,10 +679,149 @@ pub fn eq(c: &mut Client, action: EqCmd, json: bool) -> Result<()> {
     }
 }
 
+/// List the hotkeys, and how keys reach Weir.
+pub fn hotkeys(c: &mut Client, json: bool) -> Result<()> {
+    let st = c.state()?;
+    call(c, &Request::ListHotkeys, json, |info: HotkeysInfo| {
+        show::hotkeys(&info, &st.mixer);
+        Ok(())
+    })
+}
+
+/// Apply the settings in `opts` to `h`. Steps given replace its steps.
+fn apply_hotkey_opts(h: &mut Hotkey, opts: HotkeyOpts) -> Result<()> {
+    if let Some(keys) = opts.keys {
+        h.keys = Some(keys);
+    }
+    if !opts.steps.is_empty() {
+        h.steps = opts
+            .steps
+            .iter()
+            .map(|s| parse_step(s))
+            .collect::<Result<_>>()?;
+    }
+    if let Some(e) = opts.each_press {
+        h.each_press = parse_each_press(&e)?;
+    }
+    if !opts.release_steps.is_empty() {
+        h.release_steps = opts
+            .release_steps
+            .iter()
+            .map(|s| parse_step(s))
+            .collect::<Result<_>>()?;
+        h.on_release = OnRelease::Steps;
+    }
+    if let Some(r) = opts.release {
+        h.on_release = parse_on_release(&r)?;
+    }
+    match opts.repeat {
+        Some(0) => h.repeat_ms = None,
+        Some(ms) => h.repeat_ms = Some(ms),
+        None => {}
+    }
+    if let Some(f) = flag(opts.enabled.as_deref())? {
+        h.enabled = f.apply(h.enabled);
+    }
+    Ok(())
+}
+
+/// Add, change, remove or press a hotkey.
+pub fn hotkey(c: &mut Client, action: HotkeyCmd, json: bool) -> Result<()> {
+    // Press, let go, run and remove: by id, and say which by name.
+    let act = |c: &mut Client, hotkey: &str, make: fn(HotkeyRef) -> Request, done: &str| {
+        let h = find_hotkey(c, hotkey)?;
+        let req = make(HotkeyRef {
+            hotkey: HotkeyKey::Id(h.id),
+        });
+        call(c, &req, json, |_: Value| {
+            println!("{done} the hotkey '{}'", h.name);
+            Ok(())
+        })
+    };
+    match action {
+        HotkeyCmd::Add { name, opts } => {
+            let mut h = Hotkey {
+                id: 0,
+                name,
+                enabled: true,
+                keys: None,
+                steps: Vec::new(),
+                each_press: EachPress::All,
+                on_release: OnRelease::Nothing,
+                release_steps: Vec::new(),
+                repeat_ms: None,
+            };
+            apply_hotkey_opts(&mut h, opts)?;
+            save_hotkey(c, &h, "added", json)
+        }
+        HotkeyCmd::Change {
+            hotkey,
+            name,
+            no_keys,
+            opts,
+        } => {
+            let mut h = find_hotkey(c, &hotkey)?;
+            if let Some(name) = name {
+                h.name = name;
+            }
+            if no_keys {
+                h.keys = None;
+            }
+            apply_hotkey_opts(&mut h, opts)?;
+            save_hotkey(c, &h, "changed", json)
+        }
+        HotkeyCmd::Remove { hotkey } => act(c, &hotkey, Request::RemoveHotkey, "removed"),
+        HotkeyCmd::Run { hotkey } => act(c, &hotkey, Request::RunHotkey, "ran"),
+        HotkeyCmd::Press { hotkey } => act(c, &hotkey, Request::PressHotkey, "pressed"),
+        HotkeyCmd::Release { hotkey } => act(c, &hotkey, Request::ReleaseHotkey, "let go of"),
+    }
+}
+
+/// The hotkey `text` names: the one with that id when it is a number, or
+/// else the one with that name, ignoring case.
+fn find_hotkey(c: &mut Client, text: &str) -> Result<Hotkey> {
+    let info: HotkeysInfo = serde_json::from_value(c.call(&Request::ListHotkeys)?)?;
+    let text = text.trim();
+    let id = text.parse::<HotkeyId>().ok();
+    info.hotkeys
+        .iter()
+        .find(|h| Some(h.id) == id)
+        .or_else(|| {
+            info.hotkeys
+                .iter()
+                .find(|h| h.name.eq_ignore_ascii_case(text))
+        })
+        .cloned()
+        .ok_or_else(|| match id {
+            Some(id) => anyhow!("no hotkey with id {id}"),
+            None => anyhow!("no hotkey called '{text}'"),
+        })
+}
+
+/// Send `h` to be saved, and say what it does.
+fn save_hotkey(c: &mut Client, h: &Hotkey, done: &str, json: bool) -> Result<()> {
+    let v = c.call(&Request::SetHotkey(h.clone()))?;
+    if json {
+        return print_json(&v);
+    }
+    let saved: Hotkey = serde_json::from_value(v)?;
+    let mixer = c.state()?.mixer;
+    let keys = saved.keys.as_deref().unwrap_or("no keys");
+    println!("{done} the hotkey '{}' ({keys})", saved.name);
+    println!("  {}", describe_hotkey(&saved, &mixer));
+    Ok(())
+}
+
 /// Print notifications until interrupted: as JSON lines with `json`, and
 /// meters as a line of levels otherwise.
 pub fn watch(c: &mut Client, meters: bool, json: bool) -> Result<()> {
-    let mut topics = vec![Topic::State, Topic::Devices, Topic::Apps, Topic::Engine];
+    let mut topics = vec![
+        Topic::State,
+        Topic::Devices,
+        Topic::Apps,
+        Topic::Engine,
+        Topic::Hotkeys,
+    ];
     if meters {
         topics.push(Topic::Meters);
     }

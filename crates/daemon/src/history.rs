@@ -48,6 +48,8 @@ struct Entry {
     state: MixerState,
     /// When the step was last added to, for merging.
     touched: Instant,
+    /// When the step was made.
+    created: Instant,
     at_ms: u64,
 }
 
@@ -88,6 +90,7 @@ impl History {
             key: step.key,
             state: before.clone(),
             touched: Instant::now(),
+            created: Instant::now(),
             at_ms: now_ms(),
         });
         if self.undo.len() > MAX_STEPS {
@@ -104,6 +107,7 @@ impl History {
             key: String::new(),
             state: current.clone(),
             touched: Instant::now(),
+            created: Instant::now(),
             at_ms: e.at_ms,
         });
         self.seal();
@@ -120,9 +124,21 @@ impl History {
             key: String::new(),
             state: current.clone(),
             touched: Instant::now(),
+            created: Instant::now(),
             at_ms: e.at_ms,
         });
         Some(restore)
+    }
+
+    /// Rewrite the states of the steps made since `since` with `f`. A held
+    /// hotkey that puts back what it changed uses this, so that undoing a
+    /// change made while it was held does not bring its change back.
+    pub fn rewrite_since(&mut self, since: Instant, mut f: impl FnMut(&MixerState) -> MixerState) {
+        for e in self.undo.iter_mut().chain(self.redo.iter_mut()) {
+            if e.created >= since {
+                e.state = f(&e.state);
+            }
+        }
     }
 
     /// Stop the most recent step from taking in the next change, so a

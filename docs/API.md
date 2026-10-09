@@ -8,7 +8,8 @@ That makes Weir easy to build on:
 
 * a **Stream Deck** or OpenDeck plugin with mute buttons that light up,
   faders on dials and a key per scene;
-* a **hotkey** that mutes your microphone in every application;
+* **hotkeys** beyond the ones Weir has built in, or a button that shares
+  one of them;
 * a **status bar** module that shows whether you are live;
 * a **MIDI controller** bridge, so real faders move the virtual ones;
 * **scripts**: switch to your streaming scene when OBS starts, duck the
@@ -32,6 +33,7 @@ Python and Node.js are in [`examples/`](../examples/).
   * [Equalizer presets and the analyzer](#equalizer-presets-and-the-analyzer): `list_eq_presets`, `apply_eq_preset`, `save_eq_preset`, `delete_eq_preset`, `watch_spectrum`
   * [Scenes and setups](#scenes-and-setups): `save_scene`, `load_scene`, `list_scenes`, `delete_scene` and the same for setups
   * [Undo](#undo): `undo`, `redo`, `history`
+  * [Hotkeys](#hotkeys): `list_hotkeys`, `set_hotkey`, `remove_hotkey`, `run_hotkey`, `press_hotkey`, `release_hotkey`
   * [Settings and the window](#settings-and-the-window): `set_settings`, `show_window`
 * [Notifications](#notifications)
 * [Types](#types)
@@ -206,7 +208,8 @@ order the mixer shows them.
 
 This works for the `id` of `set_strip`, `set_bus`, `remove_*` and
 `move_*`, every `strip` and `bus` parameter, the keys of `sends`, ducking's
-`triggers` and `buses`, a solo cue bus and the targets of `watch_spectrum`.
+`triggers` and `buses`, a solo cue bus, the targets of `watch_spectrum`
+and the steps of a hotkey.
 
 Ids never change while a strip or bus exists, and are not reused while it
 does. Names can be changed by the user, so a program that keeps a strip
@@ -233,9 +236,10 @@ of the current state.
 ### Steps
 
 Levels can be moved by an amount instead of set: `gain_delta_db` on
-`set_strip` and `set_bus`, `delay_delta_ms` on `set_bus`, `pan_delta` on `set_strip`, `level_delta_db` on
-`set_route` and `volume_delta_db` on `set_app_volume`. That is what a dial
-wants. Given with the absolute value, the step is applied after it.
+`set_strip` and `set_bus`, `delay_delta_ms` on `set_bus`, `pan_delta` on
+`set_strip`, `level_delta_db` on `set_route` and `volume_delta_db` on
+`set_app_volume`. That is what a dial wants. Given with the absolute
+value, the step is applied after it.
 
 ### Units and ranges
 
@@ -254,8 +258,9 @@ Changes to the mix (`set_strip`, `set_bus`, `set_route`, adding, removing
 and moving strips and buses, loading a scene or setup, applying an
 equalizer preset) can be undone, whoever made them. A run of changes to the
 same thing less than 1.5 seconds apart is one step, so a dial turned for a
-while undoes in one go. Application volumes, application rules and settings
-are not part of the history.
+while undoes in one go. A press of a [hotkey](#hotkeys) is one step,
+however many changes it makes. Application volumes, application rules,
+hotkeys themselves and settings are not part of the history.
 
 ## Methods
 
@@ -279,8 +284,8 @@ Returns `{"protocol_version", "daemon_version", "capabilities"}`:
   "capabilities": ["meters", "apps", "eq", "gate", "denoise", "compressor", "ducking",
                    "limiter", "bus_delay", "sends", "upmix", "downmix", "spectrum", "history",
                    "scenes", "setups", "app_rules", "system_volumes",
-                   "external_effects", "toggle", "deltas", "names", "batch",
-                   "describe"]
+                   "external_effects", "hotkeys", "toggle", "deltas", "names",
+                   "batch", "describe"]
 }
 ```
 
@@ -360,6 +365,7 @@ stop when the connection closes.
 | `apps` | `apps_changed` |
 | `engine` | `engine_changed` |
 | `settings` | `settings_changed` |
+| `hotkeys` | `hotkeys_changed` |
 | `window` | `show_window`, `quit`. Only for a mixer window: subscribing to it tells the daemon this connection *is* one. There is one window at a time: while one is open, a second connection subscribing to `window` gets `quit` at once, and the open window gets `show_window`. |
 
 Returns the list of topics now active on this connection.
@@ -633,6 +639,8 @@ weirctl raw set_bus '{"id": "A1", "gain_db": -3}'
 weirctl raw set_bus '{"id": "A1", "gain_delta_db": -1}'
 weirctl raw set_bus '{"id": "Speakers", "mute": "toggle"}'
 weirctl raw set_bus '{"id": "B1", "mono": true}'
+weirctl raw set_bus '{"id": "A1", "delay_ms": 180}'
+weirctl raw set_bus '{"id": "A1", "delay_delta_ms": -5}'
 weirctl raw set_bus '{"id": "B1", "limiter": {"ceiling_db": -3}}'
 weirctl raw set_bus '{"id": "A2", "layout": "surround_5_1", "downmix": {"method": "matrix"}}'
 weirctl raw set_bus '{"id": "A1", "eq": {"enabled": true, "bands": [{"kind": "low_shelf", "freq_hz": 100, "gain_db": 4, "q": 0.707}]}}'
@@ -1194,6 +1202,168 @@ if history["undo"]:
 const { undo } = await mixer.call("history");
 ```
 
+### Hotkeys
+
+A hotkey is keys and what they do: a list of steps, each a request as this
+document describes them, such as `set_strip` with `"mute": "toggle"`. The
+daemon watches for the keys wherever the focus is (how depends on the
+desktop; see [KeysStatus](#keysstatus)). Hotkeys can also be pressed by
+name, with keys or without, so a key on the keyboard and a Stream Deck
+button can share one.
+
+What a press does:
+
+* every step, in order; or with `"each_press": "next"`, only the next one,
+  going round, to step through presets or scenes with one key;
+* with `repeat_ms`, the steps again and again while the keys are held, to
+  turn the music down by holding a key;
+* when the keys are let go, as `on_release` says: nothing, put back what
+  the press changed (`restore`, for push to talk), or steps of its own;
+* a step with `over_ms` fades: `gain_db` in `set_strip` and `set_bus`, and
+  `level_db` in `set_route`, move there gradually.
+
+Each press is one step in the [undo history](#undo-history), labelled
+"NAME (hotkey)", from the keys going down until they are up and its fades
+have finished, however many changes it made. One that puts everything back
+leaves nothing to undo. Putting back sets back only what the hotkey itself
+changed: a fader moved by hand while the key was held stays where it was
+put, and undoing that fader afterwards does not bring the hotkey's change
+back either.
+
+Steps can name strips and buses; the daemon keeps their ids, so renaming
+one does not break a hotkey. A hotkey working on one that was removed is
+listed in `problems`.
+
+There is one list of hotkeys, whatever scene or setup is loaded. The daemon
+keeps it in `~/.config/weir/hotkeys.json`.
+
+#### `list_hotkeys`
+
+Every hotkey, how keys reach Weir on this desktop, and anything wrong.
+Takes no parameters. Returns a [HotkeysInfo](#hotkeysinfo).
+
+```sh
+weirctl raw list_hotkeys
+```
+
+```python
+info = mixer.call("list_hotkeys")
+print(info["keys"]["message"])
+for hotkey in info["hotkeys"]:
+    print(hotkey["name"], hotkey.get("keys", "(no keys)"))
+```
+
+```js
+const { hotkeys, keys } = await mixer.call("list_hotkeys");
+console.log(keys.method, hotkeys.length);
+```
+
+#### `set_hotkey`
+
+Add a hotkey, or replace one. The parameters are the [Hotkey](#hotkey):
+
+| Parameter | Type | |
+|---|---|---|
+| `id` | number, *optional* | The hotkey to replace, whole. Left out, or 0, adds a new one. |
+| `name` | string | Unique, ignoring case, up to 60 characters. |
+| `keys` | string, *optional* | Such as `"Ctrl+Alt+M"`; see [Keys](#keys). Left out, the hotkey is pressed only by name. |
+| `enabled` | boolean, *optional* | `false` switches its keys off; it can still be pressed by name. `true` when left out. |
+| `steps` | list of [HotkeyStep](#hotkeystep) | What a press does, up to 32. |
+| `each_press` | string, *optional* | `all`: every step at each press (the default). `next`: the next step only, back to the first after the last. |
+| `on_release` | string, *optional* | What letting go does: `nothing` (the default), `restore` (put back what the press changed) or `steps` (do `release_steps`). |
+| `release_steps` | list of [HotkeyStep](#hotkeystep), *optional* | With `on_release` `steps`: what letting go does, up to 32. |
+| `repeat_ms` | number, *optional* | Do the steps again every this many milliseconds while the keys are held, 50 to 2000. The first repeat waits 400 ms, like a keyboard's, or `repeat_ms` if that is longer. |
+
+Returns the Hotkey as saved: with its id, its keys written the usual way,
+and strips and buses by id.
+
+A step can be any request that changes something; requests that only ask
+(`get_state`, `list_*`, `history`), `subscribe`, `watch_spectrum` and the
+hotkey methods themselves cannot be steps. A step is checked as the request
+would be, so a misspelled strip is an error now rather than a dead key
+later. Two hotkeys cannot have the same name or the same keys.
+
+```sh
+weirctl raw set_hotkey '{"name": "Push to talk", "keys": "F9", "steps": [{"method": "set_strip", "params": {"id": "Mic", "mute": false}}], "on_release": "restore"}'
+```
+
+Two equalizer presets, a press each, with no keys: for a Stream Deck
+button.
+
+```python
+mixer.call("set_hotkey", name="Mic sound", each_press="next", steps=[
+    {"method": "apply_eq_preset", "params": {"name": "Voice: clarity", "strip": "Mic"}},
+    {"method": "apply_eq_preset", "params": {"name": "Voice: remove rumble", "strip": "Mic"}},
+])
+```
+
+The music dipped while a key is held, gently:
+
+```js
+await mixer.call("set_hotkey", {
+  name: "Dip the music",
+  keys: "Ctrl+Alt+D",
+  steps: [{ method: "set_strip", params: { id: "Music", gain_db: -20 }, over_ms: 300 }],
+  on_release: "restore",
+});
+```
+
+To change one, send it back with its id:
+
+```python
+hotkey = weir.find(mixer.call("list_hotkeys")["hotkeys"], "Mute mic")
+hotkey["keys"] = "Ctrl+Alt+M"
+mixer.call("set_hotkey", **hotkey)
+```
+
+#### `remove_hotkey`
+
+| Parameter | Type | |
+|---|---|---|
+| `hotkey` | number or string | The hotkey's id or name. |
+
+Returns the [HotkeysInfo](#hotkeysinfo) as it is now.
+
+```sh
+weirctl raw remove_hotkey '{"hotkey": "Mute mic"}'
+```
+
+```python
+mixer.call("remove_hotkey", hotkey="Mute mic")
+```
+
+```js
+await mixer.call("remove_hotkey", { hotkey: "Mute mic" });
+```
+
+#### `run_hotkey`, `press_hotkey` and `release_hotkey`
+
+Do what a hotkey's keys do: `run_hotkey` is a tap, down and up at once;
+`press_hotkey` is the keys going down and `release_hotkey` them coming up,
+for a button that is held. They work whether the hotkey has keys or not,
+and whether they are switched on.
+
+| Parameter | Type | |
+|---|---|---|
+| `hotkey` | number or string | The hotkey's id or name. |
+
+Returns the [Hotkey](#hotkey) once its steps are done, so the next request
+sees what they changed; fades carry on after. Pressing a hotkey already
+held, or letting go of one that is not, does nothing.
+
+```sh
+weirctl raw run_hotkey '{"hotkey": "Mute mic"}'
+```
+
+```python
+mixer.call("press_hotkey", hotkey="Mute mic")
+mixer.call("release_hotkey", hotkey="Mute mic")
+```
+
+```js
+await mixer.call("run_hotkey", { hotkey: "Mute mic" });
+```
+
 ### Settings and the window
 
 #### `set_settings`
@@ -1274,6 +1444,7 @@ replace its copy.
 | `apps_changed` | `apps` | list of [AppStream](#appstream) | An application started or stopped playing, moved, or its volume changed. |
 | `engine_changed` | `engine` | [EngineStatus](#enginestatus) | The engine connected, stopped, or changed rate or buffer size. |
 | `settings_changed` | `settings` | [Settings](#settings) | A setting changed. |
+| `hotkeys_changed` | `hotkeys` | [HotkeysInfo](#hotkeysinfo) | A hotkey was added, changed or removed, the desktop gave them other keys, or something went wrong with one, or came right. |
 | `spectrum` | see [`watch_spectrum`](#watch_spectrum) | [Spectrum](#spectrum) | 30 times a second for each strip or bus watched. |
 | `show_window` | `window` | none | The mixer window should come to the front. |
 | `quit` | `window` | none | The daemon is stopping, or another window is already open; the window should close. |
@@ -1312,6 +1483,7 @@ What [`get_state`](#get_state) returns.
 | `library` | [Library](#library) | The saved scenes and setups. |
 | `system_volumes` | [SystemVolumes](#systemvolumes) | The system's volume on Weir's devices. |
 | `inserts` | list of [InsertStatus](#insertstatus) | Whether each strip's and bus's external effects are connected, for those that have them on. Left out when none do. |
+| `hotkeys` | [HotkeysInfo](#hotkeysinfo) | The hotkeys, and how keys reach Weir. |
 
 ### MixerState
 
@@ -1712,6 +1884,63 @@ Volume controls show them on a cubic scale: percent is
 the saved scenes and setups, and the one of each last loaded or saved, if
 any.
 
+### Hotkey
+
+```json
+{"id": 2, "name": "Push to talk", "keys": "F9",
+ "steps": [{"method": "set_strip", "params": {"id": 1, "mute": false}}],
+ "on_release": "restore"}
+```
+
+The fields are those of [`set_hotkey`](#set_hotkey). Fields at their
+default are left out: `enabled` when `true`, `each_press` when `all`,
+`on_release` when `nothing`.
+
+### HotkeyStep
+
+| Field | Type | |
+|---|---|---|
+| `method` | string | The request, such as `set_strip` or `load_scene`. |
+| `params` | object, *optional* | Its parameters, as in the request. |
+| `over_ms` | number, *optional* | Fade over this many milliseconds, up to 60000: for `gain_db` in `set_strip` and `set_bus`, and `level_db` in `set_route`. Anything else in the step changes at once. |
+
+### Keys
+
+Any of `Ctrl`, `Alt`, `Shift` and `Super` (the Windows key), then one key,
+joined by `+`: `Ctrl+Alt+M`, `Super+F1`, `Pause`. Upper or lower case, and
+`Control`, `Win` or `Meta` work too; the daemon writes them back the usual
+way.
+
+Keys: `A` to `Z`, `0` to `9`, `F1` to `F24`, `Space`, `Enter`, `Tab`,
+`Backspace`, `Delete`, `Insert`, `Home`, `End`, `PageUp`, `PageDown`,
+`Up`, `Down`, `Left`, `Right`, `Escape`, `Pause`, `Print`, `ScrollLock`,
+punctuation by name (`Minus`, `Equal`, `Comma`, `Period`, `Slash`,
+`Semicolon`, `Apostrophe`, `BracketLeft`, `BracketRight`, `Backslash`,
+`Grave`), the number pad (`Num0` to `Num9`, `NumPlus`, `NumMinus`,
+`NumMultiply`, `NumDivide`, `NumEnter`, `NumPeriod`), and media keys
+(`Mute`, `VolumeUp`, `VolumeDown`, `MicMute`, `Play`, `Stop`, `PreviousTrack`,
+`NextTrack`).
+
+Keys that type or move around, letters to arrows, need Ctrl, Alt or
+Super, so a hotkey never takes them from what you are typing. Function
+keys, media keys, `Pause`, `Print` and `ScrollLock` can be on their own.
+
+### HotkeysInfo
+
+| Field | Type | |
+|---|---|---|
+| `hotkeys` | list of [Hotkey](#hotkey) | Every hotkey, in the order they were added. |
+| `keys` | [KeysStatus](#keysstatus) | How keys reach Weir on this desktop. |
+| `problems` | list of `{"hotkey": id, "problem": string}` | What is wrong with any of them, in sentences for people: keys another program has, a strip that was removed. Left out when there is nothing wrong. |
+
+### KeysStatus
+
+| Field | Type | |
+|---|---|---|
+| `method` | string | `desktop`: the desktop looks after the keys, through the XDG desktop portal's global shortcuts (KDE Plasma, GNOME 48 and newer, Hyprland). People can see and change the keys in the desktop's settings too. `x11`: Weir watches the keys itself, on an X11 desktop. `unavailable`: neither, so hotkeys are pressed only by name, for instance from a shortcut of the desktop's own running `weirctl hotkey run NAME`. `starting`: not known yet, as at login before the desktop is up. |
+| `message` | string | What that means, in a sentence to show people. |
+| `assigned` | object, *optional* | With `desktop`: the keys the desktop gave each hotkey, by id, as the desktop writes them. Changed in the desktop's settings, they can differ from the hotkey's `keys`. |
+
 ### HistoryInfo
 
 ```json
@@ -1797,17 +2026,25 @@ detent.
 
 ### Push to talk
 
-Unmuted while the key is held.
+Unmuted while the key is held, as a hotkey: Weir watches the key, and
+letting go puts the mute back as it was.
 
-```python
-def key_down():
-    mixer.call("set_strip", id="Mic", mute=False)
-
-def key_up():
-    mixer.call("set_strip", id="Mic", mute=True)
+```sh
+weirctl raw set_hotkey '{"name": "Talk", "keys": "F9", "steps": [{"method": "set_strip", "params": {"id": "Mic", "mute": false}}], "on_release": "restore"}'
 ```
 
-For push to mute, the other way round. A gate (`"gate": {"enabled": true}`)
+A button on something else, such as a Stream Deck, can hold the same
+hotkey:
+
+```python
+def button_down():
+    mixer.call("press_hotkey", hotkey="Talk")
+
+def button_up():
+    mixer.call("release_hotkey", hotkey="Talk")
+```
+
+For push to mute, `"mute": true`. A gate (`"gate": {"enabled": true}`)
 often does the job without any key at all.
 
 ### Level meters on keys or a display

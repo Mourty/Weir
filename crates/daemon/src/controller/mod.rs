@@ -8,11 +8,13 @@
 //! marks the configuration for saving, and tells every client.
 //!
 //! * [`handlers`]: what each request does.
+//! * [`hotkeys`]: keeping hotkeys, and passing presses to the runner.
 //! * [`names`]: looking strips and buses up by name in a request.
 //! * [`undo_labels`]: what each change is called in the undo history.
 //! * [`rules`]: putting applications where their rules say.
 
 mod handlers;
+pub mod hotkeys;
 mod names;
 mod rules;
 mod undo_labels;
@@ -27,7 +29,7 @@ use crate::tray::TrayCommand;
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tokio::sync::broadcast;
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::{debug, info, warn};
@@ -80,6 +82,15 @@ struct Inner {
     system_volumes: SystemVolumes,
     /// Whether each strip's and bus's external effects are connected.
     inserts: Vec<InsertStatus>,
+    /// The hotkeys. `Err` holds why the hotkeys file could not be read, in
+    /// which case it is left alone rather than overwritten.
+    hotkeys: Result<Vec<Hotkey>, String>,
+    /// How keys reach Weir, as the runner last reported.
+    keys_status: KeysStatus,
+    /// Hotkeys whose keys do not work, and why, as the runner reported.
+    key_problems: BTreeMap<HotkeyId, String>,
+    /// Hotkeys that work on strips or buses that are gone, as last told.
+    target_problems: Vec<HotkeyProblem>,
 }
 
 /// The daemon's state and its request handlers, shared by every
@@ -104,6 +115,8 @@ pub struct Controller {
     spectrum_watchers: Mutex<BTreeMap<StripOrBus, usize>>,
     /// Whether Weir starts at login is kept here, not in the settings file.
     login: Box<dyn LoginStart>,
+    /// The hotkey runner, once it runs.
+    hotkey_runner: Mutex<Option<Arc<Mutex<crate::hotkeys::Runner>>>>,
 }
 
 impl Controller {
@@ -143,6 +156,17 @@ impl Controller {
                 setup: None,
                 system_volumes: SystemVolumes::default(),
                 inserts: Vec::new(),
+                hotkeys: config::load_hotkeys(&paths.hotkeys_file).map_err(|e| {
+                    warn!("{e:#}");
+                    format!("{e:#}")
+                }),
+                keys_status: KeysStatus {
+                    method: KeysMethod::Starting,
+                    message: "Weir is getting hotkeys ready.".into(),
+                    assigned: BTreeMap::new(),
+                },
+                key_problems: BTreeMap::new(),
+                target_problems: Vec::new(),
             }),
             engine,
             notify,
@@ -152,6 +176,7 @@ impl Controller {
             window_tx: Mutex::new(None),
             spectrum_watchers: Mutex::new(BTreeMap::new()),
             login: Box::new(login::Systemd),
+            hotkey_runner: Mutex::new(None),
         }
     }
 
@@ -497,6 +522,7 @@ impl Controller {
             }
         }
         self.dirty.store(true, Ordering::Release);
+        self.check_hotkey_targets(&state);
         self.announce(Notification::StateChanged(state));
     }
 

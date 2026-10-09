@@ -3,8 +3,9 @@
 
 use anyhow::{anyhow, bail, Context, Result};
 use weir_protocol::{
-    format_color, parse_color, BusId, BusKind, ChannelLayout, DownmixMethod, Flag, InsertFallback,
-    InsertPoint, MixerState, Startup, StripId, StripKind, TrayIcon, Upmix, COLOR_PRESETS,
+    format_color, parse_color, BusId, BusKind, ChannelLayout, DownmixMethod, EachPress, Flag,
+    HotkeyStep, InsertFallback, InsertPoint, MixerState, OnRelease, Startup, StripId, StripKind,
+    TrayIcon, Upmix, COLOR_PRESETS,
 };
 
 /// on or off, and the usual ways of saying them.
@@ -193,6 +194,48 @@ pub fn find_bus(state: &MixerState, key: &str) -> Result<BusId> {
         .find_bus(key)
         .map(|b| b.id)
         .ok_or_else(|| anyhow!("no bus called '{key}'"))
+}
+
+/// A hotkey's step as given on the command line: `METHOD` or `METHOD
+/// PARAMS`, the parameters as JSON, or a whole step as JSON.
+pub fn parse_step(s: &str) -> Result<HotkeyStep> {
+    let s = s.trim();
+    if s.starts_with('{') {
+        return serde_json::from_str(s).context("a step given as JSON needs a method");
+    }
+    let (method, params) = match s.split_once(char::is_whitespace) {
+        Some((m, p)) => (m, p.trim()),
+        None => (s, ""),
+    };
+    if method.is_empty() {
+        bail!("a step needs a method, such as set_strip");
+    }
+    let params = if params.is_empty() {
+        serde_json::Value::Null
+    } else {
+        serde_json::from_str(params)
+            .with_context(|| format!("the parameters of {method} must be JSON"))?
+    };
+    Ok(HotkeyStep::new(method, params))
+}
+
+/// all or next.
+pub fn parse_each_press(s: &str) -> Result<EachPress> {
+    match s.to_ascii_lowercase().as_str() {
+        "all" => Ok(EachPress::All),
+        "next" => Ok(EachPress::Next),
+        _ => bail!("expected all or next, got '{s}'"),
+    }
+}
+
+/// nothing, restore or steps.
+pub fn parse_on_release(s: &str) -> Result<OnRelease> {
+    match s.to_ascii_lowercase().as_str() {
+        "nothing" => Ok(OnRelease::Nothing),
+        "restore" => Ok(OnRelease::Restore),
+        "steps" => Ok(OnRelease::Steps),
+        _ => bail!("expected nothing, restore or steps, got '{s}'"),
+    }
 }
 
 #[cfg(test)]

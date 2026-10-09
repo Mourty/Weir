@@ -93,6 +93,18 @@ impl Kde {
             .await
     }
 
+    /// Make `keys` shortcut `id`'s default keys: System Settings shows
+    /// them as its default shortcut, checked while it has them, and other
+    /// keys as custom ones.
+    pub async fn set_defaults(&self, id: &str, name: &str, keys: &[i32]) -> zbus::Result<()> {
+        let seqs: Vec<Sequence> = keys.iter().map(|&k| (vec![k, 0, 0, 0],)).collect();
+        // Flag 8: these are the defaults, and the keys themselves stay.
+        self.proxy
+            .call::<_, _, Vec<Sequence>>("setShortcutKeys", &(self.action(id, name), seqs, 8u32))
+            .await
+            .map(drop)
+    }
+
     /// Forget shortcut `id`, keys and all, so it leaves System Settings.
     pub async fn forget(&self, id: &str) -> zbus::Result<bool> {
         self.proxy

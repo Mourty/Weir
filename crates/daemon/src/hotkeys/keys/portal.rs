@@ -279,6 +279,17 @@ async fn settle(kde: &Kde, controller: &Controller, b: &Bound, new: bool, s: &mu
         if let Err(e) = kde.set_keys(&b.shortcut, &b.name, &keys).await {
             warn!("could not give '{}' its keys: {e}", b.name);
         }
+        // Keys given in Weir are the shortcut's defaults, as the first ones
+        // were: otherwise System Settings shows the old default unchecked
+        // and the new keys as custom ones.
+        let given: Vec<i32> = keys
+            .iter()
+            .copied()
+            .filter(|&c| KeyCombo::from_qt(c).is_some())
+            .collect();
+        if let Err(e) = kde.set_defaults(&b.shortcut, &b.name, &given).await {
+            debug!("could not make the keys of '{}' its defaults: {e}", b.name);
+        }
         if refused.is_empty() {
             s.taken.remove(&b.id);
         } else {

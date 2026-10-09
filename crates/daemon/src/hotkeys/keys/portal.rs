@@ -24,8 +24,13 @@ use tokio::sync::watch;
 use tracing::{debug, info, warn};
 use weir_protocol::*;
 
-/// Weir's application id, as in its desktop file and AppStream data.
-const APP_ID: &str = "io.github.mourty.weir";
+/// The name Weir gives itself to the desktop's shortcut service. The
+/// service takes a program's word for its name only when a desktop file of
+/// that name is installed, and Weir's is `weir.desktop`. It is also the name
+/// the service works out by itself when Weir was started from the
+/// application menu, so the keys stay filed under one name however Weir
+/// started: from the menu, at login or from a terminal.
+const DESKTOP_ID: &str = "weir";
 
 /// The shortcut id for `r`: its hotkey's id and a hash of its keys.
 fn shortcut_id(r: &Registration) -> String {
@@ -95,6 +100,48 @@ pub enum Failure {
     Lost(ashpd::Error),
 }
 
+/// Tell the portal which program Weir is, before asking it for anything:
+/// it files shortcuts under that name, and refuses them when it cannot tell.
+/// It only works the name out by itself for programs started from the
+/// application menu, and not for the daemon started at login.
+///
+/// This goes through ashpd's connection, which its shortcut calls also use,
+/// but not through `ashpd::register_host_app`, which takes only names like
+/// `org.example.App`, and Weir's desktop file is not named like that.
+/// Creating `portal` first is fine: that only reads its version, which the
+/// portal does not count as asking for anything.
+async fn register(portal: &GlobalShortcuts<'_>) {
+    let options: HashMap<&str, ashpd::zvariant::Value<'_>> = HashMap::new();
+    let reply = portal
+        .connection()
+        .call_method(
+            Some("org.freedesktop.portal.Desktop"),
+            "/org/freedesktop/portal/desktop",
+            Some("org.freedesktop.host.portal.Registry"),
+            "Register",
+            &(DESKTOP_ID, options),
+        )
+        .await;
+    match reply {
+        Ok(_) => debug!("told the portal that Weir is {DESKTOP_ID}"),
+        Err(ashpd::zbus::Error::MethodError(name, text, _))
+            if name.as_str().starts_with("org.freedesktop.DBus.Error.") =>
+        {
+            // No portal yet, which the caller hears about next, or one
+            // before 1.20, which cannot be told and works it out itself.
+            debug!("the portal was not told which program Weir is: {name} {text:?}");
+        }
+        Err(ashpd::zbus::Error::MethodError(_, Some(text), _))
+            if text.contains("already associated") =>
+        {
+            // Told already, on an earlier try over this connection.
+        }
+        Err(e) => warn!(
+            "could not tell the portal which program Weir is, so it may refuse the hotkeys: {e}"
+        ),
+    }
+}
+
 /// Bind the hotkeys through the portal, and pass their presses on, until
 /// the daemon stops.
 pub async fn run(
@@ -103,18 +150,8 @@ pub async fn run(
     mut regs: watch::Receiver<Vec<Registration>>,
     desktop: Option<&str>,
 ) -> Result<(), Failure> {
-    // Programs outside a sandbox have to say who they are, for the desktop
-    // to file their shortcuts under their name. Older portals cannot be
-    // told, and then work it out themselves.
-    match ashpd::AppID::try_from(APP_ID) {
-        Ok(app) => {
-            if let Err(e) = ashpd::register_host_app(app).await {
-                debug!("could not tell the portal Weir's application id: {e}");
-            }
-        }
-        Err(e) => warn!("{APP_ID} is not a valid application id: {e}"),
-    }
     let portal = GlobalShortcuts::new().await.map_err(Failure::Missing)?;
+    register(&portal).await;
     // ashpd takes a portal that is not running for an old one; asking
     // tells the two apart.
     portal

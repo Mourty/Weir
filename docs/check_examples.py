@@ -13,7 +13,8 @@ presets, change settings and add hotkeys:
 
     WEIR_HOTKEYS=none weir-daemon --config /tmp/weir-test/config.toml ...
 
-Each example starts with one hotkey, "Mute mic", with no keys.
+Each example starts with one hotkey, "Mute mic", with no keys, and one empty
+group of hotkeys, "Streaming".
 
 The application examples need an application called Firefox to be playing,
 and use 87 for its id; the check puts in its real one. For instance:
@@ -90,9 +91,18 @@ def reset(mixer):
                           "meter_rate_hz": 30, "startup": "window",
                           "tray_icon": "color"}),
     )
-    for hotkey in mixer.call("list_hotkeys")["hotkeys"]:
-        mixer.call("remove_hotkey", hotkey=hotkey["id"])
+    clear_hotkeys(mixer)
     mixer.call("set_hotkey", **BASELINE_HOTKEY)
+    mixer.call("add_hotkey_group", name="Streaming")
+
+
+def clear_hotkeys(mixer):
+    """Remove every hotkey and group of hotkeys."""
+    info = mixer.call("list_hotkeys")
+    for hotkey in info["hotkeys"]:
+        mixer.call("remove_hotkey", hotkey=hotkey["id"])
+    for group in info.get("groups", []):
+        mixer.call("remove_hotkey_group", group=group["id"])
 
 
 def run(argv, forever, env, cwd):
@@ -196,8 +206,7 @@ def main():
     reset(mixer)
     for kind in ("setup", "scene"):
         mixer.call(f"delete_{kind}", name=BASELINE)
-    for hotkey in mixer.call("list_hotkeys")["hotkeys"]:
-        mixer.call("remove_hotkey", hotkey=hotkey["id"])
+    clear_hotkeys(mixer)
     print(f"{count - failures} of {count} examples passed")
     sys.exit(1 if failures else 0)
 

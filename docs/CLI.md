@@ -314,9 +314,17 @@ the [control protocol](API.md#hotkeys), so a hotkey can do anything
 | `weirctl hotkey run HOTKEY` | Do what tapping its keys does. |
 | `weirctl hotkey press HOTKEY` | Do what pressing its keys does, until `release`. |
 | `weirctl hotkey release HOTKEY` | Do what letting go of its keys does. |
+| `weirctl hotkey on\|off\|toggle HOTKEY` | Switch its keys on or off. Off, it can still be run by name. |
+| `weirctl hotkey move HOTKEY [--group GROUP] [--to N]` | Move it into a group (`none` for no group), and to place N among the group's hotkeys, counting from 0; last when `--to` is left out. |
+| `weirctl hotkey group add NAME [--off]` | Add a group of hotkeys, last in the list. |
+| `weirctl hotkey group on\|off\|toggle GROUP` | Switch a group's hotkeys' keys on or off. Each hotkey keeps its own switch. |
+| `weirctl hotkey group rename GROUP NAME` | Rename a group. |
+| `weirctl hotkey group move GROUP --to N` | Move a group to place N among the groups. |
+| `weirctl hotkey group remove GROUP` | Remove a group. Its hotkeys stay, in no group. |
 | `weirctl hotkey settings` | Open the desktop's shortcut settings at Weir's hotkeys (KDE Plasma 6.5 and newer). |
 
-HOTKEY is a hotkey's name or id. `add` and `change` take:
+HOTKEY is a hotkey's name or id, and GROUP a group's. `add` and `change`
+take:
 
 | Option | |
 |---|---|
@@ -327,6 +335,7 @@ HOTKEY is a hotkey's name or id. `add` and `change` take:
 | `--release-do STEP` | A step for letting go, like `--do`. |
 | `--repeat MS` | Do the steps again every MS milliseconds while held, 20 to 2000; `0` not to. |
 | `--enabled on\|off\|toggle` | Switch its keys on or off. Off, it can still be run by name. |
+| `--group GROUP` | The group it is in, or `none`. |
 
 ```sh
 weirctl hotkey add "Mic on/off" --keys Ctrl+Alt+M --do 'set_strip {"id": "Mic", "mute": "toggle"}'
@@ -338,6 +347,12 @@ weirctl hotkey change "Music down" --keys Ctrl+Shift+Down
 weirctl hotkey change "Music down" --add-keys VolumeDown
 weirctl hotkeys
 weirctl hotkey run "Mic on/off"
+weirctl hotkey off "Mic on/off"
+weirctl hotkey group add Games
+weirctl hotkey move "Music down" --group Games
+weirctl hotkey move "Talk" --to 0
+weirctl hotkey group off Games
+weirctl hotkey group rename Games Gaming
 weirctl hotkey remove "Fade out"
 ```
 

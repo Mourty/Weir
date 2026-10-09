@@ -553,10 +553,12 @@ the music down, load a scene.
 reach Weir on your desktop (see
 [Your desktop and the keys](#your-desktop-and-the-keys)). For each hotkey:
 
+* the **dots** at its left move it: drag it to another place in the list,
+  or into a group.
 * the **switch** turns its keys on or off. Off, it can still be pressed by
   name.
-* its **keys**, and what it does. **while held**, **repeats** and
-  **cycles** say how it behaves.
+* its **keys**, one set to a line, and what it does. **while held**,
+  **repeats** and **cycles** say how it behaves.
 * **Try** does what pressing and letting go of its keys would.
 * **Edit** changes it, and **×** removes it, after asking.
 
@@ -564,6 +566,24 @@ With no hotkeys yet, **Add a few examples** adds push to talk, muting the
 microphone, music up and down, dipping the music to talk over it, and
 bringing up the window, all switched off: switch on the ones you want, and
 change their keys if you like.
+
+### Groups
+
+A group keeps hotkeys together, and switches them on and off together: a
+group for streaming, say, switched on only while you stream. **+ Add
+group** under the list adds one; type its name and press Enter. Groups
+come after the hotkeys in no group, each with its hotkeys under it.
+
+* Drag a hotkey onto a group's header to put it in the group, or between
+  two of its hotkeys. The group can also be picked under **Group** when
+  editing a hotkey. Dragging a hotkey out among those in no group takes it
+  out of its group.
+* A group's **switch** turns all its hotkeys' keys on or off. Its hotkeys
+  are faded while it is off, and each keeps its own switch for when the
+  group is on again.
+* Drag a group by the dots on its header to put it in another place.
+  **Rename** changes its name, and **×** removes it, after asking; its
+  hotkeys stay, in no group.
 
 ### Making a hotkey
 

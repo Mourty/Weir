@@ -612,9 +612,50 @@ pub fn switch(ui: &mut Ui, on: bool) -> Response {
     response
 }
 
+/// Six dots in two columns, the usual sign that something can be picked up.
+pub fn grip(ui: &mut Ui, hovered: bool) {
+    let (rect, _) = ui.allocate_exact_size(vec2(8.0, 12.0), Sense::hover());
+    let color = if hovered {
+        theme::p().text
+    } else {
+        theme::p().text_dim
+    };
+    for col in 0..2 {
+        for row in 0..3 {
+            let c = rect.left_center() + vec2(2.0 + 4.0 * col as f32, 4.0 * (row as f32 - 1.0));
+            ui.painter().circle_filled(c, 1.2, color);
+        }
+    }
+}
+
+/// Where something at `from` goes when dropped before (or, with `after`,
+/// after) whatever is at `index`, counted once it has been taken out; `None`
+/// when that is where it already is.
+pub fn drop_index(from: usize, index: usize, after: bool) -> Option<usize> {
+    let mut to = index + usize::from(after);
+    if from < to {
+        to -= 1;
+    }
+    (to != from).then_some(to)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dropping_moves_to_the_side_it_is_dropped_on() {
+        // Four in a row; the first dropped on the right half of the third
+        // lands after it.
+        assert_eq!(drop_index(0, 2, true), Some(2));
+        // The last dropped on the left half of the first.
+        assert_eq!(drop_index(3, 0, false), Some(0));
+        // Dropped on either side of itself, or just after the one before:
+        // nowhere to go.
+        assert_eq!(drop_index(1, 1, false), None);
+        assert_eq!(drop_index(1, 1, true), None);
+        assert_eq!(drop_index(1, 0, true), None);
+    }
 
     #[test]
     fn the_scale_runs_the_fader_range() {

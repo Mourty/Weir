@@ -134,21 +134,10 @@ impl App {
         if resp.dnd_release_payload::<StripOrBus>().is_none() {
             return;
         }
-        if let Some(to) = drop_index(from, index, after) {
+        if let Some(to) = crate::widgets::drop_index(from, index, after) {
             self.actions.push(move_request(*dragged, to));
         }
     }
-}
-
-/// Where something at `from` goes when dropped before (or, with `after`,
-/// after) whatever is at `index`, counted once it has been taken out; `None`
-/// when that is where it already is.
-fn drop_index(from: usize, index: usize, after: bool) -> Option<usize> {
-    let mut to = index + usize::from(after);
-    if from < to {
-        to -= 1;
-    }
-    (to != from).then_some(to)
 }
 
 /// The request moving a strip or bus to `index`.
@@ -162,20 +151,6 @@ pub(super) fn move_request(item: StripOrBus, index: usize) -> Request {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn dropping_moves_to_the_side_it_is_dropped_on() {
-        // Four in a row; the first dropped on the right half of the third
-        // lands after it.
-        assert_eq!(drop_index(0, 2, true), Some(2));
-        // The last dropped on the left half of the first.
-        assert_eq!(drop_index(3, 0, false), Some(0));
-        // Dropped on either side of itself, or just after the one before:
-        // nowhere to go.
-        assert_eq!(drop_index(1, 1, false), None);
-        assert_eq!(drop_index(1, 1, true), None);
-        assert_eq!(drop_index(1, 0, true), None);
-    }
 
     #[test]
     fn faders_get_what_the_rest_of_a_strip_leaves() {

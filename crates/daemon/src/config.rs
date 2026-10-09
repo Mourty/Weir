@@ -3,7 +3,9 @@
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use weir_protocol::{EqBand, EqPreset, Hotkey, HotkeyGroup, MixerState};
+use weir_protocol::{
+    hotkey_order, EqBand, EqPreset, Hotkey, HotkeyGroup, HotkeyListItem, MixerState,
+};
 
 /// Daemon settings live in the protocol crate so clients can read and change
 /// them over the control socket.
@@ -381,21 +383,56 @@ pub fn load_eq_presets(path: &Path) -> Result<Vec<EqPreset>> {
         .collect())
 }
 
-/// The hotkeys file: a version, for changes to come, the hotkeys, and
-/// their groups, which files from before groups do not have.
+/// The hotkeys file: a version, for changes to come, the hotkeys, their
+/// groups, and the order of the list, which files from before groups do
+/// not have.
 #[derive(Debug, Serialize, Deserialize)]
 struct HotkeysFile {
     version: u32,
     hotkeys: Vec<Hotkey>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     groups: Vec<HotkeyGroup>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    order: Vec<HotkeyListItem>,
 }
 
-/// Every hotkey and every group of them, each in their order in the list.
+/// Every hotkey and every group of them, and the list they make: see
+/// [`HotkeysInfo`].
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct HotkeyList {
     pub hotkeys: Vec<Hotkey>,
     pub groups: Vec<HotkeyGroup>,
+    pub order: Vec<HotkeyListItem>,
+}
+
+impl HotkeyList {
+    /// Make everything agree after a change: hotkeys in a group that is
+    /// gone are in none, every hotkey in no group and every group has one
+    /// place in `order`, and `hotkeys` and `groups` are in the list's order.
+    pub fn tidy(&mut self) {
+        let groups = self.groups.clone();
+        for h in &mut self.hotkeys {
+            if !groups.iter().any(|g| g.id == h.group) {
+                h.group = 0;
+            }
+        }
+        self.order = hotkey_order(&self.order, &self.hotkeys, &self.groups);
+        let mut hotkeys = Vec::with_capacity(self.hotkeys.len());
+        let mut groups = Vec::with_capacity(self.groups.len());
+        for item in &self.order {
+            match *item {
+                HotkeyListItem::Hotkey(id) => {
+                    hotkeys.extend(self.hotkeys.iter().filter(|h| h.id == id).cloned());
+                }
+                HotkeyListItem::Group(id) => {
+                    groups.extend(self.groups.iter().filter(|g| g.id == id).cloned());
+                    hotkeys.extend(self.hotkeys.iter().filter(|h| h.group == id).cloned());
+                }
+            }
+        }
+        self.hotkeys = hotkeys;
+        self.groups = groups;
+    }
 }
 
 /// What [`HotkeysFile::version`] is now.
@@ -410,10 +447,13 @@ pub fn load_hotkeys(path: &Path) -> Result<HotkeyList> {
         std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
     let file: HotkeysFile =
         serde_json::from_str(&text).with_context(|| format!("parsing {}", path.display()))?;
-    Ok(HotkeyList {
+    let mut list = HotkeyList {
         hotkeys: file.hotkeys,
         groups: file.groups,
-    })
+        order: file.order,
+    };
+    list.tidy();
+    Ok(list)
 }
 
 /// Write `list` to `path`.
@@ -422,6 +462,7 @@ pub fn save_hotkeys(path: &Path, list: &HotkeyList) -> Result<()> {
         version: HOTKEYS_VERSION,
         hotkeys: list.hotkeys.clone(),
         groups: list.groups.clone(),
+        order: list.order.clone(),
     };
     let text = serde_json::to_string_pretty(&file).context("serializing hotkeys")?;
     write_atomic(path, &format!("{text}\n"))

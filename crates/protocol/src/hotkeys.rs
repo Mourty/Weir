@@ -202,17 +202,57 @@ pub fn hotkey_works(h: &Hotkey, groups: &[HotkeyGroup]) -> bool {
             .is_none_or(|g| g.enabled)
 }
 
+/// One place in the list of hotkeys: a hotkey in no group, or a group with
+/// its hotkeys. Written `{"hotkey": 3}` or `{"group": 1}`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum HotkeyListItem {
+    /// A hotkey in no group, by id.
+    Hotkey(HotkeyId),
+    /// A group, by id.
+    Group(HotkeyGroupId),
+}
+
+/// `order` made right for `hotkeys` and `groups`: places for hotkeys or
+/// groups that are not there, or for hotkeys that are in a group, left
+/// out, as are second places for the same one, and any hotkey in no group
+/// or group without a place added at the end, in their order.
+pub fn hotkey_order(
+    order: &[HotkeyListItem],
+    hotkeys: &[Hotkey],
+    groups: &[HotkeyGroup],
+) -> Vec<HotkeyListItem> {
+    let grouped = |h: &Hotkey| groups.iter().any(|g| g.id == h.group);
+    let wanted: Vec<HotkeyListItem> = hotkeys
+        .iter()
+        .filter(|h| !grouped(h))
+        .map(|h| HotkeyListItem::Hotkey(h.id))
+        .chain(groups.iter().map(|g| HotkeyListItem::Group(g.id)))
+        .collect();
+    let mut out: Vec<HotkeyListItem> = Vec::with_capacity(wanted.len());
+    for item in order.iter().chain(&wanted) {
+        if wanted.contains(item) && !out.contains(item) {
+            out.push(*item);
+        }
+    }
+    out
+}
+
 /// Every hotkey, and how the keys reach Weir. What `list_hotkeys` returns
 /// and `hotkeys_changed` carries.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct HotkeysInfo {
-    /// Every hotkey, in their order in the list. Those in a group are
-    /// listed with it, in the same order.
+    /// Every hotkey, in their order in the list, those in a group where
+    /// their group is.
     pub hotkeys: Vec<Hotkey>,
-    /// Every group, in their order in the list, after the hotkeys in no
-    /// group.
+    /// Every group, in their order in the list.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub groups: Vec<HotkeyGroup>,
+    /// The list as it is shown: each hotkey in no group, and each group, in
+    /// the order the person put them in. A group's own hotkeys are listed
+    /// with it, in their order in `hotkeys`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub order: Vec<HotkeyListItem>,
     /// How keys reach Weir on this desktop.
     pub keys: KeysStatus,
     /// What is wrong with any of them, such as keys another program has
@@ -313,8 +353,10 @@ pub struct MoveHotkeyParams {
     /// out, it stays in its group.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group: Option<HotkeyGroupKey>,
-    /// Where it ends up among the hotkeys of its group (or of no group),
-    /// counting from 0. Past the end, or left out, means last.
+    /// Where it ends up, counting from 0: among the hotkeys of its group,
+    /// or, in no group, among the places in the list (each hotkey in no
+    /// group, and each group; see `order` in `list_hotkeys`). Past the end,
+    /// or left out, means last.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub index: Option<usize>,
 }
@@ -364,8 +406,9 @@ pub struct SetHotkeyGroupParams {
 pub struct MoveHotkeyGroupParams {
     /// The group, by id or by name.
     pub group: HotkeyGroupKey,
-    /// Where it ends up among the groups, counting from 0. Past the end
-    /// means last.
+    /// Where it ends up among the places in the list (each hotkey in no
+    /// group, and each group; see `order` in `list_hotkeys`), counting from
+    /// 0. Past the end means last.
     pub index: usize,
 }
 
@@ -728,6 +771,39 @@ mod tests {
         assert!(serde_json::to_value(&h).unwrap().get("group").is_none());
         h.enabled = false;
         assert!(!hotkey_works(&h, &groups));
+    }
+
+    #[test]
+    fn the_order_has_every_place_once() {
+        let hotkey = |id, group| -> Hotkey {
+            serde_json::from_value(json!({"id": id, "name": format!("H{id}"), "steps": [],
+                "group": group}))
+            .unwrap()
+        };
+        // 1 and 3 in no group, 2 in group 5, 4 in a group that is gone.
+        let hotkeys = [hotkey(1, 0), hotkey(2, 5), hotkey(3, 0), hotkey(4, 9)];
+        let groups = [HotkeyGroup {
+            id: 5,
+            name: "Games".into(),
+            enabled: true,
+        }];
+        use HotkeyListItem::{Group, Hotkey as Key};
+        // Kept as given where right; 2 is in its group, 7 and group 8 are
+        // gone, 3 is there twice, and 4 is missing.
+        let order = [Key(3), Group(5), Key(2), Key(7), Group(8), Key(3), Key(1)];
+        assert_eq!(
+            hotkey_order(&order, &hotkeys, &groups),
+            [Key(3), Group(5), Key(1), Key(4)]
+        );
+        // With none given: hotkeys in no group, then groups.
+        assert_eq!(
+            hotkey_order(&[], &hotkeys, &groups),
+            [Key(1), Key(3), Key(4), Group(5)]
+        );
+        assert_eq!(
+            serde_json::to_value([Key(3), Group(5)]).unwrap(),
+            json!([{"hotkey": 3}, {"group": 5}])
+        );
     }
 
     #[test]

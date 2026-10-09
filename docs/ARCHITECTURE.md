@@ -234,10 +234,12 @@ can do whatever the protocol can and needs nothing of its own in the
 engine. The controller keeps the list (`controller/hotkeys.rs`: checking,
 saving to `hotkeys.json`, noticing strips that are gone), and the groups
 with it: every change goes through `edit_hotkeys`, which changes a copy,
-saves it, and only then takes it. The order of the list is the hotkeys'
-order in the file, those of a group kept in theirs, and a hotkey's keys
-work while it and its group are both on (`hotkey_works`), which is all the
-keys layer is told. A **runner**
+saves it, and only then takes it. The list's order is its own, `order`,
+places for each hotkey in no group and each group, so they can be
+arranged among each other; `HotkeyList::tidy` keeps it agreeing with the
+hotkeys and groups after every change, and puts those in its order. A
+hotkey's keys work while it and its group are both on (`hotkey_works`),
+which is all the keys layer is told. A **runner**
 (`hotkeys/runner.rs`) does the work. It is one task with a mailbox that
 key presses, its own repeat and fade timers and a change of hotkeys all
 arrive in; a client pressing a hotkey calls it directly, under its lock,

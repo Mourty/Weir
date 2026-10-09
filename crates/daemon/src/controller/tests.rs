@@ -662,21 +662,51 @@ fn hotkeys_are_ordered_grouped_and_switched() {
     assert_eq!(info["groups"][0]["name"], json!("Streaming"));
     assert_eq!(info["groups"][1]["name"], json!("Games"));
 
-    // Removing a group keeps its hotkeys, in no group.
-    r.ok("remove_hotkey_group", json!({"group": "Games"}));
+    // Removing a group keeps its hotkeys, in no group, where it was.
+    let info = r.ok("remove_hotkey_group", json!({"group": "Games"}));
+    // A is 1, B 2 and C 3.
+    assert_eq!(
+        info["order"],
+        json!([{"group": 2}, {"hotkey": 2}, {"hotkey": 1}])
+    );
     assert!(r
         .call("move_hotkey", json!({"hotkey": "A", "group": "Games"}))
         .is_err());
     r.ok("move_hotkey", json!({"hotkey": "C", "group": 0}));
     assert_eq!(list(&mut r), named(&[("B", 0), ("A", 0), ("C", 0)]));
 
+    // Groups and hotkeys in no group go anywhere among each other.
+    let info = r.ok(
+        "move_hotkey_group",
+        json!({"group": "Streaming", "index": 2}),
+    );
+    assert_eq!(
+        info["order"],
+        json!([{"hotkey": 2}, {"hotkey": 1}, {"group": 2}, {"hotkey": 3}])
+    );
+    let info = r.ok("move_hotkey", json!({"hotkey": "C", "index": 0}));
+    assert_eq!(
+        info["order"],
+        json!([{"hotkey": 3}, {"hotkey": 2}, {"hotkey": 1}, {"group": 2}])
+    );
+    // Into the group, it leaves its place; out again, it takes one.
+    r.ok("move_hotkey", json!({"hotkey": "B", "group": 2}));
+    let info = r.ok(
+        "move_hotkey",
+        json!({"hotkey": "B", "group": 0, "index": 3}),
+    );
+    let order = json!([{"hotkey": 3}, {"hotkey": 1}, {"group": 2}, {"hotkey": 2}]);
+    assert_eq!(info["order"], order);
+    assert_eq!(list(&mut r), named(&[("C", 0), ("A", 0), ("B", 0)]));
+
     // Saved, groups and order too.
     let paths = Paths::resolve(Some(r.dir.join("config.toml")));
     let again = Controller::new(mixer(), None, paths, Settings::default(), Vec::new());
     let names: Vec<String> = again.hotkeys().into_iter().map(|h| h.name).collect();
-    assert_eq!(names, ["B", "A", "C"]);
+    assert_eq!(names, ["C", "A", "B"]);
     assert_eq!(again.hotkey_groups().len(), 1);
     assert_eq!(again.hotkey_groups()[0].name, "Streaming");
+    assert_eq!(to_json(&again.hotkeys_info().order), order);
 }
 
 #[test]

@@ -502,8 +502,9 @@ pub enum HotkeyCmd {
     Move {
         /// The hotkey, by name or id.
         hotkey: String,
-        /// Its place among the hotkeys of its group, counting from 0. Left
-        /// out, it goes last.
+        /// Its place among the hotkeys of its group, or, in no group, among
+        /// the places in the list (each hotkey in no group and each group),
+        /// counting from 0. Left out, it goes last.
         #[arg(long)]
         to: Option<usize>,
         /// Move it into this group, by name or id, or "none" for no group.
@@ -557,7 +558,8 @@ pub enum HotkeyGroupCmd {
     Move {
         /// The group, by name or id.
         group: String,
-        /// Its place among the groups, counting from 0.
+        /// Its place among the places in the list (each hotkey in no group
+        /// and each group), counting from 0.
         #[arg(long)]
         to: usize,
     },

@@ -127,7 +127,11 @@ impl Controller {
     /// Every hotkey, how keys reach Weir, and what is wrong.
     pub fn hotkeys_info(&self) -> HotkeysInfo {
         let inner = self.inner.lock().unwrap();
-        let HotkeyList { hotkeys, groups } = inner.hotkeys.clone().unwrap_or_default();
+        let HotkeyList {
+            hotkeys,
+            groups,
+            order,
+        } = inner.hotkeys.clone().unwrap_or_default();
         let mut problems: Vec<HotkeyProblem> = Vec::new();
         if let Err(e) = &inner.hotkeys {
             problems.push(HotkeyProblem {
@@ -147,6 +151,7 @@ impl Controller {
         HotkeysInfo {
             hotkeys,
             groups,
+            order,
             keys: inner.keys_status.clone(),
             problems,
         }
@@ -351,7 +356,8 @@ impl Controller {
     }
 
     /// Move a hotkey to another place in the list, or into another group:
-    /// to `index` among the hotkeys of its group.
+    /// to `index` among the hotkeys of its group, or, in no group, among the
+    /// places in the list.
     pub(super) fn move_hotkey(&self, p: MoveHotkeyParams) -> Result<Value, RpcError> {
         let id = self.find_hotkey(&p.hotkey)?;
         let group = match &p.group {
@@ -361,9 +367,17 @@ impl Controller {
         self.edit_hotkeys(|list| {
             let pos = list.position(id)?;
             let mut h = list.hotkeys.remove(pos);
+            list.order.retain(|i| *i != HotkeyListItem::Hotkey(id));
             if let Some(group) = group {
                 h.group = group;
             }
+            if h.group == 0 {
+                let at = p.index.unwrap_or(usize::MAX).min(list.order.len());
+                list.order.insert(at, HotkeyListItem::Hotkey(id));
+                list.hotkeys.push(h);
+                return Ok(());
+            }
+            // A group's hotkeys are together in the list, in their order.
             let members: Vec<usize> = (0..list.hotkeys.len())
                 .filter(|&i| list.hotkeys[i].group == h.group)
                 .collect();
@@ -423,6 +437,20 @@ impl Controller {
                 .iter()
                 .position(|g| g.id == id)
                 .ok_or_else(|| no_group(id))?;
+            // Its hotkeys take its place in the list.
+            let members: Vec<HotkeyListItem> = list
+                .hotkeys
+                .iter()
+                .filter(|h| h.group == id)
+                .map(|h| HotkeyListItem::Hotkey(h.id))
+                .collect();
+            if let Some(at) = list
+                .order
+                .iter()
+                .position(|i| *i == HotkeyListItem::Group(id))
+            {
+                list.order.splice(at..=at, members);
+            }
             for h in list.hotkeys.iter_mut().filter(|h| h.group == id) {
                 h.group = 0;
             }
@@ -432,18 +460,14 @@ impl Controller {
         Ok(to_json(&self.hotkeys_info()))
     }
 
-    /// Move a group of hotkeys to `index` among the groups.
+    /// Move a group of hotkeys to `index` among the places in the list.
     pub(super) fn move_hotkey_group(&self, p: MoveHotkeyGroupParams) -> Result<Value, RpcError> {
         let id = self.find_group(&p.group)?;
         self.edit_hotkeys(|list| {
-            let pos = list
-                .groups
-                .iter()
-                .position(|g| g.id == id)
-                .ok_or_else(|| no_group(id))?;
-            let g = list.groups.remove(pos);
-            let at = p.index.min(list.groups.len());
-            list.groups.insert(at, g);
+            list.group_mut(id)?;
+            list.order.retain(|i| *i != HotkeyListItem::Group(id));
+            let at = p.index.min(list.order.len());
+            list.order.insert(at, HotkeyListItem::Group(id));
             Ok(())
         })?;
         Ok(to_json(&self.hotkeys_info()))
@@ -463,6 +487,7 @@ impl Controller {
             })?;
             let mut candidate = list.clone();
             let out = f(&mut candidate)?;
+            candidate.tidy();
             if candidate == *list {
                 return Ok(out);
             }

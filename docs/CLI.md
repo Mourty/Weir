@@ -315,11 +315,11 @@ the [control protocol](API.md#hotkeys), so a hotkey can do anything
 | `weirctl hotkey press HOTKEY` | Do what pressing its keys does, until `release`. |
 | `weirctl hotkey release HOTKEY` | Do what letting go of its keys does. |
 | `weirctl hotkey on\|off\|toggle HOTKEY` | Switch its keys on or off. Off, it can still be run by name. |
-| `weirctl hotkey move HOTKEY [--group GROUP] [--to N]` | Move it into a group (`none` for no group), and to place N among the group's hotkeys, counting from 0; last when `--to` is left out. |
+| `weirctl hotkey move HOTKEY [--group GROUP] [--to N]` | Move it into a group (`none` for no group), and to place N, counting from 0: among the group's hotkeys, or, in no group, among the places in the list (each hotkey in no group and each group). Last when `--to` is left out. |
 | `weirctl hotkey group add NAME [--off]` | Add a group of hotkeys, last in the list. |
 | `weirctl hotkey group on\|off\|toggle GROUP` | Switch a group's hotkeys' keys on or off. Each hotkey keeps its own switch. |
 | `weirctl hotkey group rename GROUP NAME` | Rename a group. |
-| `weirctl hotkey group move GROUP --to N` | Move a group to place N among the groups. |
+| `weirctl hotkey group move GROUP --to N` | Move a group to place N in the list, among the groups and the hotkeys in no group. |
 | `weirctl hotkey group remove GROUP` | Remove a group. Its hotkeys stay, in no group. |
 | `weirctl hotkey settings` | Open the desktop's shortcut settings at Weir's hotkeys (KDE Plasma 6.5 and newer). |
 

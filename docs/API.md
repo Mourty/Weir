@@ -1235,10 +1235,11 @@ one does not break a hotkey. A hotkey working on one that was removed is
 listed in `problems`.
 
 There is one list of hotkeys, whatever scene or setup is loaded, in an
-order of its own: first the hotkeys in no group, then each group with its
-hotkeys. A group is switched on and off as one: while it is off, none of
-its hotkeys' keys work, and each keeps its own switch for when the group
-is on again. The daemon keeps the list in `~/.config/weir/hotkeys.json`.
+order of its own: hotkeys in no group and groups, each group with its
+hotkeys, in any order (`order` in [HotkeysInfo](#hotkeysinfo)). A group is
+switched on and off as one: while it is off, none of its hotkeys' keys
+work, and each keeps its own switch for when the group is on again. The
+daemon keeps the list in `~/.config/weir/hotkeys.json`.
 
 #### `list_hotkeys`
 
@@ -1371,7 +1372,7 @@ Move a hotkey to another place in the list, or into a group.
 |---|---|---|
 | `hotkey` | number or string | The hotkey's id or name. |
 | `group` | number or string, *optional* | The group to move it into, by id or name, or `0` for none. Left out, it stays in its group. |
-| `index` | number, *optional* | Its place among the hotkeys of its group, or of no group, counting from 0. Past the end, or left out, means last. |
+| `index` | number, *optional* | Where it ends up, counting from 0: among the hotkeys of its group, or, in no group, among the places in the list (each hotkey in no group, and each group, as in `order`). Past the end, or left out, means last. |
 
 Returns the [HotkeysInfo](#hotkeysinfo) as it is now.
 
@@ -1491,12 +1492,13 @@ await mixer.call("remove_hotkey_group", { group: "Streaming" });
 
 #### `move_hotkey_group`
 
-Move a group of hotkeys to another place among the groups.
+Move a group of hotkeys to another place in the list, among the groups
+and the hotkeys in no group.
 
 | Parameter | Type | |
 |---|---|---|
 | `group` | number or string | The group's id or name. |
-| `index` | number | Its place among the groups, counting from 0. Past the end means last. |
+| `index` | number | Where it ends up among the places in the list (each hotkey in no group, and each group, as in `order`), counting from 0. Past the end means last. |
 
 Returns the [HotkeysInfo](#hotkeysinfo) as it is now.
 
@@ -2112,8 +2114,9 @@ keys, media keys, `Pause`, `Print` and `ScrollLock` can be on their own.
 
 | Field | Type | |
 |---|---|---|
-| `hotkeys` | list of [Hotkey](#hotkey) | Every hotkey, in their order in the list. Those in a group are listed with it, in the same order. |
-| `groups` | list of [HotkeyGroup](#hotkeygroup), *optional* | Every group, in their order in the list, after the hotkeys in no group. Left out when there are none. |
+| `hotkeys` | list of [Hotkey](#hotkey) | Every hotkey, in their order in the list, those in a group where their group is. |
+| `groups` | list of [HotkeyGroup](#hotkeygroup), *optional* | Every group, in their order in the list. Left out when there are none. |
+| `order` | list, *optional* | The list as it is shown: each hotkey in no group, as `{"hotkey": id}`, and each group, as `{"group": id}`, in the order they were put in. A group's hotkeys are listed with it, in their order in `hotkeys`. Left out when there are no hotkeys. |
 | `keys` | [KeysStatus](#keysstatus) | How keys reach Weir on this desktop. |
 | `problems` | list of `{"hotkey": id, "problem": string}` | What is wrong with any of them, in sentences for people: keys another program has, a strip that was removed. Left out when there is nothing wrong. |
 

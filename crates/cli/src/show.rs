@@ -598,10 +598,9 @@ pub fn hotkeys(info: &HotkeysInfo, mixer: &MixerState) {
         println!("(no hotkeys)");
         return;
     }
-    // The hotkeys in no group, then each group with its own.
-    let table = |group: HotkeyGroupId| {
+    let table = |hotkeys: Vec<&Hotkey>| {
         let mut t = Table::new(&["ID", "Name", "Keys", "What it does"], &[0]);
-        for h in info.hotkeys.iter().filter(|h| h.group == group) {
+        for h in hotkeys {
             // The desktop's keys when it says, since they can be changed
             // there.
             let keys = match info.keys.assigned.get(&h.id) {
@@ -628,18 +627,41 @@ pub fn hotkeys(info: &HotkeysInfo, mixer: &MixerState) {
         }
         t
     };
-    if info.hotkeys.iter().any(|h| h.group == 0) {
-        println!();
-        table(0).print();
-    }
-    for g in &info.groups {
-        println!();
-        let state = if g.enabled { "" } else { ", switched off" };
-        println!("Group '{}' (id {}{state}):", g.name, g.id);
-        if info.hotkeys.iter().any(|h| h.group == g.id) {
-            table(g.id).print();
-        } else {
-            println!("(no hotkeys)");
+    // The list in its order: hotkeys in no group in tables between the
+    // groups, and each group with its own.
+    let order = hotkey_order(&info.order, &info.hotkeys, &info.groups);
+    let mut items = order.iter().peekable();
+    while let Some(item) = items.next() {
+        match *item {
+            HotkeyListItem::Hotkey(id) => {
+                let mut ids = vec![id];
+                while let Some(&&HotkeyListItem::Hotkey(id)) = items.peek() {
+                    ids.push(id);
+                    items.next();
+                }
+                println!();
+                table(
+                    ids.iter()
+                        .filter_map(|id| info.hotkeys.iter().find(|h| h.id == *id))
+                        .collect(),
+                )
+                .print();
+            }
+            HotkeyListItem::Group(id) => {
+                let Some(g) = info.groups.iter().find(|g| g.id == id) else {
+                    continue;
+                };
+                println!();
+                let state = if g.enabled { "" } else { ", switched off" };
+                println!("Group '{}' (id {}{state}):", g.name, g.id);
+                let members: Vec<&Hotkey> =
+                    info.hotkeys.iter().filter(|h| h.group == g.id).collect();
+                if members.is_empty() {
+                    println!("(no hotkeys)");
+                } else {
+                    table(members).print();
+                }
+            }
         }
     }
     for p in &info.problems {

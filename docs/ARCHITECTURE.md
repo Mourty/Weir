@@ -313,6 +313,14 @@ egui viewport), so it can sit on another screen. Colors come from two
 palettes, dark and light, and the window follows the desktop's preference
 through the XDG desktop portal.
 
+The Hotkeys window and the hotkey editor (`hotkeys/`) are viewports too.
+Most hotkeys are made in a simple form (`hotkeys/simple.rs`): one action
+on one strip or bus, turned into steps, and read back from them, so a
+hotkey opens in the form it was made in; any other opens with all its
+options, as a list of steps and as JSON. Requests bring the window no
+replies, so after Save the editor stays open until the daemon's hotkeys
+change, or shows the error the daemon sent after it saved.
+
 ## Testing
 
 * `cargo test --workspace` runs over 150 unit tests without PipeWire:

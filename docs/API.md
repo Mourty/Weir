@@ -33,7 +33,7 @@ Python and Node.js are in [`examples/`](../examples/).
   * [Equalizer presets and the analyzer](#equalizer-presets-and-the-analyzer): `list_eq_presets`, `apply_eq_preset`, `save_eq_preset`, `delete_eq_preset`, `watch_spectrum`
   * [Scenes and setups](#scenes-and-setups): `save_scene`, `load_scene`, `list_scenes`, `delete_scene` and the same for setups
   * [Undo](#undo): `undo`, `redo`, `history`
-  * [Hotkeys](#hotkeys): `list_hotkeys`, `set_hotkey`, `remove_hotkey`, `run_hotkey`, `press_hotkey`, `release_hotkey`
+  * [Hotkeys](#hotkeys): `list_hotkeys`, `set_hotkey`, `remove_hotkey`, `run_hotkey`, `press_hotkey`, `release_hotkey`, `open_shortcut_settings`
   * [Settings and the window](#settings-and-the-window): `set_settings`, `show_window`
 * [Notifications](#notifications)
 * [Types](#types)
@@ -1266,8 +1266,8 @@ Add a hotkey, or replace one. The parameters are the [Hotkey](#hotkey):
 |---|---|---|
 | `id` | number, *optional* | The hotkey to replace, whole. Left out, or 0, adds a new one. |
 | `name` | string | Unique, ignoring case, up to 60 characters. |
-| `keys` | list of strings, *optional* | Such as `["Ctrl+Alt+M"]`, or several, `["F9", "Ctrl+Alt+T"]`, any of which presses the hotkey: up to 8. See [Keys](#keys). One may be given as a string, `"F9"`. Left out or empty, the hotkey is pressed only by name. |
-| `enabled` | boolean, *optional* | `false` switches its keys off; it can still be pressed by name. `true` when left out. |
+| `keys` | list of strings, *optional* | Such as `["Ctrl+Alt+M"]`, or several, `["F9", "Ctrl+Alt+T"]`, any of which presses the hotkey: up to 8. See [Keys](#keys). One may be given as a string, `"F9"`. Left out or empty, the hotkey is pressed only by name. Where the desktop looks after the keys, only the first is suggested to it; more are added in its settings (see [KeysStatus](#keysstatus)). |
+| `enabled` | boolean, *optional* | `false` switches its keys off; it can still be pressed by name. `true` when left out. Where the desktop looks after the keys, it keeps them for a hotkey switched off, once it has had them. |
 | `steps` | list of [HotkeyStep](#hotkeystep) | What a press does, up to 32. |
 | `each_press` | string, *optional* | `all`: every step at each press (the default). `next`: the next step only, back to the first after the last. |
 | `on_release` | string, *optional* | What letting go does: `nothing` (the default), `restore` (put back what the press changed) or `steps` (do `release_steps`). |
@@ -1362,6 +1362,28 @@ mixer.call("release_hotkey", hotkey="Mute mic")
 
 ```js
 await mixer.call("run_hotkey", { hotkey: "Mute mic" });
+```
+
+#### `open_shortcut_settings`
+
+Open the desktop's shortcut settings at Weir's hotkeys, where people change
+their keys and give them more. Takes no parameters. Returns `null`, or an
+error unless [KeysStatus](#keysstatus) says `configurable`.
+
+<!-- not tested: needs a desktop that can open its settings -->
+```sh
+weirctl raw open_shortcut_settings
+```
+
+<!-- not tested: needs a desktop that can open its settings -->
+```python
+if mixer.call("list_hotkeys")["keys"].get("configurable"):
+    mixer.call("open_shortcut_settings")
+```
+
+<!-- not tested: needs a desktop that can open its settings -->
+```js
+await mixer.call("open_shortcut_settings");
 ```
 
 ### Settings and the window
@@ -1937,9 +1959,10 @@ keys, media keys, `Pause`, `Print` and `ScrollLock` can be on their own.
 
 | Field | Type | |
 |---|---|---|
-| `method` | string | `desktop`: the desktop looks after the keys, through the XDG desktop portal's global shortcuts (KDE Plasma, GNOME 48 and newer, Hyprland). People can see and change the keys in the desktop's settings too. `x11`: Weir watches the keys itself, on an X11 desktop. `unavailable`: neither, so hotkeys are pressed only by name, for instance from a shortcut of the desktop's own running `weirctl hotkey run NAME`. `starting`: not known yet, as at login before the desktop is up. |
+| `method` | string | `desktop`: the desktop looks after the keys, through the XDG desktop portal's global shortcuts (KDE Plasma, GNOME 48 and newer, Hyprland). Each hotkey with keys is one entry in the desktop's shortcut settings, suggesting the first of its `keys`, where people change them and add more. `x11`: Weir watches the keys itself, on an X11 desktop. `unavailable`: neither, so hotkeys are pressed only by name, for instance from a shortcut of the desktop's own running `weirctl hotkey run NAME`. `starting`: not known yet, as at login before the desktop is up. |
 | `message` | string | What that means, in a sentence to show people. |
-| `assigned` | object, *optional* | With `desktop`: the keys the desktop gave each hotkey, by id, as the desktop writes them: a list with one entry for each of the hotkey's `keys`, in the same order, and `""` for one the desktop gave no keys. Changed in the desktop's settings, they can differ from the hotkey's `keys`, and one entry can hold several, such as `"F9, Ctrl+Alt+I"`. |
+| `assigned` | object, *optional* | With `desktop`: the keys each hotkey really has, by id, as the desktop writes them, such as `{"1": ["F9", "Ctrl+Alt+I"]}`; an empty list for one it has given none. They can differ from the hotkey's `keys`, since they are changed and added to in the desktop's settings. A hotkey switched off that the desktop never had is left out. |
+| `configurable` | boolean, *optional* | With `desktop`: `true` when [`open_shortcut_settings`](#open_shortcut_settings) can open the desktop's settings at Weir's hotkeys (KDE Plasma 6.5 and newer). |
 
 ### HistoryInfo
 

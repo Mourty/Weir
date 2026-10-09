@@ -577,11 +577,17 @@ to change one. Each strip's and bus's **…** menu has them too, under
 
 * **When I press**: press the keys you want, such as Ctrl or Alt with a
   letter. F keys, media keys and Pause can be used on their own. **Esc**
-  stops recording. **+ Other keys** adds more keys that do the same, any
-  of which work, such as a button on a gaming mouse. **Change** records a
-  set again, and **×** takes it away. With no keys at all, a hotkey can
-  still be pressed by name from `weirctl`, a script or a Stream Deck
-  button.
+  stops recording. **Change** records them again, and **×** takes them
+  away. With no keys at all, a hotkey can still be pressed by name from
+  `weirctl`, a script or a Stream Deck button.
+
+  Where your desktop looks after the keys (see
+  [below](#your-desktop-and-the-keys)), more keys for the same hotkey are
+  added in its settings, and once saved, the hotkey lists every key the
+  desktop has for it. **Add or change keys in System Settings** opens
+  them; **Suggest other keys** gives it the keys you press instead of all
+  of those. On an X11 desktop, **+ Other keys** adds more keys here, any of
+  which work, such as a button on a gaming mouse.
 * **Do this**: what it does, and to which strip or bus.
   * **Mute or unmute**, **Solo**, an effect, or **Send to a bus**: switch
     it each time, always on, always off, or on only **while held**, back
@@ -622,12 +628,19 @@ their order.
 ### Your desktop and the keys
 
 On KDE Plasma, GNOME 48 and newer, and Hyprland, your desktop looks after
-the keys. The first time, it asks you to confirm new ones. They are listed
-in its shortcut settings too, where you can change them or add more: on
-Plasma, **System Settings › Keyboard › Shortcuts › Weir**. Plasma shows the
-keys Weir suggested as the *default shortcut*, with a box to switch it off,
-and keys you add there as *custom shortcuts*. Weir's list shows the keys
-the desktop has.
+the keys. Each hotkey is one entry in its shortcut settings, under the
+hotkey's name: on Plasma, **System Settings › Keyboard › Shortcuts ›
+Weir**. Weir suggests the keys you pressed, and the first time, the desktop
+asks you to confirm them. To give a hotkey more keys, or other ones, change
+its entry there, and Weir lists them. On Plasma 6.5 and newer, **Keys in
+System Settings** under the list opens that page. Plasma shows the keys
+Weir suggested as the *default shortcut*, with a box to switch it off, and
+keys you add there as *custom shortcuts*.
+
+Removing a hotkey removes its entry. A switched-off hotkey keeps its entry
+and keys, ready for when you switch it back on, and the desktop keeps
+those keys for it meanwhile, so other programs do not get them either.
+Examples get their entry when you first switch them on.
 
 On an X11 desktop, Weir watches the keys itself, and a key another program
 already uses is reported in the list. Anywhere else, hotkeys work only by

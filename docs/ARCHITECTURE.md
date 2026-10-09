@@ -250,11 +250,18 @@ The **keys** (`hotkeys/keys/`) come one of two ways. On Wayland no program
 may watch the keyboard, so Weir asks the desktop through the XDG desktop
 portal's global shortcuts (`portal.rs`, with `ashpd`): it suggests keys,
 the desktop decides and says when they go down and up, and people can
-change them in the desktop's settings. A portal session can bind only
-once, so a change of hotkeys closes it and opens a new one; shortcut ids
-carry a hash of the keys, so changed keys are offered afresh. A hotkey
-with several key combinations binds a shortcut for each, and is pressed
-while any of them is held. The portal files shortcuts under the program's
+change them in the desktop's settings. Each hotkey is one shortcut, which
+takes one suggestion, so only its first keys are suggested; people add
+more to the same entry in the desktop's settings, and the window shows
+what the desktop reports. A portal session can bind only once, so a change
+of hotkeys closes it and opens a new one, binding the whole list even when
+empty: the desktop forgets shortcuts left out, which is how a removed
+hotkey leaves its settings. A new session starts with the shortcuts the
+desktop already has, and a switched-off hotkey stays bound if it is one of
+them, so its keys are not lost, but is not bound for the first time while
+off, so examples added switched off do not make the desktop ask about
+keys. Shortcut ids carry a hash of the suggested keys, so changed keys are
+offered afresh. The portal files shortcuts under the program's
 name and refuses them without one, but works the name out only for
 programs started from the application menu, not for the daemon started at
 login. So the daemon first tells the portal it is `weir` (its `Register`

@@ -572,6 +572,13 @@ microphone, music up and down, dipping the music to talk over it, and
 bringing up the window, all switched off: switch on the ones you want, and
 change their keys if you like.
 
+Hotkeys find strips and buses by their names, and one list serves every
+[setup](#scenes-and-setups): a hotkey for "Music" works on the strip
+called Music in whichever setup is loaded. In a setup with no strip of
+that name, that part of the hotkey does nothing, and the list says so; it
+works again once you load a setup that has one. Renaming a strip renames
+it in your hotkeys too.
+
 ### Groups
 
 A group keeps hotkeys together, and switches them on and off together: a

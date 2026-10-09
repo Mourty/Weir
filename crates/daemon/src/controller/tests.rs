@@ -527,24 +527,46 @@ fn strips_and_buses_can_be_named_instead_of_numbered() {
 }
 
 #[test]
-fn hotkeys_are_checked_kept_by_id_and_saved() {
+fn hotkeys_are_checked_kept_by_name_and_saved() {
     let mut r = Rig::new("hotkeys");
     let h = r.ok(
         "set_hotkey",
         json!({
             "name": "Mute mic",
             "keys": "ctrl + alt + m",
-            "steps": [{"method": "set_strip", "params": {"id": "Mic", "mute": "toggle"}}]
+            "steps": [{"method": "set_strip", "params": {"id": "mic", "mute": "toggle"}}]
         }),
     );
     assert_eq!(h["id"], json!(1));
     assert_eq!(h["keys"], json!(["Ctrl+Alt+M"]));
-    // The strip is kept by id, so renaming it does not break the hotkey.
-    assert_eq!(h["steps"][0]["params"]["id"], json!(1));
+    // Strips and buses are kept by name, written as the mixer has them,
+    // however they were given.
+    assert_eq!(h["steps"][0]["params"]["id"], json!("Mic"));
+    let id = |r: &mut Rig| {
+        r.ok("list_hotkeys", json!({}))["hotkeys"][0]["steps"][0]["params"]["id"].clone()
+    };
+    // Renaming the strip renames it in the hotkey, and so does taking the
+    // rename back.
     r.ok("set_strip", json!({"id": "Mic", "name": "Voice"}));
+    assert_eq!(id(&mut r), json!("Voice"));
+    r.ok("undo", json!({}));
+    assert_eq!(id(&mut r), json!("Mic"));
+    r.ok("redo", json!({}));
+    assert_eq!(id(&mut r), json!("Voice"));
     let info = r.ok("list_hotkeys", json!({}));
-    assert_eq!(info["hotkeys"][0]["steps"][0]["params"]["id"], json!(1));
     assert!(info.get("problems").is_none(), "{info}");
+    let route = r.ok(
+        "set_hotkey",
+        json!({
+            "name": "Music on stream",
+            "steps": [{"method": "set_route", "params": {"strip": 2, "bus": "B1", "enabled": true}}]
+        }),
+    );
+    assert_eq!(
+        route["steps"][0]["params"],
+        json!({"strip": "Music", "bus": "Stream Mic", "enabled": true})
+    );
+    r.ok("remove_hotkey", json!({"hotkey": "Music on stream"}));
 
     // A second one with the same name or keys is turned down, even when
     // they are only one of its key combinations.
@@ -566,6 +588,7 @@ fn hotkeys_are_checked_kept_by_id_and_saved() {
         json!({"name": "B", "steps": [{"method": "subscribe", "params": {}}]}),
         json!({"name": "C", "steps": [{"method": "set_strip", "params": {"id": 1, "mute": true}, "over_ms": 100}]}),
         json!({"name": "D", "steps": [{"method": "set_strip", "params": {"id": "Nobody", "mute": true}}]}),
+        json!({"name": "D", "steps": [{"method": "set_strip", "params": {"id": 9, "mute": true}}]}),
         json!({"name": "E", "steps": [{"method": "fly", "params": {}}]}),
     ] {
         assert!(r.call("set_hotkey", bad.clone()).is_err(), "{bad}");
@@ -585,6 +608,115 @@ fn hotkeys_are_checked_kept_by_id_and_saved() {
     let again = Controller::new(mixer(), None, paths, Settings::default(), Vec::new());
     assert_eq!(again.hotkeys().len(), 1);
     assert_eq!(again.hotkeys()[0].name, "Mute mic");
+}
+
+#[test]
+fn hotkeys_work_on_the_strip_of_their_name_in_each_setup() {
+    let mut r = Rig::new("hotkey-setups");
+    r.ok("save_setup", json!({"name": "Home"}));
+    // Another setup, where strip 2 is another strip: removing the last
+    // strip and adding one gives the new one its id.
+    r.ok("remove_strip", json!({"id": "Music"}));
+    let game = r.ok("add_strip", json!({"name": "Game", "kind": "virtual"}));
+    assert_eq!(game["id"], json!(2));
+    r.ok("save_setup", json!({"name": "Gaming"}));
+
+    // A hotkey for a strip only a saved setup has can be made.
+    r.ok(
+        "set_hotkey",
+        json!({
+            "name": "Quiet music",
+            "steps": [{"method": "set_strip", "params": {"id": "Music", "gain_db": -20}}]
+        }),
+    );
+    let problems = |r: &mut Rig| r.ok("list_hotkeys", json!({}))["problems"].clone();
+    let p = problems(&mut r);
+    assert!(
+        p[0]["problem"]
+            .as_str()
+            .unwrap()
+            .contains("no strip called 'Music'"),
+        "{p}"
+    );
+    // Here it does nothing, and above all not to the strip with Music's
+    // id.
+    let step = HotkeyStep::new("set_strip", json!({"id": "Music", "gain_db": -20}));
+    assert!(r.c.run_step(&step).is_err());
+    assert_eq!(r.c.mixer().strip(2).unwrap().gain_db, 0.0);
+
+    // Loading the setup with Music makes it work there. Strip 2 having
+    // another name there is not a rename, whichever way.
+    r.ok("load_setup", json!({"name": "Home"}));
+    assert!(problems(&mut r).is_null());
+    r.c.run_step(&step).unwrap();
+    assert_eq!(r.c.mixer().find_strip("Music").unwrap().gain_db, -20.0);
+    r.ok("load_setup", json!({"name": "Gaming"}));
+    r.ok("undo", json!({}));
+    r.ok("redo", json!({}));
+    let h = r.ok("list_hotkeys", json!({}));
+    assert_eq!(h["hotkeys"][0]["steps"][0]["params"]["id"], json!("Music"));
+
+    // A name no mixer has is turned down.
+    let ghost = json!({
+        "name": "Ghost",
+        "steps": [{"method": "set_strip", "params": {"id": "Guitar", "mute": true}}]
+    });
+    assert_eq!(r.code("set_hotkey", ghost), RpcError::APPLICATION);
+}
+
+#[test]
+fn hotkeys_from_before_names_take_the_names_of_the_mixer_now() {
+    let dir = std::env::temp_dir().join(format!("weir-ctl-hotkeys-v1-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let paths = Paths::resolve(Some(dir.join("config.toml")));
+    let old = json!({
+        "version": 1,
+        "hotkeys": [{
+            "id": 1,
+            "name": "Talk",
+            "steps": [
+                {"method": "set_strip", "params": {"id": 1, "mute": false}},
+                {"method": "set_route", "params": {"strip": 2, "bus": 3, "level_db": -6}},
+                {"method": "set_strip", "params": {"id": 7, "mute": true}}
+            ]
+        }]
+    });
+    std::fs::write(&paths.hotkeys_file, old.to_string()).unwrap();
+    let c = Controller::new(
+        mixer(),
+        None,
+        paths.clone(),
+        Settings::default(),
+        Vec::new(),
+    );
+    let steps = &c.hotkeys()[0].steps;
+    assert_eq!(steps[0].params, json!({"id": "Mic", "mute": false}));
+    assert_eq!(
+        steps[1].params,
+        json!({"strip": "Music", "bus": "Stream Mic", "level_db": -6})
+    );
+    // A strip already gone stays a number, and is said to be removed.
+    assert_eq!(steps[2].params, json!({"id": 7, "mute": true}));
+    let info = c.hotkeys_info();
+    assert!(info.problems[0].problem.contains("removed"), "{info:?}");
+    // Written back once, the old file kept.
+    let saved: Value =
+        serde_json::from_str(&std::fs::read_to_string(&paths.hotkeys_file).unwrap()).unwrap();
+    assert_eq!(saved["version"], json!(2));
+    let copy = paths.backups_dir.join("hotkeys-version-1.json");
+    let kept: Value = serde_json::from_str(&std::fs::read_to_string(copy).unwrap()).unwrap();
+    assert_eq!(kept, old);
+
+    // A file from a newer Weir is left alone, and hotkeys are read-only.
+    std::fs::write(
+        &paths.hotkeys_file,
+        json!({"version": 99, "hotkeys": []}).to_string(),
+    )
+    .unwrap();
+    let c = Controller::new(mixer(), None, paths, Settings::default(), Vec::new());
+    assert!(c.hotkeys_info().problems[0].problem.contains("newer Weir"));
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -889,7 +1021,7 @@ fn settings_go_to_another_mixer_by_name() {
         .find(|h| h["name"] == "Music down")
         .unwrap()
         .clone();
-    assert_eq!(down["steps"][0]["params"]["id"], json!(2), "Media's id");
+    assert_eq!(down["steps"][0]["params"]["id"], json!("Media"));
     assert_eq!(
         info["groups"],
         json!([{"id": 1, "name": "Streaming", "enabled": false}])

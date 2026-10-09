@@ -160,9 +160,9 @@ fn missing_in(
     gone: &mut bool,
 ) {
     let mut params = params.clone();
-    let _ = names::visit_targets(method, &mut params, &mut |kind, v| {
+    let _ = visit_targets::<()>(method, &mut params, &mut |kind, v| {
         match v {
-            Value::String(name) if names::find(m, kind, name).is_none() => {
+            Value::String(name) if find_named(m, kind, name).is_none() => {
                 missing.insert(MissingTarget {
                     kind,
                     name: name.clone(),
@@ -178,7 +178,7 @@ fn missing_in(
 /// `params` with the names `map_strips` and `map_buses` give other names
 /// for replaced.
 fn mapped(method: &str, params: &mut Value, p: &ImportParams) {
-    let _ = names::visit_targets(method, params, &mut |kind, v| {
+    let _ = visit_targets::<()>(method, params, &mut |kind, v| {
         if let Value::String(name) = v {
             let map = match kind {
                 TargetKind::Strip => &p.map_strips,
@@ -257,9 +257,9 @@ impl Controller {
             let mut hotkey = h.clone();
             hotkey.id = 0;
             hotkey.group = 0;
-            for step in hotkey.steps.iter_mut().chain(&mut hotkey.release_steps) {
-                names::name_targets(&step.method, &mut step.params, &mixer);
-            }
+            // Hotkeys keep names; only one saved before they did may still
+            // have an id.
+            hotkey.targets_by_name(&mixer);
             out.push((
                 ExportKind::Hotkey,
                 h.name.clone(),
@@ -830,7 +830,7 @@ impl Controller {
                 if names::find(&here.mixer, kind, to).is_none() {
                     return Err(RpcError::application(format!(
                         "no {} called '{to}'",
-                        names::word(kind)
+                        kind.word()
                     )));
                 }
             }
@@ -860,7 +860,7 @@ impl Controller {
                     };
                     !map.contains_key(&m.name)
                 })
-                .map(|m| format!("{} '{}'", names::word(m.kind), m.name))
+                .map(|m| format!("{} '{}'", m.kind.word(), m.name))
                 .collect();
             if !unmapped.is_empty() {
                 result.skipped.push(format!(

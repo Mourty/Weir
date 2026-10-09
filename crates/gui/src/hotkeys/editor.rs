@@ -80,7 +80,7 @@ impl Editor {
     /// Hotkey `h`, in the simple form when it fits there.
     pub fn edit(h: &Hotkey, state: &FullState) -> Editor {
         let base = Simple::new(Simple::first_target(state), state);
-        let simple = Simple::read(h, &base);
+        let simple = Simple::read(h, &base, &state.mixer);
         Editor {
             id: h.id,
             name: h.name.clone(),
@@ -111,8 +111,9 @@ impl Editor {
     }
 
     /// The hotkey as it stands: what it does, with the name typed (empty
-    /// when none was), keys and switch.
-    fn assemble(&self) -> Hotkey {
+    /// when none was), keys and switch. Its strips and buses are by name,
+    /// those of `mixer`, as the daemon keeps them.
+    fn assemble(&self, mixer: &MixerState) -> Hotkey {
         let mut h = if self.advanced {
             self.full.clone()
         } else {
@@ -123,6 +124,7 @@ impl Editor {
         h.keys = self.keys.clone();
         h.enabled = self.enabled;
         h.group = self.group;
+        h.targets_by_name(mixer);
         h
     }
 
@@ -130,9 +132,9 @@ impl Editor {
     /// form, or else its first step in words.
     fn suggested_name(&self, state: &FullState) -> String {
         let base = Simple::new(Simple::first_target(state), state);
-        let h = self.assemble();
+        let h = self.assemble(&state.mixer);
         let simple = if self.advanced {
-            Simple::read(&h, &base)
+            Simple::read(&h, &base, &state.mixer)
         } else {
             Some(self.simple.clone())
         };
@@ -293,7 +295,7 @@ impl Editor {
                 self.error = None;
             }
             ui.add_space(6.0);
-            let h = self.assemble();
+            let h = self.assemble(&state.mixer);
             egui::Frame::new()
                 .fill(theme::p().section_fill)
                 .corner_radius(5)
@@ -697,7 +699,7 @@ impl Editor {
             self.step_builder(ui, state, true);
         }
         ui.add_space(6.0);
-        self.json_section(ui);
+        self.json_section(ui, &state.mixer);
     }
 
     /// The button to add a step, and once clicked, the simple form to make
@@ -737,7 +739,9 @@ impl Editor {
                         .add_enabled(room, egui::Button::new("Add this step"))
                         .clicked()
                     {
-                        list.push(self.builder.step());
+                        let mut step = self.builder.step();
+                        targets_by_name(&step.method, &mut step.params, &state.mixer);
+                        list.push(step);
                         self.adding = None;
                         self.error = None;
                     }
@@ -750,8 +754,8 @@ impl Editor {
 
     /// The hotkey as JSON, to read or edit: what Weir runs, which the API
     /// documents.
-    fn json_section(&mut self, ui: &mut Ui) {
-        let current = self.assemble();
+    fn json_section(&mut self, ui: &mut Ui, mixer: &MixerState) {
+        let current = self.assemble(mixer);
         let editing = ui.memory(|m| m.has_focus(egui::Id::new("hotkey_json")));
         if !editing && self.json_of.as_ref() != Some(&current) {
             self.json = to_json_text(&current);
@@ -786,7 +790,7 @@ impl Editor {
                     self.enabled = h.enabled;
                     self.group = h.group;
                     self.full = Hotkey { id: self.id, ..h };
-                    self.json_of = Some(self.assemble());
+                    self.json_of = Some(self.assemble(mixer));
                     self.json_error = None;
                     self.error = None;
                 }
@@ -810,7 +814,7 @@ impl Editor {
         ui.horizontal(|ui| {
             if self.advanced {
                 let base = Simple::new(Simple::first_target(state), state);
-                let simple = Simple::read(&self.assemble(), &base);
+                let simple = Simple::read(&self.assemble(&state.mixer), &base, &state.mixer);
                 let r = ui.add_enabled(simple.is_some(), egui::Button::new("Fewer options"));
                 let r = if simple.is_none() {
                     r.on_disabled_hover_text("This hotkey does more than the simple form can show.")
@@ -830,7 +834,7 @@ impl Editor {
                 )
                 .clicked()
             {
-                self.full = self.assemble();
+                self.full = self.assemble(&state.mixer);
                 self.builder = self.simple.clone();
                 self.advanced = true;
             }
@@ -864,7 +868,7 @@ impl Editor {
     /// Check the hotkey and send it to be saved.
     fn save(&mut self, state: &FullState, actions: &mut Vec<Request>) {
         self.recording = None;
-        let mut h = self.assemble();
+        let mut h = self.assemble(&state.mixer);
         match self.checked(state, &mut h) {
             Err(why) => self.error = Some(why),
             Ok(()) => {

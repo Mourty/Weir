@@ -10,6 +10,7 @@
 //! it with the choices made.
 
 use crate::hotkeys::HotkeyKey;
+use crate::targets::TargetKind;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -224,28 +225,6 @@ pub struct InspectImportParams {
     /// The file to read: a `.zip` Weir exported, or one of its `.json`
     /// files on its own.
     pub path: String,
-}
-
-/// Strip or bus.
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-    schemars::JsonSchema,
-)]
-#[serde(rename_all = "snake_case")]
-pub enum TargetKind {
-    /// A strip.
-    Strip,
-    /// A bus.
-    Bus,
 }
 
 /// A strip or bus that something imported names and the mixer has none

@@ -2,12 +2,15 @@
 //! saved, saving them, noticing what is wrong with them, and passing
 //! presses on to the runner, which does the work (see [`crate::hotkeys`]).
 
-use super::{names, Controller, Subscriptions};
+use super::names::{self, Rename};
+use super::{Controller, Subscriptions};
 use crate::config::{self, HotkeyList};
 use crate::history::Step;
 use crate::hotkeys::{Command, Runner};
-use serde_json::Value;
+use serde_json::{json, Value};
+use std::cell::OnceCell;
 use std::collections::BTreeMap;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use tracing::{info, warn};
 use weir_protocol::*;
@@ -211,8 +214,9 @@ impl Controller {
         self.shortcut_settings.notified().await;
     }
 
-    /// Tell clients when the mixer changing made a hotkey point at a strip
-    /// or bus that is gone, or back. Called with every new mixer state.
+    /// Tell clients when the mixer changing left a hotkey naming a strip or
+    /// bus it does not have, or brought one back. Called with every new
+    /// mixer state.
     pub(super) fn check_hotkey_targets(&self, mixer: &MixerState) {
         let changed = {
             let mut inner = self.inner.lock().unwrap();
@@ -229,9 +233,9 @@ impl Controller {
 
     /// `h` checked as `set_hotkey` takes it, apart from how it fits with
     /// the other hotkeys: its name trimmed, its keys parsed and written one
-    /// way, its steps checked, with their strips and buses by id.
+    /// way, its steps checked, with their strips and buses by name.
     pub(super) fn checked_hotkey(&self, mut h: Hotkey) -> Result<Hotkey, RpcError> {
-        let mixer = self.mixer();
+        let mixers = Mixers::new(self.mixer(), &self.paths.setups_dir);
         h.name = h.name.trim().to_string();
         if h.name.is_empty() {
             return Err(RpcError::invalid_params("a hotkey needs a name"));
@@ -264,7 +268,7 @@ impl Controller {
                 )));
             }
             for step in steps.iter_mut() {
-                check_step(step, &mixer)?;
+                check_step(step, &mixers)?;
             }
         }
         if h.on_release != OnRelease::Steps {
@@ -491,28 +495,63 @@ impl Controller {
         &self,
         f: impl FnOnce(&mut HotkeyList) -> Result<T, RpcError>,
     ) -> Result<T, RpcError> {
-        let out = {
-            let mut inner = self.inner.lock().unwrap();
-            let list = inner.hotkeys.as_mut().map_err(|e| {
-                RpcError::application(format!("hotkeys are read-only until this is fixed: {e}"))
-            })?;
-            let mut candidate = list.clone();
-            let out = f(&mut candidate)?;
-            candidate.tidy();
-            if candidate == *list {
-                return Ok(out);
-            }
-            config::save_hotkeys(&self.paths.hotkeys_file, &candidate)
-                .map_err(|e| RpcError::application(format!("{e:#}")))?;
-            *list = candidate.clone();
-            inner
-                .key_problems
-                .retain(|id, _| candidate.hotkeys.iter().any(|h| h.id == *id));
-            inner.target_problems = target_problems(&candidate.hotkeys, &inner.mixer);
-            out
-        };
-        self.hotkeys_changed();
+        let (out, changed) = self.edit_hotkey_list(f)?;
+        if changed {
+            self.hotkeys_changed();
+        }
         Ok(out)
+    }
+
+    /// Change the hotkeys with `f` and save them, telling no one. Returns
+    /// what `f` did, and whether anything changed.
+    fn edit_hotkey_list<T>(
+        &self,
+        f: impl FnOnce(&mut HotkeyList) -> Result<T, RpcError>,
+    ) -> Result<(T, bool), RpcError> {
+        let mut inner = self.inner.lock().unwrap();
+        let list = inner.hotkeys.as_mut().map_err(|e| {
+            RpcError::application(format!("hotkeys are read-only until this is fixed: {e}"))
+        })?;
+        let mut candidate = list.clone();
+        let out = f(&mut candidate)?;
+        candidate.tidy();
+        if candidate == *list {
+            return Ok((out, false));
+        }
+        config::save_hotkeys(&self.paths.hotkeys_file, &candidate)
+            .map_err(|e| RpcError::application(format!("{e:#}")))?;
+        *list = candidate.clone();
+        inner
+            .key_problems
+            .retain(|id, _| candidate.hotkeys.iter().any(|h| h.id == *id));
+        inner.target_problems = target_problems(&candidate.hotkeys, &inner.mixer);
+        Ok((out, true))
+    }
+
+    /// Strips and buses were renamed: hotkeys naming them take the new
+    /// names, so they go on working on them. The runner need not hear of
+    /// it, since it reads a hotkey afresh at each press; and it must not,
+    /// since a hotkey's own step may be the rename.
+    pub(super) fn follow_renames(&self, renamed: &[Rename]) {
+        if renamed.is_empty() {
+            return;
+        }
+        let edited = self.edit_hotkey_list(|list| {
+            for h in &mut list.hotkeys {
+                for step in h.all_steps_mut() {
+                    names::rename_targets(&step.method, &mut step.params, renamed);
+                }
+            }
+            Ok(())
+        });
+        match edited {
+            Ok(((), true)) => {
+                info!("hotkeys follow the renamed strips and buses");
+                self.announce(Notification::HotkeysChanged(self.hotkeys_info()));
+            }
+            Ok(((), false)) => {}
+            Err(e) => warn!("hotkeys could not follow a rename: {}", e.message),
+        }
     }
 
     /// Press, let go of, or tap a hotkey, for a client. Answers with the
@@ -576,11 +615,28 @@ impl Controller {
         self.announce(Notification::HotkeysChanged(self.hotkeys_info()));
     }
 
+    /// `step` with its strips and buses by id, as the mixer now has them:
+    /// a hotkey keeps names, and runs on whatever has those names when it
+    /// is pressed.
+    pub fn step_by_id(&self, step: &HotkeyStep) -> Result<HotkeyStep, RpcError> {
+        let mixer = self.mixer();
+        let mut step = step.clone();
+        visit_targets(&step.method, &mut step.params, &mut |kind, v| {
+            if let Value::String(name) = v {
+                let id =
+                    find_named(&mixer, kind, name).ok_or_else(|| names::no_such(kind, name))?;
+                *v = json!(id);
+            }
+            Ok(())
+        })?;
+        Ok(step)
+    }
+
     /// Carry out one of a hotkey's steps, as a client's request would be,
     /// but without its own entry in the undo history: the runner records
     /// each press as a whole.
     pub fn run_step(&self, step: &HotkeyStep) -> Result<Value, RpcError> {
-        let req = parse_step(step)?;
+        let req = parse_step(&self.step_by_id(step)?)?;
         if !allowed_in_hotkey(&req) {
             return Err(RpcError::invalid_params(format!(
                 "{} cannot be a hotkey's step",
@@ -591,13 +647,22 @@ impl Controller {
     }
 
     /// Record a press of a hotkey, from `before` to `after`, as one step
-    /// in the undo history.
-    pub fn record_change(&self, label: String, before: &MixerState, after: &MixerState) {
+    /// in the undo history; `whole` when it loaded a setup (see
+    /// [`Step::whole`]).
+    pub fn record_change(
+        &self,
+        label: String,
+        before: &MixerState,
+        after: &MixerState,
+        whole: bool,
+    ) {
+        let step = Step::single(label);
+        let step = if whole { step.whole_mixer() } else { step };
         let info = {
             let mut inner = self.inner.lock().unwrap();
             inner
                 .history
-                .record(Step::single(label), before, after)
+                .record(step, before, after)
                 .then(|| inner.history.info())
         };
         if let Some(info) = info {
@@ -685,12 +750,84 @@ impl HotkeyList {
     }
 }
 
+/// Where a hotkey's strips and buses are looked for when it is saved: in
+/// the mixer now, then in each saved setup, read only when a name is not
+/// in the mixer now. A hotkey may be meant for another setup.
+struct Mixers<'a> {
+    here: MixerState,
+    setups_dir: &'a Path,
+    setups: OnceCell<Vec<MixerState>>,
+}
+
+impl<'a> Mixers<'a> {
+    fn new(here: MixerState, setups_dir: &'a Path) -> Self {
+        Self {
+            here,
+            setups_dir,
+            setups: OnceCell::new(),
+        }
+    }
+
+    fn setups(&self) -> &[MixerState] {
+        self.setups.get_or_init(|| {
+            config::list_saved(self.setups_dir)
+                .iter()
+                .filter_map(|name| config::load_saved(self.setups_dir, name, "setup").ok())
+                .collect()
+        })
+    }
+
+    /// The strip or bus `key` names, as its name and id in the first mixer
+    /// that has it.
+    fn find(&self, kind: TargetKind, key: &str) -> Option<(String, u32)> {
+        let found = |m: &MixerState| {
+            let id = find_named(m, kind, key)?;
+            Some((target_name(m, kind, id)?.to_string(), id))
+        };
+        found(&self.here).or_else(|| self.setups().iter().find_map(found))
+    }
+
+    /// `v`, a strip or bus given by id or by name, as its name: an id is
+    /// one in the mixer now, and a name may be one only a setup has.
+    fn name(&self, kind: TargetKind, v: &mut Value) -> Result<(), RpcError> {
+        match v {
+            Value::Number(n) => {
+                let id = n.as_u64().and_then(|id| u32::try_from(id).ok());
+                let name = id
+                    .and_then(|id| target_name(&self.here, kind, id))
+                    .ok_or_else(|| {
+                        RpcError::application(format!("no {} with id {n}", kind.word()))
+                    })?;
+                *v = Value::String(name.to_string());
+            }
+            Value::String(key) => {
+                let (name, _) = self
+                    .find(kind, key)
+                    .ok_or_else(|| names::no_such(kind, key))?;
+                *v = Value::String(name);
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+}
+
 /// Check one step: a request a hotkey may make, with its strips and buses
-/// looked up by name and kept by id, and a fade only where one works.
-fn check_step(step: &mut HotkeyStep, mixer: &MixerState) -> Result<(), RpcError> {
+/// kept by name, and a fade only where one works.
+fn check_step(step: &mut HotkeyStep, mixers: &Mixers) -> Result<(), RpcError> {
     step.method = step.method.trim().to_string();
-    names::resolve_names(&step.method, &mut step.params, mixer)?;
-    let req = parse_step(step).map_err(|e| {
+    visit_targets(&step.method, &mut step.params, &mut |kind, v| {
+        mixers.name(kind, v)
+    })?;
+    // The request is checked with ids, as it runs.
+    let mut by_id = step.clone();
+    let _ = visit_targets::<()>(&by_id.method, &mut by_id.params, &mut |kind, v| {
+        if let Some((_, id)) = v.as_str().and_then(|name| mixers.find(kind, name)) {
+            *v = json!(id);
+        }
+        Ok(())
+    });
+    let req = parse_step(&by_id).map_err(|e| {
         RpcError::invalid_params(format!("the step {}: {}", step.method, e.message))
     })?;
     if !allowed_in_hotkey(&req) {
@@ -716,26 +853,52 @@ fn check_step(step: &mut HotkeyStep, mixer: &MixerState) -> Result<(), RpcError>
     Ok(())
 }
 
-/// The hotkeys whose steps work on a strip or bus that `mixer` no longer
-/// has.
+/// The hotkeys naming a strip or bus that `mixer` does not have: one that
+/// was removed, or one in another setup.
 fn target_problems(hotkeys: &[Hotkey], mixer: &MixerState) -> Vec<HotkeyProblem> {
     hotkeys
         .iter()
-        .filter(|h| {
-            h.steps
-                .iter()
-                .chain(&h.release_steps)
-                .flat_map(step_targets)
-                .any(|t| match t {
-                    StripOrBus::Strip(id) => mixer.strip(id).is_none(),
-                    StripOrBus::Bus(id) => mixer.bus(id).is_none(),
-                })
-        })
-        .map(|h| HotkeyProblem {
-            hotkey: h.id,
-            problem: "It works on a strip or bus that was removed, so part of it does nothing. \
-                      Edit it to pick another."
-                .into(),
+        .filter_map(|h| {
+            let mut missing: Vec<String> = Vec::new();
+            let mut removed = false;
+            for (kind, v) in h.all_steps().flat_map(HotkeyStep::targets) {
+                match &v {
+                    Value::String(name) if find_named(mixer, kind, name).is_none() => {
+                        let what = format!("{} called '{name}'", kind.word());
+                        if !missing.contains(&what) {
+                            missing.push(what);
+                        }
+                    }
+                    // Only a hotkey saved before hotkeys kept names, whose
+                    // strip was gone then.
+                    Value::Number(n)
+                        if n.as_u64()
+                            .and_then(|id| u32::try_from(id).ok())
+                            .and_then(|id| target_name(mixer, kind, id))
+                            .is_none() =>
+                    {
+                        removed = true
+                    }
+                    _ => {}
+                }
+            }
+            let problem = if !missing.is_empty() {
+                format!(
+                    "There is no {} now, so part of it does nothing. It works again with a \
+                     setup that has one, or edit it to pick another.",
+                    missing.join(" or ")
+                )
+            } else if removed {
+                "It works on a strip or bus that was removed, so part of it does nothing. \
+                 Edit it to pick another."
+                    .into()
+            } else {
+                return None;
+            };
+            Some(HotkeyProblem {
+                hotkey: h.id,
+                problem,
+            })
         })
         .collect()
 }

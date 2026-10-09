@@ -134,6 +134,11 @@ impl Controller {
         app_rules: Vec<AppRule>,
     ) -> Self {
         let (notify, _) = broadcast::channel(512);
+        let hotkeys = config::load_hotkeys(&paths.hotkeys_file, &paths.backups_dir, &mixer)
+            .map_err(|e| {
+                warn!("{e:#}");
+                format!("{e:#}")
+            });
         Self {
             inner: Mutex::new(Inner {
                 mixer,
@@ -160,10 +165,7 @@ impl Controller {
                 setup: None,
                 system_volumes: SystemVolumes::default(),
                 inserts: Vec::new(),
-                hotkeys: config::load_hotkeys(&paths.hotkeys_file).map_err(|e| {
-                    warn!("{e:#}");
-                    format!("{e:#}")
-                }),
+                hotkeys,
                 keys_status: KeysStatus {
                     method: KeysMethod::Starting,
                     message: "Weir is getting hotkeys ready.".into(),
@@ -452,21 +454,54 @@ impl Controller {
 
     /// Apply a change to the mixer, recording it in the undo history as
     /// `step` when given. `f` changes a copy; if it fails nothing changes.
-    /// Returns what `f` returned, as JSON.
+    /// Returns what `f` returned, as JSON. Hotkeys follow the strips and
+    /// buses it renames.
     fn mutate<T: serde::Serialize>(
         &self,
         step: Option<Step>,
         f: impl FnOnce(&mut MixerState) -> Result<T, RpcError>,
     ) -> Result<Value, RpcError> {
-        let (result, state, history) = {
+        self.change(step, false, f)
+    }
+
+    /// Like [`Self::mutate`], for putting another mixer in place of this
+    /// one, as loading a setup does: a strip that keeps its id may be
+    /// another strip there, so none is taken as renamed.
+    fn replace_mixer<T: serde::Serialize>(
+        &self,
+        step: Option<Step>,
+        f: impl FnOnce(&mut MixerState) -> Result<T, RpcError>,
+    ) -> Result<Value, RpcError> {
+        self.change(step, true, f)
+    }
+
+    fn change<T: serde::Serialize>(
+        &self,
+        step: Option<Step>,
+        whole: bool,
+        f: impl FnOnce(&mut MixerState) -> Result<T, RpcError>,
+    ) -> Result<Value, RpcError> {
+        let (result, state, history, renamed) = {
             let mut inner = self.inner.lock().unwrap();
             let mut candidate = inner.mixer.clone();
             let result = f(&mut candidate)?;
             candidate.normalize();
             let before = std::mem::replace(&mut inner.mixer, candidate.clone());
+            let step = step.map(|s| if whole { s.whole_mixer() } else { s });
             let changed = step.is_some_and(|s| inner.history.record(s, &before, &candidate));
-            (result, candidate, changed.then(|| inner.history.info()))
+            let renamed = if whole {
+                Vec::new()
+            } else {
+                names::renames(&before, &candidate)
+            };
+            (
+                result,
+                candidate,
+                changed.then(|| inner.history.info()),
+                renamed,
+            )
         };
+        self.follow_renames(&renamed);
         self.push_state(state);
         if let Some(info) = history {
             self.announce(Notification::HistoryChanged(info));
@@ -477,10 +512,13 @@ impl Controller {
     /// Undo (`back`) or redo up to `steps` steps.
     fn step_history(&self, steps: Option<u32>, back: bool) -> Result<Value, RpcError> {
         let steps = steps.unwrap_or(1).clamp(1, 100);
-        let (state, info, labels) = {
+        let (state, info, labels, renamed) = {
             let mut inner = self.inner.lock().unwrap();
+            let start = inner.mixer.clone();
+            let mut whole = false;
             let mut labels = Vec::new();
             for _ in 0..steps {
+                whole |= inner.history.next_is_whole(back);
                 let label = {
                     let info = inner.history.info();
                     let list = if back { info.undo } else { info.redo };
@@ -507,8 +545,16 @@ impl Controller {
                     "nothing to redo"
                 }));
             }
-            (inner.mixer.clone(), inner.history.info(), labels)
+            // Undoing a rename takes the old name back, in hotkeys too;
+            // not undoing a setup loaded, which only looks like renames.
+            let renamed = if whole {
+                Vec::new()
+            } else {
+                names::renames(&start, &inner.mixer)
+            };
+            (inner.mixer.clone(), inner.history.info(), labels, renamed)
         };
+        self.follow_renames(&renamed);
         info!(
             "{} {}",
             if back { "undid" } else { "redid" },

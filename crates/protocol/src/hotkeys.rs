@@ -8,8 +8,9 @@
 //! This module also puts hotkeys into words, for the window and `weirctl`
 //! to show the same descriptions.
 
-use crate::model::{MixerState, StripOrBus};
+use crate::model::MixerState;
 use crate::rpc::Flag;
+use crate::targets::{targets_by_id, targets_by_name, visit_targets, TargetKind};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -127,8 +128,10 @@ pub struct HotkeyStep {
     /// The method, such as `set_strip` or `load_scene`.
     pub method: String,
     /// Its parameters, as in the request. Strips and buses may be given by
-    /// name; the daemon keeps their ids, so renaming one does not break the
-    /// hotkey.
+    /// name or by id; the daemon keeps their names and looks them up each
+    /// time the hotkey runs, so the hotkey works on the strip of that name
+    /// in whichever setup is loaded. Renaming a strip or bus in Weir
+    /// renames it here too.
     #[serde(default, skip_serializing_if = "Value::is_null")]
     pub params: Value,
     /// Take this many milliseconds, up to 60000, instead of changing at
@@ -145,6 +148,46 @@ impl HotkeyStep {
             method: method.into(),
             params,
             over_ms: None,
+        }
+    }
+
+    /// The strips and buses it works on, as it gives them: by name, or by
+    /// id.
+    pub fn targets(&self) -> Vec<(TargetKind, Value)> {
+        let mut out = Vec::new();
+        let mut params = self.params.clone();
+        let _ = visit_targets::<()>(&self.method, &mut params, &mut |kind, v| {
+            out.push((kind, v.clone()));
+            Ok(())
+        });
+        out
+    }
+}
+
+impl Hotkey {
+    /// Every step it has, pressed or let go.
+    pub fn all_steps(&self) -> impl Iterator<Item = &HotkeyStep> {
+        self.steps.iter().chain(&self.release_steps)
+    }
+
+    /// Every step it has, to change.
+    pub fn all_steps_mut(&mut self) -> impl Iterator<Item = &mut HotkeyStep> {
+        self.steps.iter_mut().chain(&mut self.release_steps)
+    }
+
+    /// Its strips and buses that `m` has, by name, as the daemon keeps
+    /// them: for comparing with a hotkey from the daemon.
+    pub fn targets_by_name(&mut self, m: &MixerState) {
+        for step in self.all_steps_mut() {
+            targets_by_name(&step.method, &mut step.params, m);
+        }
+    }
+
+    /// Its strips and buses that `m` has, by id: for reading it into a
+    /// form that picks strips and buses of the mixer now.
+    pub fn targets_by_id(&mut self, m: &MixerState) {
+        for step in self.all_steps_mut() {
+            targets_by_id(&step.method, &mut step.params, m);
         }
     }
 }
@@ -410,24 +453,6 @@ pub struct MoveHotkeyGroupParams {
     /// group, and each group; see `order` in `list_hotkeys`), counting from
     /// 0. Past the end means last.
     pub index: usize,
-}
-
-/// The strips and buses `step` works on, by id, for noticing ones that no
-/// longer exist.
-pub fn step_targets(step: &HotkeyStep) -> Vec<StripOrBus> {
-    let p = &step.params;
-    let id = |key: &str| p.get(key).and_then(Value::as_u64).map(|v| v as u32);
-    let mut out = Vec::new();
-    match step.method.as_str() {
-        "set_strip" => out.extend(id("id").map(StripOrBus::Strip)),
-        "set_bus" => out.extend(id("id").map(StripOrBus::Bus)),
-        "set_route" | "apply_eq_preset" | "move_app" => {
-            out.extend(id("strip").map(StripOrBus::Strip));
-            out.extend(id("bus").map(StripOrBus::Bus));
-        }
-        _ => {}
-    }
-    out
 }
 
 /// A number of dB without a sign: `3`, `4.5`.

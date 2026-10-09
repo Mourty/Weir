@@ -473,8 +473,13 @@ impl Simple {
     }
 
     /// `h` in the simple form, starting from `base` for what it does not
-    /// say, or `None` when it does more than one simple thing.
-    pub fn read(h: &Hotkey, base: &Simple) -> Option<Simple> {
+    /// say, or `None` when it does more than one simple thing, or works on
+    /// a strip or bus that `mixer` does not have.
+    pub fn read(h: &Hotkey, base: &Simple, mixer: &MixerState) -> Option<Simple> {
+        // The form picks strips and buses of the mixer now, by id.
+        let mut by_id = h.clone();
+        by_id.targets_by_id(mixer);
+        let h = &by_id;
         let [step] = h.steps.as_slice() else {
             return None;
         };
@@ -701,7 +706,11 @@ mod tests {
         });
         for s in cases {
             let h = s.hotkey("Test", &[]);
-            let back = Simple::read(&h, &base).unwrap_or_else(|| panic!("{s:?} did not read back"));
+            // As the daemon keeps it: by name.
+            let mut kept = h.clone();
+            kept.targets_by_name(&st.mixer);
+            let back = Simple::read(&kept, &base, &st.mixer)
+                .unwrap_or_else(|| panic!("{s:?} did not read back"));
             assert_eq!(back.hotkey("Test", &[]), h, "{s:?}");
             assert_eq!(back.action, s.action);
         }
@@ -746,18 +755,19 @@ mod tests {
         let base = Simple::new(StripOrBus::Strip(1), &st);
         let mut two = base.hotkey("Two", &[]);
         two.steps.push(two.steps[0].clone());
-        assert!(Simple::read(&two, &base).is_none());
+        assert!(Simple::read(&two, &base, &st.mixer).is_none());
         let mut faded = Simple { ..base.clone() }
             .with(Action::VolumeTo)
             .hotkey("Fade", &[]);
         faded.steps[0].over_ms = Some(300);
-        assert!(Simple::read(&faded, &base).is_none());
-        let mut named = base.hotkey("By name", &[]);
-        named.steps[0].params = json!({"id": "Mic", "mute": "toggle"});
-        assert!(Simple::read(&named, &base).is_none());
+        assert!(Simple::read(&faded, &base, &st.mixer).is_none());
+        // A strip this mixer does not have, in another setup.
+        let mut elsewhere = base.hotkey("Elsewhere", &[]);
+        elsewhere.steps[0].params = json!({"id": "Guitar", "mute": "toggle"});
+        assert!(Simple::read(&elsewhere, &base, &st.mixer).is_none());
         let mut cycling = base.hotkey("Next", &[]);
         cycling.each_press = EachPress::Next;
-        assert!(Simple::read(&cycling, &base).is_none());
+        assert!(Simple::read(&cycling, &base, &st.mixer).is_none());
     }
 
     #[test]

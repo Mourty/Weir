@@ -232,8 +232,8 @@ since its callbacks run on their own task.
 **Hotkeys** (`hotkeys/`) are steps, each an ordinary request, so a hotkey
 can do whatever the protocol can and needs nothing of its own in the
 engine. The controller keeps the list (`controller/hotkeys.rs`: checking,
-saving to `hotkeys.json`, noticing strips that are gone), and the groups
-with it: every change goes through `edit_hotkeys`, which changes a copy,
+saving to `hotkeys.json`, noticing strips that are not there), and the
+groups with it: every change goes through `edit_hotkeys`, which changes a copy,
 saves it, and only then takes it. The list's order is its own, `order`,
 places for each hotkey in no group and each group, so they can be
 arranged among each other; `HotkeyList::tidy` keeps it agreeing with the
@@ -243,7 +243,14 @@ which is all the keys layer is told. A **runner**
 (`hotkeys/runner.rs`) does the work. It is one task with a mailbox that
 key presses, its own repeat and fade timers and a change of hotkeys all
 arrive in; a client pressing a hotkey calls it directly, under its lock,
-so the answer comes once the steps are done. Steps run through the same
+so the answer comes once the steps are done. Steps keep strips and buses
+by name (`protocol/targets.rs` finds them in any request), looked up just
+before each step runs (`step_by_id`): ids belong to one mixer, and each
+setup is a whole mixer of its own, where the same id may be another strip.
+A change that renames a strip renames it in the hotkeys too
+(`names::renames`, `follow_renames`), unless it put another mixer in place,
+as loading a setup does (`replace_mixer`; the undo history remembers which
+steps did, `Step::whole`). Steps run through the same
 handler as requests, but without their own undo step: the runner records
 each press as one, from the mixer before the keys went down to the mixer
 once they are up and its fades are over. Putting back on release

@@ -1,19 +1,25 @@
 //! Letting clients name strips and buses instead of numbering them, and
-//! turning numbers back into names for files that go to another mixer.
+//! keeping hotkeys' names up to date when strips and buses are renamed.
 
 use serde_json::{json, Value};
-use weir_protocol::{BusId, MixerState, RpcError, TargetKind};
+use weir_protocol::{visit_targets, MixerState, RpcError, TargetKind};
 
 /// Let clients name strips and buses instead of giving their ids. In
 /// `params`, a `strip` or `bus` given as text, the `id` of the methods about
 /// one strip or bus, the strips and buses a ducking lists, a new strip's
 /// `routes`, the buses of `sends` and a solo `cue` are looked up by name
-/// (buses also by their label, such as `B1`) and replaced by the id.
+/// (buses also by their label, such as `B1`) and replaced by the id. Not
+/// in a hotkey's steps.
 pub(super) fn resolve_names(
     method: &str,
     params: &mut Value,
     m: &MixerState,
 ) -> Result<(), RpcError> {
+    // A hotkey's steps keep names, which may be those of strips that only a
+    // saved setup has; set_hotkey looks them up itself.
+    if method == "set_hotkey" {
+        return Ok(());
+    }
     visit_targets(method, params, &mut |kind, v| {
         let Value::String(key) = v else {
             return Ok(());
@@ -23,31 +29,9 @@ pub(super) fn resolve_names(
                 *v = json!(id);
                 Ok(())
             }
-            None => Err(RpcError::application(format!(
-                "no {} called '{key}'",
-                word(kind)
-            ))),
+            None => Err(no_such(kind, key)),
         }
     })
-}
-
-/// The other way: the strips and buses in `params` given by id, as their
-/// names in `m`, so that the request means the same to a mixer whose ids
-/// differ. Ids `m` does not have stay numbers.
-pub(super) fn name_targets(method: &str, params: &mut Value, m: &MixerState) {
-    let _ = visit_targets(method, params, &mut |kind, v| {
-        let Some(id) = v.as_u64().and_then(|id| u32::try_from(id).ok()) else {
-            return Ok(());
-        };
-        let name = match kind {
-            TargetKind::Strip => m.strip(id).map(|s| s.name.clone()),
-            TargetKind::Bus => m.bus(id).map(|b| b.name.clone()),
-        };
-        if let Some(name) = name {
-            *v = Value::String(name);
-        }
-        Ok(())
-    });
 }
 
 /// The id of the strip or bus `key` names in `m`.
@@ -58,83 +42,47 @@ pub(super) fn find(m: &MixerState, kind: TargetKind, key: &str) -> Option<u32> {
     }
 }
 
-/// "strip" or "bus".
-pub(super) fn word(kind: TargetKind) -> &'static str {
-    match kind {
-        TargetKind::Strip => "strip",
-        TargetKind::Bus => "bus",
-    }
+/// "no strip called 'X'".
+pub(super) fn no_such(kind: TargetKind, name: &str) -> RpcError {
+    RpcError::application(format!("no {} called '{name}'", kind.word()))
 }
 
-/// Call `f` on every value in `params` that is a strip or bus, by name or
-/// by id: the places [`resolve_names`] lists. A bus in `sends` is a key,
-/// so `f` gets it as a number when it is one and as text otherwise, and
-/// what `f` leaves is written back as the key.
-pub(super) fn visit_targets(
-    method: &str,
-    params: &mut Value,
-    f: &mut dyn FnMut(TargetKind, &mut Value) -> Result<(), RpcError>,
-) -> Result<(), RpcError> {
-    fn walk(
-        v: &mut Value,
-        f: &mut dyn FnMut(TargetKind, &mut Value) -> Result<(), RpcError>,
-    ) -> Result<(), RpcError> {
-        match v {
-            Value::Object(map) => {
-                for (k, v) in map.iter_mut() {
-                    match k.as_str() {
-                        "strip" => f(TargetKind::Strip, v)?,
-                        "bus" | "cue" => f(TargetKind::Bus, v)?,
-                        "triggers" => {
-                            if let Value::Array(items) = v {
-                                for item in items {
-                                    f(TargetKind::Strip, item)?;
-                                }
-                            }
-                        }
-                        "buses" | "routes" => {
-                            if let Value::Array(items) = v {
-                                for item in items {
-                                    f(TargetKind::Bus, item)?;
-                                }
-                            }
-                        }
-                        "sends" => {
-                            if let Value::Object(sends) = v {
-                                let mut named = serde_json::Map::new();
-                                for (bus, level) in std::mem::take(sends) {
-                                    let mut key = match bus.parse::<BusId>() {
-                                        Ok(id) => json!(id),
-                                        Err(_) => Value::String(bus),
-                                    };
-                                    f(TargetKind::Bus, &mut key)?;
-                                    let key = match key {
-                                        Value::String(s) => s,
-                                        other => other.to_string(),
-                                    };
-                                    named.insert(key, level);
-                                }
-                                *sends = named;
-                            }
-                        }
-                        _ => walk(v, f)?,
-                    }
-                }
-                Ok(())
-            }
-            Value::Array(items) => items.iter_mut().try_for_each(|i| walk(i, f)),
-            _ => Ok(()),
-        }
-    }
-    if let Value::Object(map) = params {
-        let kind = match method {
-            "set_strip" | "remove_strip" | "move_strip" => Some(TargetKind::Strip),
-            "set_bus" | "remove_bus" | "move_bus" => Some(TargetKind::Bus),
-            _ => None,
+/// A strip or bus that has another name now: its kind, the name it had and
+/// the one it has.
+pub(super) type Rename = (TargetKind, String, String);
+
+/// The strips and buses that are in both `before` and `after` under other
+/// names: renamed, when `after` is `before` changed rather than another
+/// mixer put in its place.
+pub(super) fn renames(before: &MixerState, after: &MixerState) -> Vec<Rename> {
+    let strips = after.strips.iter().filter_map(|s| {
+        let old = before.strip(s.id)?;
+        (old.name != s.name).then(|| (TargetKind::Strip, old.name.clone(), s.name.clone()))
+    });
+    let buses = after.buses.iter().filter_map(|b| {
+        let old = before.bus(b.id)?;
+        (old.name != b.name).then(|| (TargetKind::Bus, old.name.clone(), b.name.clone()))
+    });
+    strips.chain(buses).collect()
+}
+
+/// Give the strips and buses in `params` their new names. Each name is
+/// looked at once, so two strips swapping names swap in `params` too.
+/// Returns whether anything changed.
+pub(super) fn rename_targets(method: &str, params: &mut Value, renames: &[Rename]) -> bool {
+    let mut changed = false;
+    let _ = visit_targets::<()>(method, params, &mut |kind, v| {
+        let Value::String(name) = v else {
+            return Ok(());
         };
-        if let (Some(kind), Some(id)) = (kind, map.get_mut("id")) {
-            f(kind, id)?;
+        if let Some((_, _, new)) = renames
+            .iter()
+            .find(|(k, old, _)| *k == kind && old.eq_ignore_ascii_case(name))
+        {
+            *name = new.clone();
+            changed = true;
         }
-    }
-    walk(params, f)
+        Ok(())
+    });
+    changed
 }

@@ -307,10 +307,11 @@ impl Editor {
     /// after them, or else Weir's own.
     fn keys_section(&mut self, ui: &mut Ui, state: &FullState, actions: &mut Vec<Request>) {
         heading(ui, "When I press");
-        if state.hotkeys.keys.method == KeysMethod::Desktop {
+        let keys = &state.hotkeys.keys;
+        if keys.method == KeysMethod::Desktop && !keys.settable {
             self.desktop_keys(ui, state, actions);
         } else {
-            self.own_keys(ui);
+            self.own_keys(ui, state);
         }
         if let Some(note) = &self.record_note {
             ui.label(RichText::new(note).color(theme::p().warning));
@@ -330,7 +331,7 @@ impl Editor {
     /// Where Weir looks after the keys: a row of key caps for each
     /// combination, with buttons to record it again or take it away, and a
     /// button for more.
-    fn own_keys(&mut self, ui: &mut Ui) {
+    fn own_keys(&mut self, ui: &mut Ui, state: &FullState) {
         let mut remove = None;
         for (i, keys) in self.keys.iter().enumerate() {
             ui.horizontal(|ui| {
@@ -361,6 +362,19 @@ impl Editor {
             self.keys.remove(i);
             self.recording = None;
         }
+        // Keys set in the desktop's settings that Weir has no name for: they
+        // stay as they are, whatever is changed here.
+        for k in self.foreign_keys(state) {
+            ui.horizontal(|ui| {
+                key_chips(ui, &k, 15.0);
+                ui.add_space(8.0);
+                ui.label(
+                    RichText::new(format!("set in {}", super::settings_name()))
+                        .size(12.0)
+                        .color(theme::p().text_dim),
+                );
+            });
+        }
         let adding = self.recording == Some(self.keys.len());
         ui.horizontal(|ui| {
             if adding {
@@ -377,6 +391,39 @@ impl Editor {
                 self.record_note = None;
             }
         });
+        // Where Weir sets the desktop's keys, a hotkey the desktop does not
+        // have yet is offered to it first, with its first keys.
+        let keys = &state.hotkeys.keys;
+        let offered = keys.settable
+            && self.enabled
+            && !self.keys.is_empty()
+            && self.recording.is_none()
+            && !keys.assigned.contains_key(&self.id);
+        if offered {
+            ui.label(
+                RichText::new(
+                    "When you save, your desktop asks you to confirm the first keys; Weir \
+                     gives it the others.",
+                )
+                .size(12.0)
+                .color(theme::p().text_dim),
+            );
+        }
+    }
+
+    /// Keys the desktop has for this hotkey that Weir cannot write as its
+    /// own.
+    fn foreign_keys(&self, state: &FullState) -> Vec<String> {
+        state
+            .hotkeys
+            .keys
+            .assigned
+            .get(&self.id)
+            .into_iter()
+            .flatten()
+            .filter(|k| KeyCombo::parse(k).is_err())
+            .cloned()
+            .collect()
     }
 
     /// The button to record keys for a hotkey that has none.

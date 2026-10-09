@@ -186,9 +186,9 @@ impl HotkeysWindow {
         actions: &mut Vec<Request>,
     ) -> Option<ListAction> {
         let mut asked = None;
-        ui.horizontal(|ui| {
-            // Tall enough for a name and a line of description, so that
-            // everything in the row is centered on both.
+        // Everything lines up at the top, with the first of its keys, since
+        // a hotkey with several keys has a line for each.
+        ui.horizontal_top(|ui| {
             ui.set_min_height(38.0);
             let tip = match (h.enabled, state.hotkeys.keys.method) {
                 (true, _) => "On: its keys work. Click to switch them off.",
@@ -208,24 +208,20 @@ impl HotkeysWindow {
                 }));
             }
             ui.add_space(4.0);
+            // Each combination on a line of its own, so that several never
+            // run into the name.
             let keys = shown_keys(state, h);
-            ui.allocate_ui_with_layout(
-                vec2(210.0, 24.0),
-                Layout::left_to_right(Align::Center),
-                |ui| {
-                    ui.set_width(210.0);
-                    if keys.is_empty() {
-                        ui.label(RichText::new("no keys").color(theme::p().text_dim));
-                    }
-                    for (i, k) in keys.iter().enumerate() {
-                        if i > 0 {
-                            ui.label(RichText::new("or").size(11.0).color(theme::p().text_dim));
-                        }
-                        key_chips(ui, k, 12.0);
-                    }
-                },
-            );
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            ui.allocate_ui_with_layout(vec2(210.0, 24.0), Layout::top_down(Align::Min), |ui| {
+                ui.set_width(210.0);
+                ui.spacing_mut().item_spacing.y = 4.0;
+                if keys.is_empty() {
+                    ui.label(RichText::new("no keys").color(theme::p().text_dim));
+                }
+                for k in &keys {
+                    ui.horizontal(|ui| key_chips(ui, k, 12.0));
+                }
+            });
+            ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
                 if self.confirm_remove == Some(h.id) {
                     if ui.button("Keep").clicked() {
                         self.confirm_remove = None;
@@ -375,6 +371,10 @@ pub(crate) fn settings_path() -> &'static str {
 /// What to say under a hotkey's keys about where they work.
 pub(crate) fn keys_hint(state: &FullState) -> String {
     match state.hotkeys.keys.method {
+        KeysMethod::Desktop if state.hotkeys.keys.settable => format!(
+            "Works whichever window is in front, even a full-screen game. Also in {}.",
+            settings_path()
+        ),
         KeysMethod::Desktop => {
             "Works whichever window is in front, even a full-screen game.".into()
         }

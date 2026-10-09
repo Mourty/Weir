@@ -20,8 +20,9 @@ pub type HotkeyId = u32;
 pub const HOTKEY_NAME_MAX: usize = 60;
 /// Most steps a hotkey may have, on press and on release each.
 pub const HOTKEY_STEPS_MAX: usize = 32;
-/// The shortest and longest time between repeats while held, in ms.
-pub const HOTKEY_REPEAT_MS: (u32, u32) = (50, 2000);
+/// The shortest and longest time between repeats while held, in ms. The
+/// shortest is how often fades move on.
+pub const HOTKEY_REPEAT_MS: (u32, u32) = (20, 2000);
 /// The longest a step may take to fade, in ms.
 pub const HOTKEY_FADE_MS_MAX: u32 = 60_000;
 /// Most key combinations a hotkey may have.
@@ -98,7 +99,7 @@ pub struct Hotkey {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub release_steps: Vec<HotkeyStep>,
     /// Do the steps again every this many milliseconds while the keys are
-    /// held, from 50 to 2000: for turning a volume up or down by holding a
+    /// held, from 20 to 2000: for turning a volume up or down by holding a
     /// key.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repeat_ms: Option<u32>,

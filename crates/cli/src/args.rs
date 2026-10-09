@@ -515,7 +515,7 @@ pub struct HotkeyOpts {
     #[arg(long = "release-do", value_name = "STEP")]
     pub release_steps: Vec<String>,
     /// Do the steps again every this many milliseconds while the keys are
-    /// held (50 to 2000), or 0 not to.
+    /// held (20 to 2000), or 0 not to.
     #[arg(long)]
     pub repeat: Option<u32>,
     /// Whether its keys work: on, off or toggle.

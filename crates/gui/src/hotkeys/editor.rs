@@ -617,10 +617,13 @@ impl Editor {
                 ui.checkbox(&mut repeat, "Do it again every");
                 let mut ms = self.full.repeat_ms.unwrap_or(super::simple::REPEAT_MS);
                 let (lo, hi) = HOTKEY_REPEAT_MS;
+                // Not pulled into range: a value typed in the JSON below
+                // stays, and Weir says on saving if it cannot take it.
                 ui.add_enabled(
                     repeat,
                     egui::DragValue::new(&mut ms)
                         .range(lo..=hi)
+                        .clamp_existing_to_range(false)
                         .speed(5.0)
                         .suffix(" ms"),
                 );
@@ -1088,6 +1091,7 @@ fn simple_form(ui: &mut Ui, state: &FullState, s: &mut Simple, whole: bool, salt
                         ui.add(
                             egui::DragValue::new(&mut s.amount_db)
                                 .range(0.1..=24.0)
+                                .clamp_existing_to_range(false)
                                 .speed(0.1)
                                 .fixed_decimals(1)
                                 .suffix(" dB"),
@@ -1106,6 +1110,7 @@ fn simple_form(ui: &mut Ui, state: &FullState, s: &mut Simple, whole: bool, salt
                         ui.add(
                             egui::DragValue::new(&mut s.level_db)
                                 .range(GAIN_MIN_DB..=GAIN_MAX_DB)
+                                .clamp_existing_to_range(false)
                                 .speed(0.1)
                                 .fixed_decimals(1)
                                 .suffix(" dB"),

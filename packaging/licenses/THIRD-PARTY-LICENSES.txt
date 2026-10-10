@@ -5,10 +5,11 @@ Weir is built from these open-source libraries. Their licenses ask that
 their notices travel with every copy of Weir, so here they are. Weir's own
 license is in LICENSE.
 
-Apache License 2.0: 196 libraries
-MIT License: 74 libraries
+Apache License 2.0: 197 libraries
+MIT License: 75 libraries
 Unicode License v3: 19 libraries
 BSD 3-Clause "New" or "Revised" License: 3 libraries
+zlib License: 2 libraries
 BSD Zero Clause License: 1 library
 BSD 2-Clause "Simplified" License: 1 library
 ISC License: 1 library
@@ -16,7 +17,6 @@ Mozilla Public License 2.0: 1 library
 SIL Open Font License 1.1: 1 library
 Ubuntu Font Licence v1.0: 1 library
 The Unlicense: 1 library
-zlib License: 1 library
 
 --------------------------------------------------------------------------
 BSD Zero Clause License
@@ -5893,7 +5893,7 @@ limitations under the License.
 --------------------------------------------------------------------------
 Apache License 2.0
 
-Used by: ab_glyph 0.2.32, ab_glyph_rasterizer 0.1.10, accesskit 0.21.1, accesskit_atspi_common 0.14.2, accesskit_consumer 0.31.0, accesskit_unix 0.17.2, accesskit_winit 0.29.2, anyhow 1.0.104, anymap3 1.1.0, arboard 3.6.1, async-trait 0.1.92, atspi-proxies 0.9.0, dirs-sys 0.5.0, dirs 6.0.0, document-features 0.2.12, dyn-clone 1.0.20, ecolor 0.33.3, eframe 0.33.3, egui-winit 0.33.3, egui 0.33.3, egui_glow 0.33.3, emath 0.33.3, enumn 0.1.14, epaint 0.33.3, epaint_default_fonts 0.33.3, fdeflate 0.3.7, image 0.25.10, itoa 1.0.18, libc 0.2.189, litrs 1.0.0, miniz_oxide 0.8.9, miniz_oxide 0.9.1, owned_ttf_parser 0.25.1, pastey 0.2.3, pin-project-lite 0.2.17, proc-macro2 1.0.107, profiling 1.0.18, quote 1.0.47, rand 0.9.5, rand_chacha 0.9.0, raw-window-handle 0.6.2, ref-cast-impl 1.0.27, ref-cast 1.0.27, rustversion 1.0.23, serde 1.0.229, serde_core 1.0.229, serde_derive 1.0.229, serde_derive_internals 0.30.0, serde_json 1.0.151, serde_repr 0.1.21, syn 2.0.119, syn 3.0.6, thiserror-impl 1.0.69, thiserror-impl 2.0.20, thiserror 1.0.69, thiserror 2.0.20, unicode-ident 1.0.26, utf8parse 0.2.2
+Used by: ab_glyph 0.2.32, ab_glyph_rasterizer 0.1.10, accesskit 0.21.1, accesskit_atspi_common 0.14.2, accesskit_consumer 0.31.0, accesskit_unix 0.17.2, accesskit_winit 0.29.2, anyhow 1.0.104, anymap3 1.1.0, arboard 3.6.1, async-trait 0.1.92, atspi-proxies 0.9.0, dirs-sys 0.5.0, dirs 6.0.0, document-features 0.2.12, dyn-clone 1.0.20, ecolor 0.33.3, eframe 0.33.3, egui-winit 0.33.3, egui 0.33.3, egui_glow 0.33.3, emath 0.33.3, enumn 0.1.14, epaint 0.33.3, epaint_default_fonts 0.33.3, fdeflate 0.3.7, image 0.25.10, itoa 1.0.18, libc 0.2.189, litrs 1.0.0, miniz_oxide 0.8.9, miniz_oxide 0.9.1, owned_ttf_parser 0.25.1, pastey 0.2.3, pin-project-lite 0.2.17, proc-macro2 1.0.107, profiling 1.0.18, quote 1.0.47, rand 0.9.5, rand_chacha 0.9.0, raw-window-handle 0.6.2, ref-cast-impl 1.0.27, ref-cast 1.0.27, rustversion 1.0.23, serde 1.0.229, serde_core 1.0.229, serde_derive 1.0.229, serde_derive_internals 0.30.0, serde_json 1.0.151, serde_repr 0.1.21, syn 2.0.119, syn 3.0.6, thiserror-impl 1.0.69, thiserror-impl 2.0.20, thiserror 1.0.69, thiserror 2.0.20, typed-path 0.12.3, unicode-ident 1.0.26, utf8parse 0.2.2
 --------------------------------------------------------------------------
 
 Apache License
@@ -7106,7 +7106,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 --------------------------------------------------------------------------
 MIT License
 
-Used by: tracing-core 0.1.36
+Used by: tracing-core 0.1.36, zip 8.6.0
 --------------------------------------------------------------------------
 
 The MIT License (MIT)
@@ -7998,6 +7998,33 @@ ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 
 For more information, please refer to <http://unlicense.org/>
+
+
+--------------------------------------------------------------------------
+zlib License
+
+Used by: zlib-rs 0.6.8
+--------------------------------------------------------------------------
+
+(C) 2024 Trifecta Tech Foundation 
+
+This software is provided 'as-is', without any express or implied
+warranty. In no event will the authors be held liable for any damages
+arising from the use of this software.
+
+Permission is granted to anyone to use this software for any purpose,
+including commercial applications, and to alter it and redistribute it
+freely, subject to the following restrictions:
+
+1. The origin of this software must not be misrepresented; you must not
+   claim that you wrote the original software. If you use this software
+   in a product, an acknowledgment in the product documentation would be
+   appreciated but is not required.
+
+2. Altered source versions must be plainly marked as such, and must not be
+   misrepresented as being the original software.
+
+3. This notice may not be removed or altered from any source distribution.
 
 
 --------------------------------------------------------------------------

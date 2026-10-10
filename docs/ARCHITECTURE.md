@@ -312,6 +312,28 @@ changing it with `enable` or `disable` (in `login.rs`), so the setting
 cannot drift from what systemd will actually do. It never uses `--now`:
 the daemon asking is already running.
 
+**Export and import** (`transfer.rs` for the files, `controller/transfer.rs`
+for the requests) is the daemon's, so `weirctl` and plugins get it as the
+window does. A `.zip` holds a manifest and one JSON file per thing, in a
+folder per kind; each file says what it holds, its format
+(`EXPORT_FORMAT`, now 1) and the Weir that wrote it, so a file can be read
+alone, and a later format is refused rather than half read, while a later
+Weir reads this one. Ids mean nothing on another computer, so strips and
+buses go by name in files, as hotkeys keep them anyway: the walker over a
+request's strips and buses (`visit_targets`) finds the names a mixer lacks
+on import. A hotkey's may be in a setup, saved here or in the file
+(`place_in_setups`), and then it only says which; others the person maps
+to strips of their own or leaves out. Importing is two requests: `inspect_import` checks each
+thing against what is here (names taken, keys taken, strips missing,
+damage) without changing anything, and `import_settings` reads and checks
+the file again with the choices made, copies what it will replace into
+`backups/import-DATE`, and goes through the usual paths: library files,
+`edit_eq_presets`, `set_app_rules`, `edit_hotkeys` (one save for all the
+hotkeys), `set_settings`. The window's look lives in the window's
+`gui.toml`, so the window hands it in to export and takes it back in a
+`window_look` notification; the file dialogs are the desktop's own,
+through the portal's FileChooser.
+
 ## The protocol
 
 The protocol crate's types *are* the protocol. `describe` returns JSON

@@ -4,11 +4,13 @@ mod app;
 mod appearance;
 mod client;
 mod effects;
+mod file_dialog;
 mod fx_window;
 mod hotkeys;
 mod patch;
 mod prefs;
 mod theme;
+mod transfer;
 mod widgets;
 
 use clap::Parser;

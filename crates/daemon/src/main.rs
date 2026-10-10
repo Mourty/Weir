@@ -19,6 +19,7 @@ mod history;
 mod hotkeys;
 mod login;
 mod server;
+mod transfer;
 mod tray;
 
 use anyhow::{Context, Result};

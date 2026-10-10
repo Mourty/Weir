@@ -17,6 +17,7 @@ use crate::fx::*;
 use crate::hotkeys::*;
 use crate::library::Library;
 use crate::model::*;
+use crate::transfer::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -1155,6 +1156,16 @@ pub enum Request {
     /// keys can be changed and more added. Only when [`KeysStatus`] says
     /// `configurable`. Returns `null`.
     OpenShortcutSettings,
+    /// Writes scenes, setups, hotkeys, equalizer presets, app rules and
+    /// preferences to a `.zip`, or one of them to a `.json`. Returns
+    /// [`ExportResult`].
+    ExportSettings(ExportParams),
+    /// Reads a file to import and says what it holds, and what importing
+    /// each item would meet. Changes nothing. Returns [`ImportInspection`].
+    InspectImport(InspectImportParams),
+    /// Imports what a file holds, with the choices made. Returns
+    /// [`ImportResult`].
+    ImportSettings(ImportParams),
     /// Start or stop `spectrum` notifications. Returns the targets now
     /// watched.
     WatchSpectrum(WatchSpectrumParams),
@@ -1276,6 +1287,9 @@ pub enum Notification {
     InsertsChanged(Vec<InsertStatus>),
     /// The hotkeys, or how keys reach Weir, changed.
     HotkeysChanged(HotkeysInfo),
+    /// A window look was imported: the window takes these settings, named
+    /// as in `WINDOW_LOOK_KEYS`, and saves them.
+    WindowLook(Value),
 }
 
 impl Notification {
@@ -1295,7 +1309,7 @@ impl Notification {
             Self::EngineChanged(_) => Topic::Engine,
             Self::SettingsChanged(_) => Topic::Settings,
             Self::Spectrum(_) => Topic::Spectrum,
-            Self::ShowWindow | Self::Quit => Topic::Window,
+            Self::ShowWindow | Self::Quit | Self::WindowLook(_) => Topic::Window,
             Self::HotkeysChanged(_) => Topic::Hotkeys,
         }
     }

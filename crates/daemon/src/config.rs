@@ -188,13 +188,19 @@ pub fn load(path: &Path) -> Result<Option<(Config, LoadReport)>> {
 }
 
 /// Write atomically (temp file + rename).
-fn write_atomic(path: &Path, text: &str) -> Result<()> {
+pub fn write_atomic(path: &Path, text: &str) -> Result<()> {
+    write_atomic_bytes(path, text.as_bytes())
+}
+
+/// Write `bytes` to `path` through a temporary file, so that a crash never
+/// leaves half a file.
+pub fn write_atomic_bytes(path: &Path, bytes: &[u8]) -> Result<()> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
     }
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
     let tmp = path.with_extension(format!("{ext}.tmp"));
-    std::fs::write(&tmp, text).with_context(|| format!("writing {}", tmp.display()))?;
+    std::fs::write(&tmp, bytes).with_context(|| format!("writing {}", tmp.display()))?;
     std::fs::rename(&tmp, path).with_context(|| format!("renaming to {}", path.display()))?;
     Ok(())
 }
@@ -247,7 +253,7 @@ pub fn backup(config: &Path, dir: &Path, now_secs: u64) -> Result<Option<PathBuf
             return Ok(None);
         }
     }
-    let stamp = utc_stamp(now_secs);
+    let stamp = weir_protocol::utc_stamp(now_secs);
     let mut path = dir.join(format!("config-{stamp}.toml"));
     let mut n = 1;
     while path.exists() {
@@ -263,27 +269,6 @@ pub fn backup(config: &Path, dir: &Path, now_secs: u64) -> Result<Option<PathBuf
         }
     }
     Ok(Some(path))
-}
-
-/// A Unix time as `2026-09-27T14-30-05Z`: sortable, and fine in a file name.
-fn utc_stamp(secs: u64) -> String {
-    let (days, rem) = ((secs / 86_400) as i64, secs % 86_400);
-    // Howard Hinnant's days-to-civil-date algorithm.
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097);
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let day = doy - (153 * mp + 2) / 5 + 1;
-    let month = if mp < 10 { mp + 3 } else { mp - 9 };
-    let year = yoe + era * 400 + i64::from(month <= 2);
-    format!(
-        "{year:04}-{month:02}-{day:02}T{:02}-{:02}-{:02}Z",
-        rem / 3600,
-        rem % 3600 / 60,
-        rem % 60
-    )
 }
 
 /// The file for the scene or setup (`what`) called `name` in `dir`. Names
@@ -523,13 +508,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
-    }
-
-    #[test]
-    fn times_turn_into_sortable_names() {
-        assert_eq!(utc_stamp(0), "1970-01-01T00-00-00Z");
-        assert_eq!(utc_stamp(1_700_000_000), "2023-11-14T22-13-20Z");
-        assert_eq!(utc_stamp(951_782_400), "2000-02-29T00-00-00Z");
     }
 
     #[test]

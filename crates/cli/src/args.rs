@@ -180,6 +180,13 @@ pub enum Cmd {
         #[command(subcommand)]
         action: HotkeyCmd,
     },
+    /// Save scenes, setups, hotkeys, equalizer presets, app rules and
+    /// preferences to a .zip, or one of them to a .json, to keep or to take
+    /// to another computer.
+    Export(ExportArgs),
+    /// Bring in settings from a .zip or .json Weir exported. See what it
+    /// holds first with --list.
+    Import(ImportArgs),
     /// Stream notifications until interrupted.
     Watch {
         /// Include meter updates.
@@ -193,6 +200,67 @@ pub enum Cmd {
         /// Its params, as JSON.
         params: Option<String>,
     },
+}
+
+#[derive(Args, Debug)]
+pub struct ExportArgs {
+    /// The file to write: a .zip, or a .json for one thing alone.
+    pub file: std::path::PathBuf,
+    /// Everything: every scene, setup, hotkey and equalizer preset of your
+    /// own, the app rules and the preferences.
+    #[arg(long)]
+    pub all: bool,
+    /// A scene, by name. Give it again for more.
+    #[arg(long = "scene", value_name = "NAME")]
+    pub scenes: Vec<String>,
+    /// A setup, by name. Give it again for more.
+    #[arg(long = "setup", value_name = "NAME")]
+    pub setups: Vec<String>,
+    /// A hotkey, by name or id. Give it again for more. Their groups and
+    /// order go with them.
+    #[arg(long = "hotkey", value_name = "HOTKEY")]
+    pub hotkeys: Vec<String>,
+    /// An equalizer preset of your own, by name. Give it again for more.
+    #[arg(long = "eq-preset", value_name = "NAME")]
+    pub eq_presets: Vec<String>,
+    /// The app rules.
+    #[arg(long)]
+    pub app_rules: bool,
+    /// A part of the preferences: window-look, mixer, audio-timing or
+    /// start-at-login. Give it again for more.
+    #[arg(long = "preferences", value_name = "PART")]
+    pub preferences: Vec<String>,
+}
+
+#[derive(Args, Debug)]
+pub struct ImportArgs {
+    /// The .zip or .json to import.
+    pub file: std::path::PathBuf,
+    /// Only show what it holds and what importing it would meet.
+    #[arg(long)]
+    pub list: bool,
+    /// Only this item, by the ID --list shows. Give it again for more.
+    #[arg(long = "only", value_name = "ID")]
+    pub only: Vec<String>,
+    /// What to do with things you have one of the same name of already:
+    /// skip, replace, or keep-both (the imported one gets a number).
+    #[arg(long, default_value = "skip")]
+    pub taken: String,
+    /// Import an item under another name, as ID=NAME. Give it again for
+    /// more.
+    #[arg(long = "rename", value_name = "ID=NAME")]
+    pub rename: Vec<String>,
+    /// Replace all your hotkeys and their groups with the imported ones,
+    /// rather than adding them.
+    #[arg(long)]
+    pub replace_hotkeys: bool,
+    /// Use one of your strips for one the file names, as FROM=TO. Give it
+    /// again for more.
+    #[arg(long = "map-strip", value_name = "FROM=TO")]
+    pub map_strips: Vec<String>,
+    /// Use one of your buses for one the file names, as FROM=TO.
+    #[arg(long = "map-bus", value_name = "FROM=TO")]
+    pub map_buses: Vec<String>,
 }
 
 #[derive(Args, Debug)]

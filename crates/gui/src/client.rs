@@ -51,6 +51,19 @@ pub struct Shared {
     pub daemon_exit: Option<DaemonExit>,
     /// Start the daemon again: set by the window's Try again button.
     pub retry_spawn: bool,
+    /// A window look imported, for the window to take once.
+    pub window_look: Option<Value>,
+    /// Answers to export and import requests, for the window waiting on
+    /// them, in the order they came.
+    pub transfers: Vec<(Transfer, Result<Value, String>)>,
+}
+
+/// Which export or import request an answer is to.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Transfer {
+    Export,
+    Inspect,
+    Import,
 }
 
 /// A daemon started by this window that stopped with an error.
@@ -230,6 +243,8 @@ enum Answer {
     State,
     /// What can be undone and redone.
     History,
+    /// An export or import, error and all.
+    Transfer(Transfer),
     Nothing,
 }
 
@@ -238,6 +253,9 @@ impl Answer {
         match req {
             Request::GetState => Answer::State,
             Request::History | Request::Undo(_) | Request::Redo(_) => Answer::History,
+            Request::ExportSettings(_) => Answer::Transfer(Transfer::Export),
+            Request::InspectImport(_) => Answer::Transfer(Transfer::Inspect),
+            Request::ImportSettings(_) => Answer::Transfer(Transfer::Import),
             _ => Answer::Nothing,
         }
     }
@@ -294,13 +312,16 @@ fn read_loop(
                 Notification::SystemVolumesChanged(v) => sh.state.system_volumes = v,
                 Notification::InsertsChanged(v) => sh.state.inserts = v,
                 Notification::HotkeysChanged(h) => sh.state.hotkeys = h,
+                Notification::WindowLook(look) => sh.window_look = Some(look),
             },
             ServerMessage::Response(r) => {
                 let answer =
                     r.id.as_u64()
                         .and_then(|id| pending.lock().unwrap().remove(&id))
                         .unwrap_or(Answer::Nothing);
-                if let Some(e) = r.error {
+                if let (Answer::Transfer(t), Some(e)) = (answer, &r.error) {
+                    sh.transfers.push((t, Err(e.message.clone())));
+                } else if let Some(e) = r.error {
                     sh.last_error = Some((e.message, Some(Instant::now())));
                 } else if let Some(result) = r.result {
                     apply_result(&mut sh, answer, result);
@@ -324,6 +345,7 @@ fn apply_result(sh: &mut Shared, answer: Answer, result: Value) {
                 sh.history = h;
             }
         }
+        Answer::Transfer(t) => sh.transfers.push((t, Ok(result))),
         Answer::Nothing => {}
     }
 }

@@ -17,6 +17,7 @@ look up when you need it.
 * [Surround sound](#surround-sound)
 * [Scenes and setups](#scenes-and-setups)
 * [Hotkeys](#hotkeys)
+* [Export and import](#export-and-import)
 * [Names, colors and order](#names-colors-and-order)
 * [Undo](#undo)
 * [Preferences](#preferences)
@@ -292,7 +293,8 @@ band pass. Up to 16 bands.
 rumble, taming harsh "s" sounds), for mains hum at 50 Hz (Europe) or 60 Hz
 (North America), and for listening (bass, treble, loudness, footsteps in
 games). **Save as preset…** keeps your own, which then appear on every strip
-and bus. Switching the equalizer off keeps the bands, so you can compare.
+and bus; **export** beside one of yours in the menu saves it to a file, to
+share it. Switching the equalizer off keeps the bands, so you can compare.
 
 Behind the curve runs the sound itself, live: gray is what goes into the
 equalizer and blue what comes out, so you can see what each band does as
@@ -538,8 +540,10 @@ halves:
 
 Click a name to load it; the one last loaded or saved is highlighted.
 **save** beside a name replaces it with how things are now, and **delete**
-removes it; both ask first. **Save … as** saves under a new name, and says
-as you type if the name will not do. Loading can be undone.
+removes it; both ask first. **export** saves it to a file, to share or to
+keep (see [Export and import](#export-and-import)). **Save … as** saves
+under a new name, and says as you type if the name will not do. Loading
+can be undone.
 
 ## Hotkeys
 
@@ -682,6 +686,57 @@ already uses is reported in the list. Anywhere else, hotkeys work only by
 name: add a shortcut in your desktop's keyboard settings that runs
 `weirctl hotkey run "NAME"`.
 
+## Export and import
+
+To keep your settings safe, take them to another computer, or share some
+of them, use **Export settings…** and **Import settings…** in the **…**
+menu at the top right.
+
+**Export settings…** lists everything you can take, in sections: scenes,
+setups, hotkeys, equalizer presets of your own, the app rules, and four
+parts of the preferences: the window's look, how the mixer behaves, audio
+timing (the sample rate and latency), and whether Weir starts when you log
+in. Everything starts ticked. Untick what you want to leave out, or click
+a section's box to tick or untick all of it. **Export…** asks where to save
+the file, a `.zip`.
+
+To share one thing on its own, use **export** beside a scene or setup in
+the Scenes and Setups menus, or beside one of your presets in the
+equalizer's Preset menu, or **Export…** in a hotkey's editor. It is saved
+as a `.json` file.
+
+![Importing settings](images/import.png)
+
+**Import settings…** asks for a `.zip` or `.json` that Weir exported, then
+shows what it holds, everything ticked:
+
+* A **name you have already** is shown in yellow, with a choice: **Keep
+  both**, the imported one under another name (one is suggested, and you
+  can change it), **Replace mine**, or **Skip**.
+* A **strip or bus this mixer does not have**, such as a hotkey that turns
+  down "Music" when your strip is called "Media": at the top, pick one of
+  yours to use instead, or leave what uses it out. A hotkey for a strip
+  that one of your setups has, or a setup in the file, needs nothing
+  picked: it says which setup it works with, since hotkeys find strips by
+  name in whichever setup is loaded. If that setup is only in the file,
+  import it too.
+* **Hotkeys** can be added to yours, or replace all of yours, groups and
+  order included. If one of your hotkeys has an imported hotkey's keys
+  already, yours keeps them, and the imported one comes in without them.
+* A **damaged file**, or one from a newer Weir, is shown in red with why,
+  and cannot be ticked. The rest can still come in.
+* **Audio timing** suits the sound hardware of the computer it came from,
+  and **Start at login** switches that on or off on this one.
+
+**Import** brings in what is ticked, then says what came in, and what was
+left out and why. Scenes and setups are added to your lists, never loaded.
+Before anything is replaced, a copy of it is kept in
+`~/.config/weir/backups/`.
+
+The files are plain text you can read and edit: one JSON file for each
+thing, in a folder for each kind. [How they are laid
+out](API.md#exported-files).
+
 ## Names, colors and order
 
 * **Rename** a strip or bus by clicking its name. Applications playing into
@@ -803,7 +858,7 @@ Your settings, which are kept when Weir is uninstalled:
 | `~/.config/weir/eq-presets.toml` | Your equalizer presets. |
 | `~/.config/weir/hotkeys.json` | Your hotkeys. |
 | `~/.config/weir/gui.toml` | The window's own preferences, and the names of your devices, for showing them while they are unplugged. |
-| `~/.config/weir/backups/` | Copies of `config.toml` from the last ten times Weir started with a changed one. To go back to one, quit Weir and copy it over `config.toml`. |
+| `~/.config/weir/backups/` | Copies of `config.toml` from the last ten times Weir started with a changed one. To go back to one, quit Weir and copy it over `config.toml`. Also, in `import-` folders, copies of what each import replaced. |
 | `~/.local/state/weir/daemon.log` | What the service said, when the window started it. |
 
 To start over completely, quit Weir and delete `~/.config/weir`.

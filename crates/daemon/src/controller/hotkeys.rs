@@ -59,6 +59,9 @@ fn allowed_in_hotkey(req: &Request) -> bool {
             | Request::ReleaseHotkey(_)
             | Request::RunHotkey(_)
             | Request::OpenShortcutSettings
+            | Request::ExportSettings(_)
+            | Request::InspectImport(_)
+            | Request::ImportSettings(_)
     )
 }
 
@@ -103,7 +106,7 @@ impl Controller {
     }
 
     /// Every hotkey and group now.
-    fn hotkey_list(&self) -> HotkeyList {
+    pub(super) fn hotkey_list(&self) -> HotkeyList {
         self.inner
             .lock()
             .unwrap()
@@ -228,10 +231,21 @@ impl Controller {
         }
     }
 
-    /// Check `h`, then add it or replace the one with its id, save, and
-    /// tell the runner and clients.
-    pub(super) fn set_hotkey(&self, mut h: Hotkey) -> Result<Value, RpcError> {
-        let mixers = Mixers::new(self.mixer(), &self.paths.setups_dir);
+    /// `h` checked as `set_hotkey` takes it, apart from how it fits with
+    /// the other hotkeys: its name trimmed, its keys parsed and written one
+    /// way, its steps checked, with their strips and buses by name.
+    pub(super) fn checked_hotkey(&self, h: Hotkey) -> Result<Hotkey, RpcError> {
+        self.checked_hotkey_with(h, Vec::new())
+    }
+
+    /// [`Self::checked_hotkey`], finding strips and buses in the setups
+    /// `extra` too: setups in a file being imported.
+    pub(super) fn checked_hotkey_with(
+        &self,
+        mut h: Hotkey,
+        extra: Vec<MixerState>,
+    ) -> Result<Hotkey, RpcError> {
+        let mixers = Mixers::new(self.mixer(), &self.paths.setups_dir, extra);
         h.name = h.name.trim().to_string();
         if h.name.is_empty() {
             return Err(RpcError::invalid_params("a hotkey needs a name"));
@@ -278,6 +292,13 @@ impl Controller {
                 )));
             }
         }
+        Ok(h)
+    }
+
+    /// Check `h`, then add it or replace the one with its id, save, and
+    /// tell the runner and clients.
+    pub(super) fn set_hotkey(&self, h: Hotkey) -> Result<Value, RpcError> {
+        let mut h = self.checked_hotkey(h)?;
         let saved = self.edit_hotkeys(|list| {
             if h.id != 0 && !list.hotkeys.iter().any(|o| o.id == h.id) {
                 return Err(RpcError::application(format!("no hotkey with id {}", h.id)));
@@ -480,7 +501,7 @@ impl Controller {
     /// Change the hotkeys and their groups with `f`, save them, and tell
     /// the runner and clients. Nothing changes when `f` fails, or saving
     /// does.
-    fn edit_hotkeys<T>(
+    pub(super) fn edit_hotkeys<T>(
         &self,
         f: impl FnOnce(&mut HotkeyList) -> Result<T, RpcError>,
     ) -> Result<T, RpcError> {
@@ -563,7 +584,7 @@ impl Controller {
     }
 
     /// The id of the hotkey `key` names.
-    fn find_hotkey(&self, key: &HotkeyKey) -> Result<HotkeyId, RpcError> {
+    pub(super) fn find_hotkey(&self, key: &HotkeyKey) -> Result<HotkeyId, RpcError> {
         let hotkeys = self.hotkeys();
         let found = match key {
             HotkeyKey::Id(id) => hotkeys.iter().find(|h| h.id == *id),
@@ -745,24 +766,29 @@ impl HotkeyList {
 struct Mixers<'a> {
     here: MixerState,
     setups_dir: &'a Path,
+    /// Setups that are not saved (yet), looked in after the saved ones.
+    extra: Vec<MixerState>,
     setups: OnceCell<Vec<MixerState>>,
 }
 
 impl<'a> Mixers<'a> {
-    fn new(here: MixerState, setups_dir: &'a Path) -> Self {
+    fn new(here: MixerState, setups_dir: &'a Path, extra: Vec<MixerState>) -> Self {
         Self {
             here,
             setups_dir,
+            extra,
             setups: OnceCell::new(),
         }
     }
 
     fn setups(&self) -> &[MixerState] {
         self.setups.get_or_init(|| {
-            config::list_saved(self.setups_dir)
+            let mut setups: Vec<MixerState> = config::list_saved(self.setups_dir)
                 .iter()
                 .filter_map(|name| config::load_saved(self.setups_dir, name, "setup").ok())
-                .collect()
+                .collect();
+            setups.extend(self.extra.iter().cloned());
+            setups
         })
     }
 

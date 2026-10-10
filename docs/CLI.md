@@ -25,6 +25,7 @@ weirctl scene load Streaming           # everything as saved for streaming
 * [Scenes and setups](#scenes-and-setups): `scene`, `setup`
 * [Undo](#undo): `undo`, `redo`, `history`
 * [Hotkeys](#hotkeys): `hotkeys`, `hotkey`
+* [Export and import](#export-and-import): `export`, `import`
 * [Settings and the window](#settings-and-the-window): `settings`, `show`
 * [Watching and anything else](#watching-and-anything-else): `watch`, `raw`
 * [A mute key for any desktop](#a-mute-key-for-any-desktop)
@@ -363,6 +364,48 @@ the entry all of a hotkey's keys, and keys changed there come back; on
 other desktops only the first is suggested, and more are added there.
 `weirctl hotkeys` shows every key the desktop has for each hotkey, and
 `weirctl hotkey settings` opens those settings.
+
+## Export and import
+
+Settings to keep safe, take to another computer or share: scenes, setups,
+hotkeys, equalizer presets of your own, the app rules and parts of the
+preferences, in a `.zip`, or one of them in a `.json`. Strips and buses go
+by name, so a hotkey for "Music" works on any mixer with a strip called
+Music. [What is in the files](API.md#exported-files).
+
+| Command | |
+|---|---|
+| `weirctl export FILE [options]` | Write what the options name to FILE: a `.zip`, or a `.json` for one thing. |
+| `weirctl import FILE --list` | Show what FILE holds, and what importing each thing would meet: a name you have already, keys a hotkey of yours has, a strip this mixer lacks, a damaged file. |
+| `weirctl import FILE [options]` | Import it. Scenes and setups are added to your library, never loaded. Copies of anything replaced are kept in `~/.config/weir/backups/`. |
+
+`export` takes `--all`, or any of `--scene NAME`, `--setup NAME`, `--hotkey
+HOTKEY`, `--eq-preset NAME` (each as often as needed), `--app-rules` and
+`--preferences PART`, where PART is `window-look`, `mixer`, `audio-timing`
+or `start-at-login`. The window look is read from the window's own
+settings.
+
+`import` takes:
+
+| Option | |
+|---|---|
+| `--only ID` | Only this thing, by the ID `--list` shows. Give it again for more. |
+| `--taken skip\|replace\|keep-both` | For things you have one of the same name of: leave them out (the default), replace yours, or keep both, the imported one with a number after its name. |
+| `--rename ID=NAME` | Import one thing under another name. |
+| `--replace-hotkeys` | Replace all your hotkeys and their groups with the imported ones, rather than adding them. |
+| `--map-strip FROM=TO` | Use your strip TO wherever the file names a strip FROM that this mixer does not have. |
+| `--map-bus FROM=TO` | The same for buses. |
+
+```sh
+weirctl export /tmp/weir-settings.zip --all
+weirctl export /tmp/mute.json --hotkey "Mute mic"
+weirctl import /tmp/weir-settings.zip --list
+weirctl import /tmp/weir-settings.zip --only "hotkeys/Mute mic.json" --taken keep-both
+weirctl import /tmp/mute.json --rename "mute.json=Mute mic too"
+```
+
+A window look imported while no window is open is saved for the window's
+next start.
 
 ## Settings and the window
 

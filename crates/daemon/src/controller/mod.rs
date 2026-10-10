@@ -17,6 +17,7 @@ mod handlers;
 pub mod hotkeys;
 mod names;
 mod rules;
+mod transfer;
 mod undo_labels;
 
 #[cfg(test)]

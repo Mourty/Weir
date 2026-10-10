@@ -860,3 +860,304 @@ fn a_hotkey_on_a_removed_strip_is_a_problem_and_can_be_removed_by_name() {
     // Pressing needs the runner, which a bare controller does not have.
     assert!(r.call("run_hotkey", json!({"hotkey": 1})).is_err());
 }
+
+#[test]
+fn settings_go_to_another_mixer_by_name() {
+    let mut a = Rig::new("export-a");
+    a.ok("save_scene", json!({"name": "Gaming"}));
+    a.ok("save_setup", json!({"name": "Home"}));
+    a.ok("save_eq_preset", json!({"name": "Warm", "bands": []}));
+    a.ok(
+        "set_app_rules",
+        json!({"rules": [{"app": "firefox", "strip": 2}]}),
+    );
+    a.ok(
+        "add_hotkey_group",
+        json!({"name": "Streaming", "enabled": false}),
+    );
+    a.ok(
+        "set_hotkey",
+        json!({"name": "Music down", "keys": "Ctrl+Alt+Down", "group": 1, "steps": [
+            {"method": "set_strip", "params": {"id": "Music", "gain_delta_db": -3}}]}),
+    );
+    a.ok(
+        "set_hotkey",
+        json!({"name": "Mute mic", "keys": "Ctrl+Alt+M", "steps": [
+            {"method": "set_strip", "params": {"id": "Mic", "mute": "toggle"}}]}),
+    );
+    a.ok(
+        "set_settings",
+        json!({"solo": {"cue": 3}, "meter_rate_hz": 20}),
+    );
+    let zip = a.dir.join("all.zip");
+    let out = a.ok(
+        "export_settings",
+        json!({"path": zip, "all": true,
+               "window_look": {"appearance": "light", "device_names": {"x": "y"}}}),
+    );
+    assert_eq!(
+        out["files"],
+        json!([
+            "scenes/Gaming.json",
+            "setups/Home.json",
+            "hotkeys/Music down.json",
+            "hotkeys/Mute mic.json",
+            "hotkeys/groups.json",
+            "eq-presets/Warm.json",
+            "app-rules/app-rules.json",
+            "preferences/preferences.json"
+        ])
+    );
+    // In the files, strips and buses go by name, and only the window's
+    // look leaves the computer.
+    let read = crate::transfer::read_export(&zip).unwrap();
+    let body = |path: &str| {
+        read.iter()
+            .find(|f| f.path == path)
+            .and_then(|f| f.body.clone().ok())
+            .unwrap()
+    };
+    let crate::transfer::Body::Hotkey(h) = body("hotkeys/Music down.json") else {
+        panic!("not a hotkey");
+    };
+    assert_eq!(h.group.as_deref(), Some("Streaming"));
+    assert_eq!(h.hotkey.steps[0].params["id"], json!("Music"));
+    let crate::transfer::Body::Preferences(p) = body("preferences/preferences.json") else {
+        panic!("not preferences");
+    };
+    assert_eq!(p.window_look, Some(json!({"appearance": "light"})));
+    assert_eq!(
+        p.mixer.unwrap().solo,
+        crate::transfer::SoloFile::Cue("Stream Mic".into())
+    );
+
+    // Another computer: its Music strip is called Media, and it has a
+    // scene and a hotkey of the same names already.
+    let mut b = Rig::new("export-b");
+    b.ok("set_strip", json!({"id": "Music", "name": "Media"}));
+    b.ok("save_scene", json!({"name": "Gaming"}));
+    b.ok(
+        "set_hotkey",
+        json!({"name": "Mute mic", "keys": "Ctrl+Alt+M", "steps": []}),
+    );
+    let seen = b.ok("inspect_import", json!({"path": zip}));
+    assert_eq!(seen["missing"], json!([{"kind": "strip", "name": "Music"}]));
+    let item = |id: &str| {
+        seen["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|i| i["id"] == id)
+            .cloned()
+            .unwrap_or_else(|| panic!("no {id} in {seen}"))
+    };
+    let gaming = item("scenes/Gaming.json");
+    assert_eq!(
+        (gaming["taken"].clone(), gaming["free_name"].clone()),
+        (json!(true), json!("Gaming 2"))
+    );
+    assert_eq!(
+        item("hotkeys/Mute mic.json")["keys_taken"],
+        json!([{"keys": "Ctrl+Alt+M", "by": "Mute mic"}])
+    );
+    // Music down names a strip this mixer lacks, but the setup Home in the
+    // file has it: it works while Home is loaded, and asks for no strip.
+    let down = item("hotkeys/Music down.json");
+    assert!(down.get("missing").is_none(), "{down}");
+    assert_eq!(down["setup_items"], json!(["setups/Home.json"]));
+    assert!(
+        down["note"]
+            .as_str()
+            .unwrap()
+            .contains("'Home' (in this file)"),
+        "{down}"
+    );
+    assert_eq!(
+        item("app-rules/app-rules.json")["missing"],
+        json!([{"kind": "strip", "name": "Music"}])
+    );
+    assert!(item("preferences/preferences.json#audio_timing")["note"].is_string());
+    assert!(
+        b.call(
+            "import_settings",
+            json!({"path": zip, "map_strips": {"Music": "Nope"}})
+        )
+        .is_err(),
+        "a map to a strip that is not here"
+    );
+
+    // Unmapped, the app rules cannot come; taken names are skipped. Music
+    // down comes with Home, keeping its strip's name.
+    let done = b.ok("import_settings", json!({"path": zip}));
+    let skipped = done["skipped"].to_string();
+    assert!(
+        skipped.contains("app rules: this mixer has no strip 'Music'"),
+        "{skipped}"
+    );
+    assert!(
+        skipped.contains("scene 'Gaming': there is one called that already"),
+        "{skipped}"
+    );
+    let imported = done["imported"].to_string();
+    assert!(imported.contains("setup 'Home'"), "{imported}");
+    assert!(imported.contains("hotkey 'Music down'"), "{imported}");
+
+    // Mapped, and keeping both.
+    let done = b.ok(
+        "import_settings",
+        json!({"path": zip, "map_strips": {"Music": "Media"}, "when_taken": "keep_both",
+               "items": ["scenes/Gaming.json", "hotkeys/Music down.json",
+                         "hotkeys/Mute mic.json", "app-rules/app-rules.json",
+                         "preferences/preferences.json#mixer",
+                         "preferences/preferences.json#window_look"]}),
+    );
+    assert_eq!(
+        done["imported"],
+        json!([
+            "scene 'Gaming 2'",
+            "app rules",
+            "hotkey 'Music down 2'",
+            "hotkey 'Mute mic 2'",
+            "preferences: window look",
+            "preferences: mixer behavior"
+        ]),
+        "{done}"
+    );
+    assert!(done["notes"].to_string().contains("without Ctrl+Alt+M"));
+    assert_eq!(done["window_look"], json!({"appearance": "light"}));
+    assert!(std::path::Path::new(done["backup"].as_str().unwrap())
+        .join("hotkeys.json")
+        .exists());
+    let info = b.ok("list_hotkeys", json!({}));
+    let strip_of = |name: &str| {
+        info["hotkeys"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|h| h["name"] == name)
+            .unwrap()["steps"][0]["params"]["id"]
+            .clone()
+    };
+    assert_eq!(strip_of("Music down"), json!("Music"));
+    assert_eq!(strip_of("Music down 2"), json!("Media"));
+    assert_eq!(
+        info["groups"],
+        json!([{"id": 1, "name": "Streaming", "enabled": false}])
+    );
+    let state = b.ok("get_state", json!({}));
+    assert_eq!(state["app_rules"], json!([{"app": "firefox", "strip": 2}]));
+    assert_eq!(state["settings"]["solo"], json!({"cue": 3}));
+    assert_eq!(state["settings"]["meter_rate_hz"], json!(20));
+
+    // Without Home, and with no setup here that has Music, Music down
+    // cannot come.
+    let mut d = Rig::new("export-d");
+    d.ok("set_strip", json!({"id": "Music", "name": "Media"}));
+    let done = d.ok(
+        "import_settings",
+        json!({"path": zip, "items": ["hotkeys/Music down.json"]}),
+    );
+    assert!(
+        done["skipped"]
+            .to_string()
+            .contains("hotkey 'Music down': no strip called 'Music'"),
+        "{done}"
+    );
+    // A setup saved here that has it will do.
+    d.ok("set_strip", json!({"id": "Media", "name": "Music"}));
+    d.ok("save_setup", json!({"name": "Old"}));
+    d.ok("set_strip", json!({"id": "Music", "name": "Media"}));
+    let seen = d.ok("inspect_import", json!({"path": zip}));
+    let down = seen["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| i["id"] == "hotkeys/Music down.json")
+        .unwrap()
+        .clone();
+    assert_eq!(down["setups"], json!(["Old"]));
+
+    // Replacing keeps a copy of what was there.
+    let done = b.ok(
+        "import_settings",
+        json!({"path": zip, "items": ["scenes/Gaming.json"],
+               "choices": {"scenes/Gaming.json": "replace"}}),
+    );
+    assert_eq!(done["imported"], json!(["scene 'Gaming'"]));
+    assert!(std::path::Path::new(done["backup"].as_str().unwrap())
+        .join("scenes/Gaming.toml")
+        .exists());
+
+    // Replacing every hotkey takes the imported ones' order and groups,
+    // but only when some come in: importing a scene alone clears nothing.
+    let mut c = Rig::new("export-c");
+    c.ok(
+        "set_hotkey",
+        json!({"name": "Old", "keys": "F9", "steps": []}),
+    );
+    c.ok(
+        "import_settings",
+        json!({"path": zip, "hotkeys": "replace_all", "items": ["scenes/Gaming.json"]}),
+    );
+    assert_eq!(
+        c.ok("list_hotkeys", json!({}))["hotkeys"][0]["name"],
+        json!("Old")
+    );
+    c.ok(
+        "import_settings",
+        json!({"path": zip, "hotkeys": "replace_all", "map_strips": {"Music": "Mic"},
+               "items": ["hotkeys/Music down.json", "hotkeys/Mute mic.json"]}),
+    );
+    let info = c.ok("list_hotkeys", json!({}));
+    let names: Vec<&str> = info["hotkeys"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|h| h["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["Music down", "Mute mic"]);
+    assert_eq!(info["order"], json!([{"group": 1}, {"hotkey": 2}]));
+
+    // One thing alone goes to a bare .json, and comes back from one.
+    let one = a.dir.join("Warm.json");
+    a.ok(
+        "export_settings",
+        json!({"path": one, "eq_presets": ["warm"]}),
+    );
+    let seen = c.ok("inspect_import", json!({"path": one}));
+    assert_eq!(seen["items"][0]["id"], json!("Warm.json"));
+    assert_eq!(seen["items"][0]["kind"], json!("eq_preset"));
+    c.ok("import_settings", json!({"path": one}));
+    assert!(c
+        .ok("list_eq_presets", json!({}))
+        .to_string()
+        .contains("\"Warm\""));
+    assert!(a
+        .call(
+            "export_settings",
+            json!({"path": a.dir.join("two.json"), "scenes": ["Gaming"], "setups": ["Home"]})
+        )
+        .is_err());
+    assert!(a
+        .call(
+            "export_settings",
+            json!({"path": "relative.zip", "all": true})
+        )
+        .is_err());
+
+    // A later Weir's file is not half read.
+    let later = a.dir.join("later.json");
+    std::fs::write(
+        &later,
+        json!({"weir": "scene", "format": 99, "weir_version": "9.0.0"}).to_string(),
+    )
+    .unwrap();
+    let e = c
+        .call("inspect_import", json!({"path": later}))
+        .unwrap_err();
+    assert!(
+        e.message.contains("newer version of Weir (9.0.0)"),
+        "{}",
+        e.message
+    );
+}

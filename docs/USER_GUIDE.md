@@ -96,7 +96,9 @@ output device. There are three ways:
   to see and change them all, or add one for an application that is not
   playing right now. A rule moves an application as soon as it starts
   playing. Move it by hand afterwards and it stays where you put it. A rule
-  set to **leave alone** keeps Weir's hands off it.
+  set to **leave alone** keeps Weir's hands off it. Rules remember the
+  strip's name, so they work in every setup: in a setup without that strip
+  the rule waits, shown as "(not in this setup)".
 
 Each virtual strip lists the applications playing into it. Under each name
 is a slider for that application's own volume, with its own mute: the same
@@ -530,13 +532,35 @@ Weir:
 The **Scenes** and **Setups** menus at the top keep what you set up, in two
 halves:
 
-* **Scenes** keep the mix: every fader, mute, route, send level and effect.
-  Loading one never changes which devices are used, so a "Streaming" or
-  "Late night" scene works whichever headset is plugged in.
-* **Setups** keep the mixer's shape: which strips and buses there are, and
-  their devices, layouts, names and colors. Switch between "Desk" and
-  "Laptop" when you move. Strips and buses in both keep the levels and
-  effects they have now.
+* **Setups** keep what is there: which strips and buses there are, in
+  which order, and their devices, layouts, names, colors and external
+  effects. Nothing about how they sound. Make one for each place or set of
+  hardware: "Desk", "Headset", "Laptop".
+* **Scenes** keep how it sounds: every fader, mute, route, route level and
+  effect, and a bus's delay. Make one for each thing you do: "Gaming",
+  "Streaming", "Late night". Loading one never changes which devices are
+  used, so the same scene works with any setup that has strips of the same
+  names.
+
+A scene describes the whole mix. Strips and buses it has no mix for, such
+as one added after it was saved, start at their default when it loads: the
+fader at 0 dB, unmuted, effects off and **nothing routed**.
+
+In the **Setups** menu, click a setup's name to load it on its own: its
+strips and buses, with nothing routed. Rest the pointer on it instead to
+see your scenes beside it, and pick one to load the setup with that scene,
+in one go. A scene with a mix for strips or buses the setup does not have
+says so in yellow ("1 missing", the names when you point at it). It still
+loads, and does what it can with the strips that are there. The Scenes
+menu says the same against the mixer you have now.
+
+Weir 1.2.0 told the two apart. Before, a setup kept the whole mixer, but
+loading one kept the levels you had, so most of what it held about the
+sound was never used. The first time 1.2.0 starts, each saved setup keeps
+only what is there, and the mix it held becomes a scene of the same name
+(with a number after it if you have a scene of that name already), so
+nothing is lost. Copies of the old files are in
+`~/.config/weir/backups/setups-before-scenes/`.
 
 Click a name to load it; the one last loaded or saved is highlighted.
 **save** beside a name replaces it with how things are now, and **delete**

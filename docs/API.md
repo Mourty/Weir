@@ -880,7 +880,13 @@ await mixer.call("set_app_volume", { app: firefox.id, mute: "toggle" });
 Say where applications go when they start playing. A rule matches an
 application by its `name` or `binary`, ignoring case, and moves it to a
 strip as soon as it appears. After that it stays wherever it is put, so
-moving it by hand is respected.
+moving it by hand is respected. Loading a setup applies the rules afresh.
+
+Rules keep their strip by name, so they work with every setup: a rule for
+a strip the mixer does not have now waits for a setup that has one, and
+renaming a strip renames it in the rules. The strip may be given by id
+or by name, and must be a virtual strip, in the mixer now or in a saved
+setup.
 
 | Parameter | Type | |
 |---|---|---|
@@ -1046,15 +1052,22 @@ await mixer.call("watch_spectrum", { targets: [{ bus: "A1" }] });
 
 Both save how things are, under a name, to come back to later.
 
-* A **scene** is the mix: every strip's and bus's level, mute, solo, pan,
-  routes, send levels and effects. Loading one changes the sound and
-  nothing else, so scenes are good for moments: "Gaming", "Streaming",
-  "Late night". A scene is applied to strips and buses by name, so it keeps
-  working after they are moved around or a device changes.
-* A **setup** is the whole mixer: which strips and buses there are, their
-  devices, names, layouts and colors. Loading one keeps the mix of every
-  strip and bus that is in both, so a setup is good for places: "Desk",
-  "Living room", "Travel".
+* A **setup** is what is there: which strips and buses there are, in which
+  order, their names, kinds, layouts, devices, colors and external effects.
+  Nothing about how they sound. Setups are good for places and hardware:
+  "Desk", "Headset", "Travel".
+* A **scene** is how it sounds: every strip's and bus's level, mute, solo,
+  pan, routes, route levels and effects, and a bus's delay. Scenes are good
+  for moments: "Gaming", "Streaming", "Late night".
+
+A scene describes the whole mix. Loading one gives each strip and bus it
+has a mix for that mix, found by name, and every other strip and bus its
+default mix: fader at 0 dB, unmuted, effects off, nothing routed. A setup
+loaded alone is the same as one loaded with a scene that mentions nothing,
+so everything starts at its default; give `load_setup` a scene to load
+with it. A scene with a mix for strips or buses the mixer does not have
+still loads; those parts are passed over. The [Library](#library) lists
+who each scene and setup has, to tell beforehand.
 
 Names are up to 64 letters, digits, spaces, `_`, `-` and `.`, and cannot
 start with a dot. Saving under a name that is taken replaces it. Scenes are
@@ -1063,7 +1076,7 @@ TOML file each.
 
 #### `save_scene` and `save_setup`
 
-Save the current mix as a scene, or the whole mixer as a setup.
+Save the current mix as a scene, or what is there as a setup.
 
 | Parameter | Type | |
 |---|---|---|
@@ -1087,11 +1100,13 @@ await mixer.call("save_setup", { name: "Desk" });
 
 #### `load_scene` and `load_setup`
 
-Bring back a saved scene or setup. Loading can be undone.
+Bring back a saved scene, or a setup with or without a scene. Loading can
+be undone, a setup with its scene as one step.
 
 | Parameter | Type | |
 |---|---|---|
 | `name` | string | Its name. |
+| `scene` | string, *optional* | `load_setup` only: a scene to load with the setup. Left out, every strip and bus starts at its default mix, with nothing routed. |
 
 Returns the whole mixer as it is now, a [MixerState](#mixerstate).
 
@@ -1101,13 +1116,14 @@ weirctl raw load_scene '{"name": "Streaming"}'
 ```
 
 ```python
+mixer.call("save_scene", name="Streaming")
 mixer.call("save_setup", name="Desk")
-mixer.call("load_setup", name="Desk")
+mixer.call("load_setup", name="Desk", scene="Streaming")
 ```
 
 ```js
-await mixer.call("save_scene", { name: "Streaming" });
-await mixer.call("load_scene", { name: "Streaming" });
+await mixer.call("save_setup", { name: "Desk" });
+await mixer.call("load_setup", { name: "Desk" });   // nothing routed
 ```
 
 #### `list_scenes` and `list_setups`
@@ -1592,8 +1608,10 @@ its own, and edited by hand:
 }
 ```
 
-`weir` is one of `scene` (with `name` and `scene`, a [Scene](#library)'s
-mix), `setup` (`name`, `setup`: a [MixerState](#mixerstate)), `hotkey`
+`weir` is one of `scene` (with `name` and `scene`: each strip's and bus's
+mix, as `strips` and `buses` with their `name`), `setup` (`name`, `setup`:
+`strips` and `buses`, each with `id`, `name`, `kind`, `layout` and, when
+set, `device`, `color` and `insert`), `hotkey`
 (`hotkey`: a [Hotkey](#hotkey) without its id, and the name of its
 `group`), `hotkey_list` (`groups`: names and `enabled`; `order`:
 `{"hotkey": name}` and `{"group": name}`), `eq_preset` (`name`, `bands`),
@@ -2135,10 +2153,11 @@ plays.
 
 ### AppRule
 
-`{"app": "Spotify", "strip": 2}`: when an application whose `name` or
-`binary` is `app` (ignoring case) starts playing, move it to strip 2. A
-rule without `strip` leaves the application wherever it goes by itself.
-When setting rules, `strip` takes a name as well as an id.
+`{"app": "Spotify", "strip": "Music"}`: when an application whose `name`
+or `binary` is `app` (ignoring case) starts playing, move it to the strip
+called Music. A rule without `strip` leaves the application wherever it
+goes by itself. When setting rules, `strip` takes an id as well as a
+name; the daemon keeps the name.
 
 ### Settings
 
@@ -2219,9 +2238,17 @@ Volume controls show them on a cubic scale: percent is
 
 ### Library
 
-`{"scenes": ["Late night", "Streaming"], "setups": ["Desk"], "scene": "Streaming", "setup": "Desk"}`:
-the saved scenes and setups, and the one of each last loaded or saved, if
-any.
+```json
+{"scenes": ["Late night", "Streaming"], "setups": ["Desk"], "scene": "Streaming", "setup": "Desk",
+ "scene_members": {"Streaming": {"strips": ["Mic", "Music", "Podcast"], "buses": ["Headset", "Stream Mic"]}},
+ "setup_members": {"Desk": {"strips": ["Mic", "Music"], "buses": ["Headset", "Stream Mic"]}}}
+```
+
+The saved scenes and setups, and the one of each last loaded or saved, if
+any. `scene_members` says who each scene has a mix for, and
+`setup_members` the strips and buses of each setup, by name: a scene's
+strips and buses that a setup lacks are passed over when the two load
+together (Podcast, above).
 
 ### Hotkey
 

@@ -462,10 +462,12 @@ remote control is ever wanted.
 
 ## What is next
 
+* Next: hotkeys that answer back, with a popup or a notification, and
+  sounds, as they are pressed, so you know a key did what you meant
+  without looking at the mixer.
 * Testing on more real hardware; most of the newer features have been
   developed against a headless PipeWire.
-* Hotkeys that answer back: a popup or a notification, and sounds, as
-  they are pressed. Then mouse side buttons and MIDI controllers as keys.
+* Later: mouse side buttons and MIDI controllers as hotkeys' keys.
 * An OpenDeck plugin, as its own project on top of the protocol.
 * Perhaps: a routing matrix view for many strips, and positioning sources
   in a sound field.

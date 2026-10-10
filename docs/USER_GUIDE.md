@@ -131,11 +131,12 @@ On the right:
 
 * **+ Strip** and **+ Bus** add one.
 * **Apps** lists the applications playing, and holds the rules.
-* **Scenes** and **Setups** save and bring back how things are.
+* **Scenes** keep how things sound, and **Setups** which strips and buses
+  there are (see [Scenes and setups](#scenes-and-setups)).
 * **Hotkeys** lists the keys that do things in the mixer from anywhere
   (see [Hotkeys](#hotkeys)).
-* **…** has undo and redo, **Recent changes**, **Preferences**, **About**
-  and **Quit window**.
+* **…** has undo and redo, **Recent changes**, **Export settings…** and
+  **Import settings…**, **Preferences**, **About** and **Quit window**.
 
 Under it, **Faders show** chooses what the strip faders set: their own
 level, or their level in one bus's mix (see [Who hears what](#who-hears-what)).
@@ -166,7 +167,7 @@ From top to bottom:
   the strip's settings window. See [Effects](#effects).
 * **M** (mute), **S** (solo) and **…**, a menu with the settings window,
   the channel layout, moving and coloring the strip, resetting the fader
-  and pan, and removing it.
+  and pan, its [hotkeys](#hotkeys), and removing it.
 
 ### A bus
 
@@ -182,7 +183,9 @@ From top to bottom:
 * **The meter and the fader**, as on a strip.
 * **CLIP**, the level, and **LIM**, which lights while the limiter is
   holding the bus down.
-* **EQ** and **⚙**, and **M** (mute), **mono** and **…**.
+* **EQ** and **⚙**, and **M** (mute), **mono** and **…**, a menu like a
+  strip's that also holds the safety limiter and the
+  [delay](#bus-delay).
 
 ## Who hears what
 
@@ -387,11 +390,11 @@ behind: put the delay on the faster bus until the two line up.
 Open the bus's settings window and unfold **Delay**: drag the slider, click
 the number to type an exact value, or use the **-1 ms** and **+1 ms**
 buttons to nudge it while you listen. The bus's **…** menu has a quick
-Delay field too, which you drag. Changing the delay while music plays
-blends from the old one to the new one, so there is no click. The signal
-chain at the top of the window shows a **Delay** stage when it is on.
-Everything on that bus is delayed, so a video's sound plays that much after
-its picture.
+Delay field too: drag it, or click it to type. Changing the delay while
+music plays blends from the old one to the new one, so there is no click.
+The signal chain at the top of the window shows a **Delay** stage when it
+is on. Everything on that bus is delayed, so a video's sound plays that
+much after its picture.
 
 ### External effects
 
@@ -431,9 +434,9 @@ With Weir's own wires, the blocks make a line: Weir's engine, **Weir
 Engine**, into "Music to effects", through the reverb, into "Music from
 effects", and on into **Weir effects return**, where the sound comes back
 into Weir. Weir draws the wires to and from its own blocks itself, and
-draws them again if one is removed, so there is nothing else to connect. To keep the wiring
-for next time, save a project in Carla (**File › Save**) and open it again
-later.
+draws them again if one is removed, so there is nothing else to connect.
+To keep the wiring for next time, save a project in Carla (**File ›
+Save**) and open it again later.
 
 **Where they go.** **Ext FX** sits in the signal chain along the top of
 the settings window. Drag it to another gap to move it, or choose under
@@ -867,6 +870,7 @@ next time Weir starts.
 | Equalizer curve | double-click | add a band |
 | Selected band | Delete | remove it |
 | Signal chain step | click | go to its settings |
+| Setup in the Setups menu | click / rest on it | load it alone / pick a scene to load with it |
 | Anywhere | Ctrl+Z | undo |
 | | Ctrl+Shift+Z or Ctrl+Y | redo |
 
@@ -876,13 +880,13 @@ Your settings, which are kept when Weir is uninstalled:
 
 | Where | What |
 |---|---|
-| `~/.config/weir/config.toml` | Your strips, buses, devices and levels. Saved as you go. |
+| `~/.config/weir/config.toml` | Your strips, buses, devices and levels, the app rules, and the preferences the service keeps. Saved as you go. |
 | `~/.config/weir/scenes/` | Your scenes, one file each. |
 | `~/.config/weir/setups/` | Your setups, one file each. |
 | `~/.config/weir/eq-presets.toml` | Your equalizer presets. |
 | `~/.config/weir/hotkeys.json` | Your hotkeys. |
 | `~/.config/weir/gui.toml` | The window's own preferences, and the names of your devices, for showing them while they are unplugged. |
-| `~/.config/weir/backups/` | Copies of `config.toml` from the last ten times Weir started with a changed one. To go back to one, quit Weir and copy it over `config.toml`. Also, in `import-` folders, copies of what each import replaced. |
+| `~/.config/weir/backups/` | Copies of `config.toml` from the last ten times Weir started with a changed one. To go back to one, quit Weir and copy it over `config.toml`. Also, in `import-` folders, copies of what each import replaced, and in `setups-before-scenes`, your setups as they were before Weir 1.2.0. |
 | `~/.local/state/weir/daemon.log` | What the service said, when the window started it. |
 
 To start over completely, quit Weir and delete `~/.config/weir`.

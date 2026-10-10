@@ -248,10 +248,20 @@ pub fn load(path: &Path) -> Result<Option<(Config, LoadReport)>> {
     if !table.contains_key("version") {
         table.insert("version".into(), toml::Value::Integer(UNVERSIONED as i64));
     }
+    let named = if table.get("version").and_then(toml::Value::as_integer) < Some(4) {
+        name_rule_strips(&mut table)
+    } else {
+        0
+    };
     let mut cfg: Config = table
         .try_into()
         .with_context(|| format!("parsing {}", path.display()))?;
-    let report = migrate(&mut cfg);
+    let mut report = migrate(&mut cfg);
+    if named > 0 {
+        report
+            .migrated
+            .push(format!("{named} app rules name their strip now"));
+    }
     if let Some(v) = report.from_newer {
         // Keep the newer file as it is, since saving over it would drop
         // whatever this version does not understand.
@@ -262,6 +272,46 @@ pub fn load(path: &Path) -> Result<Option<(Config, LoadReport)>> {
         }
     }
     Ok(Some((cfg, report)))
+}
+
+/// Version 4: app rules name their strip rather than number it. Done to
+/// the file as read, since a rule cannot hold a number any more. A number
+/// no strip has, from a strip removed long ago, goes. Returns how many
+/// rules were changed.
+fn name_rule_strips(table: &mut toml::Table) -> usize {
+    let names: std::collections::BTreeMap<i64, String> = table
+        .get("mixer")
+        .and_then(|m| m.get("strips"))
+        .and_then(toml::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|s| {
+            let id = s.get("id")?.as_integer()?;
+            Some((id, s.get("name")?.as_str()?.to_string()))
+        })
+        .collect();
+    let Some(rules) = table
+        .get_mut("app_rules")
+        .and_then(toml::Value::as_array_mut)
+    else {
+        return 0;
+    };
+    let mut changed = 0;
+    for rule in rules.iter_mut().filter_map(toml::Value::as_table_mut) {
+        let Some(id) = rule.get("strip").and_then(toml::Value::as_integer) else {
+            continue;
+        };
+        match names.get(&id) {
+            Some(name) => {
+                rule.insert("strip".into(), toml::Value::String(name.clone()));
+            }
+            None => {
+                rule.remove("strip");
+            }
+        }
+        changed += 1;
+    }
+    changed
 }
 
 /// Write atomically (temp file + rename).
@@ -665,7 +715,7 @@ mod tests {
             app_rules: vec![
                 weir_protocol::AppRule {
                     app: "Spotify".into(),
-                    strip: Some(2),
+                    strip: Some("Music".into()),
                 },
                 weir_protocol::AppRule {
                     app: "Discord".into(),
@@ -847,6 +897,28 @@ mod version_tests {
             .exists());
         // Once is enough.
         assert!(split_setups(&paths).unwrap().is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn version_3_app_rules_name_their_strip() {
+        let dir = std::env::temp_dir().join(format!("weir-ver-rules-{}", std::process::id()));
+        let path = write(
+            &dir,
+            "version = 3\n\
+             [[app_rules]]\napp = \"firefox\"\nstrip = 2\n\n\
+             [[app_rules]]\napp = \"spotify\"\nstrip = 9\n\n\
+             [[app_rules]]\napp = \"vlc\"\n\n\
+             [[mixer.strips]]\nid = 2\nname = \"Browser\"\nkind = \"virtual\"\n",
+        );
+        let (cfg, report) = load(&path).unwrap().unwrap();
+        let strips: Vec<Option<&str>> = cfg.app_rules.iter().map(|r| r.strip.as_deref()).collect();
+        assert_eq!(strips, [Some("Browser"), None, None]);
+        assert!(
+            report.migrated.iter().any(|m| m.contains("2 app rules")),
+            "{:?}",
+            report.migrated
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -522,6 +522,7 @@ impl Controller {
             )
         };
         self.follow_renames(&renamed);
+        self.rules_follow_renames(&renamed);
         self.push_state(state);
         if let Some(info) = history {
             self.announce(Notification::HistoryChanged(info));
@@ -575,6 +576,7 @@ impl Controller {
             (inner.mixer.clone(), inner.history.info(), labels, renamed)
         };
         self.follow_renames(&renamed);
+        self.rules_follow_renames(&renamed);
         info!(
             "{} {}",
             if back { "undid" } else { "redid" },

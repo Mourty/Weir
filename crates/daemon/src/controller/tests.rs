@@ -508,6 +508,44 @@ fn setups_hold_what_is_there_and_scenes_how_it_sounds() {
 }
 
 #[test]
+fn app_rules_keep_their_strip_by_name() {
+    let mut r = Rig::new("rules-names");
+    let rules = r.ok(
+        "set_app_rules",
+        json!({"rules": [{"app": "firefox", "strip": 2}, {"app": "spotify", "strip": "music"}]}),
+    );
+    assert_eq!(
+        rules,
+        json!([{"app": "firefox", "strip": "Music"}, {"app": "spotify", "strip": "Music"}])
+    );
+    // Renaming the strip renames it in the rules; undoing takes it back.
+    r.ok("set_strip", json!({"id": "Music", "name": "Tunes"}));
+    let state = r.ok("get_state", json!({}));
+    assert_eq!(state["app_rules"][0]["strip"], json!("Tunes"));
+    r.ok("undo", json!({}));
+    let state = r.ok("get_state", json!({}));
+    assert_eq!(state["app_rules"][0]["strip"], json!("Music"));
+
+    // A strip only a saved setup has will do: the rule waits for it. One
+    // no setup has, or a hardware strip, will not.
+    let game = r.ok("add_strip", json!({"name": "Game", "kind": "virtual"}));
+    r.ok("save_setup", json!({"name": "Gaming"}));
+    r.ok("remove_strip", json!({"id": game["id"]}));
+    r.ok(
+        "set_app_rules",
+        json!({"rules": [{"app": "steam", "strip": "Game"}]}),
+    );
+    for bad in ["Nope", "Mic"] {
+        let rules = json!({"rules": [{"app": "x", "strip": bad}]});
+        assert_eq!(
+            r.code("set_app_rules", rules),
+            RpcError::APPLICATION,
+            "{bad}"
+        );
+    }
+}
+
+#[test]
 fn equalizer_presets() {
     let mut r = Rig::new("eq");
     let both = json!({"name": "Bass boost", "strip": 2, "bus": 1});
@@ -587,9 +625,12 @@ fn strips_and_buses_can_be_named_instead_of_numbered() {
     resolve_names("add_strip", &mut p, &m).unwrap();
     assert_eq!(p["routes"], json!([1, 3, 1]));
 
-    let mut p = json!({"rules": [{"app": "Spotify", "strip": "Music"}]});
+    // App rules keep names: ids become names, and names stay.
+    let mut p =
+        json!({"rules": [{"app": "Spotify", "strip": "Music"}, {"app": "VLC", "strip": 2}]});
     resolve_names("set_app_rules", &mut p, &m).unwrap();
-    assert_eq!(p["rules"][0]["strip"], 2);
+    assert_eq!(p["rules"][0]["strip"], "Music");
+    assert_eq!(p["rules"][1]["strip"], "Music");
 
     // Numbers pass straight through, and unknown names are errors.
     let mut p = json!({"id": 1});
@@ -1014,7 +1055,8 @@ fn settings_go_to_another_mixer_by_name() {
         json!({"name": "Mute mic", "keys": "Ctrl+Alt+M", "steps": []}),
     );
     let seen = b.ok("inspect_import", json!({"path": zip}));
-    assert_eq!(seen["missing"], json!([{"kind": "strip", "name": "Music"}]));
+    // Music is in the file's setup Home, so nothing asks for a strip.
+    assert!(seen.get("missing").is_none(), "{seen}");
     let item = |id: &str| {
         seen["items"]
             .as_array()
@@ -1046,8 +1088,8 @@ fn settings_go_to_another_mixer_by_name() {
         "{down}"
     );
     assert_eq!(
-        item("app-rules/app-rules.json")["missing"],
-        json!([{"kind": "strip", "name": "Music"}])
+        item("app-rules/app-rules.json")["setup_items"],
+        json!(["setups/Home.json"])
     );
     assert!(item("preferences/preferences.json#audio_timing")["note"].is_string());
     assert!(
@@ -1059,14 +1101,10 @@ fn settings_go_to_another_mixer_by_name() {
         "a map to a strip that is not here"
     );
 
-    // Unmapped, the app rules cannot come; taken names are skipped. Music
-    // down comes with Home, keeping its strip's name.
+    // Taken names are skipped. Music down and the app rules come with
+    // Home, keeping their strip's name, and wait for Home to be loaded.
     let done = b.ok("import_settings", json!({"path": zip}));
     let skipped = done["skipped"].to_string();
-    assert!(
-        skipped.contains("app rules: this mixer has no strip 'Music'"),
-        "{skipped}"
-    );
     assert!(
         skipped.contains("scene 'Gaming': there is one called that already"),
         "{skipped}"
@@ -1074,6 +1112,12 @@ fn settings_go_to_another_mixer_by_name() {
     let imported = done["imported"].to_string();
     assert!(imported.contains("setup 'Home'"), "{imported}");
     assert!(imported.contains("hotkey 'Music down'"), "{imported}");
+    assert!(imported.contains("app rules"), "{imported}");
+    let state = b.ok("get_state", json!({}));
+    assert_eq!(
+        state["app_rules"],
+        json!([{"app": "firefox", "strip": "Music"}])
+    );
 
     // Mapped, and keeping both.
     let done = b.ok(
@@ -1118,7 +1162,10 @@ fn settings_go_to_another_mixer_by_name() {
         json!([{"id": 1, "name": "Streaming", "enabled": false}])
     );
     let state = b.ok("get_state", json!({}));
-    assert_eq!(state["app_rules"], json!([{"app": "firefox", "strip": 2}]));
+    assert_eq!(
+        state["app_rules"],
+        json!([{"app": "firefox", "strip": "Media"}])
+    );
     assert_eq!(state["settings"]["solo"], json!({"cue": 3}));
     assert_eq!(state["settings"]["meter_rate_hz"], json!(20));
 
@@ -1136,6 +1183,12 @@ fn settings_go_to_another_mixer_by_name() {
             .contains("hotkey 'Music down': no strip called 'Music'"),
         "{done}"
     );
+    // App rules alone, with no setup anywhere that has their strip, ask
+    // for one.
+    let rules = a.dir.join("rules.json");
+    a.ok("export_settings", json!({"path": rules, "app_rules": true}));
+    let seen = d.ok("inspect_import", json!({"path": rules}));
+    assert_eq!(seen["missing"], json!([{"kind": "strip", "name": "Music"}]));
     // A setup saved here that has it will do.
     d.ok("set_strip", json!({"id": "Media", "name": "Music"}));
     d.ok("save_setup", json!({"name": "Old"}));

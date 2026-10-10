@@ -4,6 +4,7 @@
 //! tells everyone.
 
 use super::hotkeys::Action;
+use super::names::{self, Mixers};
 use super::rules::rule_moves;
 use super::undo_labels::undo_step;
 use super::{Controller, Subscriptions, MAX_SPECTRUM_TARGETS};
@@ -161,35 +162,39 @@ impl Controller {
     }
 
     pub(super) fn set_app_rules(&self, p: AppRulesParams) -> Result<Value, RpcError> {
-        let (rules, moves) = {
-            let mut inner = self.inner.lock().unwrap();
-            let mut rules: Vec<AppRule> = Vec::new();
-            for r in p.rules {
-                let app = r.app.trim().to_string();
-                if app.is_empty() {
-                    return Err(RpcError::invalid_params("a rule needs an application"));
-                }
-                if let Some(id) = r.strip {
-                    if !inner
-                        .mixer
-                        .strip(id)
-                        .is_some_and(|s| s.kind == StripKind::Virtual)
-                    {
+        // A rule's strip may be one only a saved setup has: the rule waits
+        // for it.
+        let mixers = Mixers::new(self.mixer(), &self.paths.setups_dir, Vec::new());
+        let mut rules: Vec<AppRule> = Vec::new();
+        for r in p.rules {
+            let app = r.app.trim().to_string();
+            if app.is_empty() {
+                return Err(RpcError::invalid_params("a rule needs an application"));
+            }
+            let strip = match r.strip.as_deref().map(str::trim) {
+                None | Some("") => None,
+                Some(key) => {
+                    let (m, id) = mixers
+                        .locate(TargetKind::Strip, key)
+                        .ok_or_else(|| names::no_such(TargetKind::Strip, key))?;
+                    let s = m.strip(id).expect("located");
+                    if s.kind != StripKind::Virtual {
                         return Err(RpcError::application(format!(
-                            "strip {id} is not a virtual strip, so applications cannot play \
-                             into it"
+                            "'{}' is not a virtual strip, so applications cannot play into it",
+                            s.name
                         )));
                     }
+                    Some(s.name.clone())
                 }
-                // One rule per application: the first one wins anyway, so a
-                // second would only confuse.
-                if !rules.iter().any(|x| x.app.eq_ignore_ascii_case(&app)) {
-                    rules.push(AppRule {
-                        app,
-                        strip: r.strip,
-                    });
-                }
+            };
+            // One rule per application: the first one wins anyway, so a
+            // second would only confuse.
+            if !rules.iter().any(|x| x.app.eq_ignore_ascii_case(&app)) {
+                rules.push(AppRule { app, strip });
             }
+        }
+        let (rules, moves) = {
+            let mut inner = self.inner.lock().unwrap();
             inner.app_rules = rules.clone();
             // A new rule applies to what is already playing too.
             inner.rules_done.clear();
@@ -383,6 +388,13 @@ impl Controller {
             *m = loaded;
             Ok(m.clone())
         })?;
+        {
+            // Another setup: app rules apply afresh, to strips of their
+            // names here, when the applications show up on its devices.
+            let mut inner = self.inner.lock().unwrap();
+            inner.rules_done.clear();
+            inner.rules_tried.clear();
+        }
         self.library_changed(Some(p.scene), Some(Some(p.name)));
         Ok(result)
     }

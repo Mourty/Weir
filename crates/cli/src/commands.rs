@@ -394,10 +394,16 @@ pub fn rules(c: &mut Client, json: bool) -> Result<()> {
 /// playing, replacing any rule it had.
 pub fn rule(c: &mut Client, app: String, strip: &str, json: bool) -> Result<()> {
     let st = c.state()?;
+    // By name: a strip this setup lacks may be in a saved setup, which the
+    // daemon checks.
     let target = if strip == "leave" {
         None
     } else {
-        Some(find_strip(&st.mixer, strip)?)
+        Some(
+            st.mixer
+                .find_strip(strip)
+                .map_or_else(|| strip.to_string(), |s| s.name.clone()),
+        )
     };
     let mut rules = st.app_rules;
     match rules.iter_mut().find(|r| r.app.eq_ignore_ascii_case(&app)) {

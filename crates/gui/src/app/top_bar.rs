@@ -57,10 +57,10 @@ impl App {
                             self.open_hotkeys();
                         }
                         ui.menu_button("Setups", |ui| {
-                            self.library_menu(ui, LibraryKind::Setup, &state.library);
+                            self.library_menu(ui, LibraryKind::Setup, state);
                         });
                         ui.menu_button("Scenes", |ui| {
-                            self.library_menu(ui, LibraryKind::Scene, &state.library);
+                            self.library_menu(ui, LibraryKind::Scene, state);
                         });
                         ui.menu_button(format!("Apps ({})", state.apps.len()), |ui| {
                             self.apps_menu(ui, state);

@@ -691,6 +691,8 @@ Where and how loud the sounds play, and how the popup shows, are set once
 for all hotkeys in [Preferences](#preferences). Sounds go straight to that
 device, past every bus, so your stream and recordings never hear them.
 
+![Hotkeys in Preferences](images/hotkey-preferences.png)
+
 ### More options
 
 **More options…** shows every step, since a hotkey can do several things

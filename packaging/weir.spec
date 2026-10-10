@@ -29,7 +29,7 @@
 %global cargo_flags --release --locked
 
 Name:           weir
-Version:        1.1.0
+Version:        1.2.0
 Release:        %{?_release}%{!?_release:1}%{?dist}
 Summary:        Voicemeeter-style audio mixer for PipeWire
 
@@ -95,6 +95,22 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/io.github.mour
 %doc %{_datadir}/doc/%{name}/docs/
 
 %changelog
+* Sat Oct 10 2026 Mourty <Mourt2@proton.me> - 1.2.0-1
+- Add hotkeys: keyboard shortcuts for anything the mixer does, such as
+  push to talk, muting or loading a scene, that work with the window
+  closed and in full-screen games, in order and in groups, and listed in
+  Plasma's System Settings.
+- Export settings to a file and import them, all or a few at a time:
+  scenes, setups, hotkeys, equalizer presets, app rules and preferences.
+- Part setups from scenes: a setup is which strips and buses there are,
+  a scene is how they sound. A setup loads alone or with any scene, and
+  each old setup's mix becomes a scene of the same name.
+- Add a delay of up to half a second on each bus, to line up outputs
+  that lag, such as a Bluetooth speaker. Contributed by SemmyEM.
+- Keep the strip and bus menus open while typing into their fields.
+- Keep app rules' strips by name, so a rule waits for a setup that has
+  its strip.
+
 * Thu Oct 01 2026 Mourty <Mourt2@proton.me> - 1.1.0-1
 - Add external effects: a strip's or bus's sound goes out to another
   program, such as Carla or EasyEffects, and comes back, at any point of

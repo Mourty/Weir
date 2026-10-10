@@ -10,19 +10,28 @@ use serde_json::Value;
 use std::path::PathBuf;
 use weir_protocol::*;
 
-/// One thing exported on its own, to a bare `.json`.
+/// One thing exported on its own, to a bare `.json`, or for a hotkey that
+/// plays sounds of the person's own (the `bool`), to a `.zip` with them.
 #[derive(Debug, Clone)]
 pub(super) enum One {
     Scene(String),
     Setup(String),
-    Hotkey(HotkeyId, String),
+    Hotkey(HotkeyId, String, bool),
     EqPreset(String),
 }
 
 impl One {
     fn name(&self) -> &str {
         match self {
-            One::Scene(n) | One::Setup(n) | One::Hotkey(_, n) | One::EqPreset(n) => n,
+            One::Scene(n) | One::Setup(n) | One::Hotkey(_, n, _) | One::EqPreset(n) => n,
+        }
+    }
+
+    /// The kind of file it goes in: `zip` or `json`.
+    fn extension(&self) -> &'static str {
+        match self {
+            One::Hotkey(_, _, true) => "zip",
+            _ => "json",
         }
     }
 
@@ -44,7 +53,7 @@ impl One {
         match self {
             One::Scene(n) => p.scenes.push(n.clone()),
             One::Setup(n) => p.setups.push(n.clone()),
-            One::Hotkey(id, _) => p.hotkeys.push(HotkeyKey::Id(*id)),
+            One::Hotkey(id, ..) => p.hotkeys.push(HotkeyKey::Id(*id)),
             One::EqPreset(n) => p.eq_presets.push(n.clone()),
         }
         Request::ExportSettings(p)
@@ -78,9 +87,11 @@ impl App {
 
     /// Export `one` alone, asking where.
     pub(super) fn export_one(&mut self, ctx: &egui::Context, one: One) {
-        let file = format!("{}.json", one.name().replace('/', "_"));
+        let ext = one.extension();
+        let file = format!("{}.{ext}", one.name().replace('/', "_"));
         let title = format!("Export the {} '{}'", one.word(), one.name());
-        let dialog = Dialog::save(ctx, &title, &file, &[("Weir settings", &["*.json"])]);
+        let pattern = format!("*.{ext}");
+        let dialog = Dialog::save(ctx, &title, &file, &[("Weir settings", &[&pattern])]);
         self.export_one = Some((dialog, one));
     }
 
@@ -96,11 +107,12 @@ impl App {
             let (_, one) = self.export_one.take().expect("polled");
             match picked {
                 Picked::File(mut path) => {
+                    let ext = one.extension();
                     if path
                         .extension()
-                        .is_none_or(|e| !e.eq_ignore_ascii_case("json"))
+                        .is_none_or(|e| !e.eq_ignore_ascii_case(ext))
                     {
-                        path.as_mut_os_string().push(".json");
+                        path.as_mut_os_string().push(format!(".{ext}"));
                     }
                     self.actions.push(one.request(path.display().to_string()));
                     self.export_waiters.push_back(ExportWaiter::One(one));

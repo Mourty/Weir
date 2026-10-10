@@ -672,11 +672,18 @@ impl Shown {
             .taken
             .entry(item.id.clone())
             .or_insert_with(|| Taken::KeepBoth(free.clone()));
-        let builtin = item.kind == ExportKind::EqPreset
-            && state
+        let builtin = match item.kind {
+            ExportKind::EqPreset => state
                 .eq_presets
                 .iter()
-                .any(|p| p.builtin && p.name.eq_ignore_ascii_case(&item.name));
+                .any(|p| p.builtin && p.name.eq_ignore_ascii_case(&item.name)),
+            ExportKind::Sound => state
+                .hotkeys
+                .sounds
+                .iter()
+                .any(|s| s.builtin && s.name.eq_ignore_ascii_case(&item.name)),
+            _ => false,
+        };
         ui.horizontal(|ui| {
             let keeping = matches!(choice, Taken::KeepBoth(_));
             if ui.radio(keeping, "Keep both, this one as").clicked() && !keeping {
@@ -693,7 +700,7 @@ impl Shown {
             if field.changed() {
                 *choice = Taken::KeepBoth(name);
             }
-            // A preset that comes with Weir cannot be replaced.
+            // A preset or sound that comes with Weir cannot be replaced.
             if !builtin
                 && ui
                     .radio(*choice == Taken::Replace, "Replace mine")
@@ -729,7 +736,9 @@ fn word(kind: TargetKind) -> &'static str {
 fn name_problem(kind: ExportKind, name: &str, state: &FullState) -> Option<String> {
     let name = name.trim();
     let problem = match kind {
-        ExportKind::Scene | ExportKind::Setup => library_name_problem(name).map(str::to_string),
+        ExportKind::Scene | ExportKind::Setup | ExportKind::Sound => {
+            library_name_problem(name).map(str::to_string)
+        }
         _ if name.is_empty() => Some("Type a name".into()),
         _ => None,
     };
@@ -748,6 +757,11 @@ fn name_problem(kind: ExportKind, name: &str, state: &FullState) -> Option<Strin
             .eq_presets
             .iter()
             .any(|p| p.name.eq_ignore_ascii_case(name)),
+        ExportKind::Sound => state
+            .hotkeys
+            .sounds
+            .iter()
+            .any(|s| s.name.eq_ignore_ascii_case(name)),
         _ => false,
     };
     taken.then(|| format!("You have a {} called that too.", kind.word()))

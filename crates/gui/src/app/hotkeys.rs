@@ -61,12 +61,25 @@ impl App {
         if let Some(e) = &mut self.hotkey_editor {
             e.show(ctx, state, error, &mut self.actions);
             let export = std::mem::take(&mut e.export);
+            let wants_sound = e.wants_sound.take();
             let id = e.id();
             if e.closed {
                 self.hotkey_editor = None;
             }
             if let Some(h) = state.hotkeys.hotkeys.iter().find(|h| export && h.id == id) {
-                self.export_one(ctx, super::transfer::One::Hotkey(h.id, h.name.clone()));
+                // Sounds of the person's own go with it, so it needs a .zip.
+                let own = h.sounds.named().any(|(_, s)| {
+                    state
+                        .hotkeys
+                        .sounds
+                        .iter()
+                        .any(|x| !x.builtin && x.name.eq_ignore_ascii_case(s))
+                });
+                let one = super::transfer::One::Hotkey(h.id, h.name.clone(), own);
+                self.export_one(ctx, one);
+            }
+            if let Some(slot) = wants_sound {
+                self.open_add_sound(ctx, Some(slot));
             }
         }
     }

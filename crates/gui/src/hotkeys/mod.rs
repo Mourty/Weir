@@ -872,11 +872,16 @@ pub(crate) fn examples(state: &FullState) -> Vec<Hotkey> {
     let mut out = Vec::new();
     let base = |id| Simple::new(StripOrBus::Strip(id), state);
     if let Some(mic) = mic {
-        out.push(
-            base(mic.id)
-                .with(Action::PushToTalk)
-                .hotkey("Push to talk", &["Ctrl+Alt+Space".into()]),
-        );
+        // Push to talk beeps, so you know you are live without looking.
+        let mut talk = base(mic.id)
+            .with(Action::PushToTalk)
+            .hotkey("Push to talk", &["Ctrl+Alt+Space".into()]);
+        talk.sounds = HotkeySounds {
+            press: Some("Beep up".into()),
+            release: Some("Beep down".into()),
+            repeat: None,
+        };
+        out.push(talk);
         out.push(base(mic.id).hotkey("Mute mic", &["Ctrl+Alt+M".into()]));
     }
     if let Some(music) = music {
@@ -928,6 +933,8 @@ mod tests {
         let all = examples(&st);
         assert_eq!(all.len(), 6);
         assert!(all.iter().all(|h| !h.enabled));
+        assert_eq!(all[0].sounds.press.as_deref(), Some("Beep up"));
+        assert!(all[1].sounds.is_empty(), "only push to talk makes a sound");
         let mut mine = all[1].clone();
         mine.name = "My mute".into();
         mine.keys = vec!["Ctrl+Alt+Up".into()];

@@ -92,6 +92,9 @@ fn run() -> Result<()> {
             start_at_login,
             tray,
             tray_icon,
+            popup,
+            sounds_device,
+            sounds_volume,
         } => {
             let a = SettingsArgs {
                 solo,
@@ -102,6 +105,9 @@ fn run() -> Result<()> {
                 start_at_login,
                 tray,
                 tray_icon,
+                popup,
+                sounds_device,
+                sounds_volume,
             };
             commands::settings(c, a, json)
         }
@@ -110,6 +116,8 @@ fn run() -> Result<()> {
         Cmd::Eq { action } => commands::eq(c, action, json),
         Cmd::Hotkeys => commands::hotkeys(c, json),
         Cmd::Hotkey { action } => commands::hotkey(c, action, json),
+        Cmd::Sounds => commands::sounds(c, json),
+        Cmd::Sound { action } => commands::sound(c, action, json),
         Cmd::Export(a) => transfer::export(c, a, json),
         Cmd::Import(a) => transfer::import(c, a, json),
         Cmd::Watch { meters } => commands::watch(c, meters, json),

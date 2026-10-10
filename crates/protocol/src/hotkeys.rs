@@ -10,6 +10,7 @@
 
 use crate::model::MixerState;
 use crate::rpc::Flag;
+use crate::sounds::{HotkeySounds, SoundInfo};
 use crate::targets::{targets_by_id, targets_by_name, visit_targets, TargetKind};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -112,13 +113,23 @@ pub struct Hotkey {
     /// key.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repeat_ms: Option<u32>,
+    /// The sounds it plays, by name: when pressed, when let go, and at each
+    /// repeat. Left out, it plays none.
+    #[serde(default, skip_serializing_if = "HotkeySounds::is_empty")]
+    pub sounds: HotkeySounds,
+    /// Whether pressing it shows what it did, as Weir's settings say
+    /// (`hotkey_popup`). `true` when left out.
+    #[serde(default = "yes", skip_serializing_if = "is_true")]
+    pub popup: bool,
 }
 
 impl Hotkey {
     /// Whether it does anything when the keys are let go, so it needs to
     /// see them being let go.
     pub fn acts_on_release(&self) -> bool {
-        self.on_release != OnRelease::Nothing || self.repeat_ms.is_some()
+        self.on_release != OnRelease::Nothing
+            || self.repeat_ms.is_some()
+            || self.sounds.release.is_some()
     }
 }
 
@@ -302,6 +313,10 @@ pub struct HotkeysInfo {
     /// taken, or a strip that was removed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub problems: Vec<HotkeyProblem>,
+    /// Every sound hotkeys can play: Weir's own, then yours, in
+    /// alphabetical order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sounds: Vec<SoundInfo>,
 }
 
 /// How keys reach Weir on this desktop.
@@ -646,6 +661,7 @@ pub fn describe_step(step: &HotkeyStep, m: &MixerState) -> String {
         },
         "save_scene" => format!("Save the scene {}", s("name")),
         "show_window" => "Show the Weir window".into(),
+        "play_sound" => format!("Play the sound {}", s("name")),
         "undo" | "redo" => {
             let n = p.get("steps").and_then(Value::as_u64).unwrap_or(1);
             let verb = if step.method == "undo" {
@@ -851,6 +867,8 @@ mod tests {
             on_release: OnRelease::Restore,
             release_steps: Vec::new(),
             repeat_ms: None,
+            sounds: HotkeySounds::default(),
+            popup: true,
         };
         assert_eq!(describe_hotkey(&h, &m), "Mic: unmute; put back when let go");
         assert!(h.acts_on_release());

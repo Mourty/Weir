@@ -1,7 +1,8 @@
 //! Links between Weir's nodes and devices: each strip's source into the
-//! strip's input ports, each bus's output ports into its device, and each
+//! strip's input ports, each bus's output ports into its device, each
 //! external effects' ports out into their "to effects" device and, on the
-//! return node, back from their "from effects" device.
+//! return node, back from their "from effects" device, and the hotkey
+//! sounds' output into the device chosen for them.
 
 use super::{with_effects, LocalPort, Owner, PortKey, Runner};
 use crate::pw::graph::{PortDirection, PortEntry};
@@ -153,6 +154,16 @@ impl Runner {
                 for (our_out, dev_in) in pair(&ours, &theirs(dev_ports), true) {
                     desired.push((our_out, dev_in));
                 }
+            }
+        }
+        if let Some((_, dev_ports)) = self
+            .sounds_device
+            .as_deref()
+            .and_then(|d| self.graph.resolve_sink(d))
+        {
+            let ours = ours(&self.ports, PortKey::Sounds, 2, &by_name);
+            for (our_out, dev_in) in pair(&ours, &theirs(dev_ports), true) {
+                desired.push((our_out, dev_in));
             }
         }
         // External effects: out into "to effects", which is made like a

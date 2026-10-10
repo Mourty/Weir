@@ -127,6 +127,9 @@ impl Controller {
             Request::ReleaseHotkey(r) => self.hotkey_action(r, Action::Release),
             Request::RunHotkey(r) => self.hotkey_action(r, Action::Run),
             Request::OpenShortcutSettings => self.open_shortcut_settings(),
+            Request::AddSound(p) => self.add_sound(p),
+            Request::RemoveSound(p) => self.remove_sound(p),
+            Request::PlaySound(p) => self.play_sound(&p.name),
             Request::ExportSettings(p) => self.export_settings(p),
             Request::InspectImport(p) => self.inspect_import(p),
             Request::ImportSettings(p) => self.import_settings(p),
@@ -289,6 +292,17 @@ impl Controller {
             .quantum
             .map(|v| hold(v, 16..=8192, "quantum"))
             .transpose()?;
+        if let Some(v) = p.sounds_volume_db {
+            let (lo, hi) = SOUNDS_VOLUME_DB;
+            if !(lo..=hi).contains(&v) {
+                return Err(RpcError::invalid_params(format!(
+                    "sounds_volume_db must be from {lo} to {hi}"
+                )));
+            }
+        }
+        let sounds_device = p
+            .sounds_device
+            .map(|d| d.map(|d| d.trim().to_string()).filter(|d| !d.is_empty()));
         let start_at_login = p
             .start_at_login
             .map(|flag| self.set_start_at_login(flag))
@@ -320,9 +334,19 @@ impl Controller {
             if let Some(v) = start_at_login {
                 s.start_at_login = v;
             }
+            if let Some(v) = p.hotkey_popup {
+                s.hotkey_popup = v;
+            }
+            if let Some(v) = sounds_device {
+                s.sounds_device = v;
+            }
+            if let Some(v) = p.sounds_volume_db {
+                s.sounds_volume_db = v;
+            }
             s.clone()
         };
         self.apply_engine_options();
+        self.update_sounds_device();
         self.dirty.store(true, Ordering::Release);
         self.announce(Notification::SettingsChanged(settings.clone()));
         Ok(to_json(&settings))

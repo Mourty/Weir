@@ -17,6 +17,7 @@ use crate::fx::*;
 use crate::hotkeys::*;
 use crate::library::Library;
 use crate::model::*;
+use crate::sounds::*;
 use crate::transfer::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -991,6 +992,22 @@ pub struct SettingsPatch {
     /// From 16 to 8192 frames; `0` lets PipeWire decide.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quantum: Option<u32>,
+    /// See [`Settings::hotkey_popup`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hotkey_popup: Option<HotkeyPopup>,
+    /// The device hotkeys' sounds play on, by `node.name` (see
+    /// `list_devices`); `null` for the device of the first bus that plays to
+    /// one.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "double_option"
+    )]
+    #[schemars(with = "Option<Option<String>>")]
+    pub sounds_device: Option<Option<String>>,
+    /// See [`Settings::sounds_volume_db`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sounds_volume_db: Option<f32>,
 }
 
 /// Parameters naming a scene, a setup or an equalizer preset.
@@ -1172,6 +1189,14 @@ pub enum Request {
     /// keys can be changed and more added. Only when [`KeysStatus`] says
     /// `configurable`. Returns `null`.
     OpenShortcutSettings,
+    /// Adds a sound of your own for hotkeys to play, from a sound file Weir
+    /// keeps a copy of. Returns its [`SoundInfo`].
+    AddSound(AddSoundParams),
+    /// Removes a sound of your own. Hotkeys that played it play nothing
+    /// there any more. Returns [`HotkeysInfo`].
+    RemoveSound(NameParams),
+    /// Plays a sound where hotkeys' sounds play, to hear it. Returns `null`.
+    PlaySound(NameParams),
     /// Writes scenes, setups, hotkeys, equalizer presets, app rules and
     /// preferences to a `.zip`, or one of them to a `.json`. Returns
     /// [`ExportResult`].

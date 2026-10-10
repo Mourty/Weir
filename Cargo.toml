@@ -47,6 +47,11 @@ x11rb-protocol = "0.13"
 # Exported settings are a .zip of JSON files. Only deflate, in pure Rust:
 # the default features bring in C libraries and formats Weir never writes.
 zip = { version = "8.6", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+# Sounds travel in exported settings as base64 inside JSON.
+base64 = "0.22"
+# Hotkeys' sounds of the user's own: .wav, .flac and .ogg, decoded in pure
+# Rust, and nothing else.
+symphonia = { version = "0.5.5", default-features = false, features = ["wav", "pcm", "flac", "ogg", "vorbis"] }
 
 [profile.release]
 opt-level = 3

@@ -347,6 +347,8 @@ mod tests {
             on_release: OnRelease::Nothing,
             release_steps: Vec::new(),
             repeat_ms: None,
+            sounds: HotkeySounds::default(),
+            popup: true,
         };
         // Hotkey 4 is on, in a group that is off.
         let in_group = Hotkey {

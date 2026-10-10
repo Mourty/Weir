@@ -157,6 +157,16 @@ pub enum Cmd {
         /// panel: color or one-color.
         #[arg(long)]
         tray_icon: Option<String>,
+        /// What pressing a hotkey shows: popup, notification or nothing.
+        #[arg(long)]
+        popup: Option<String>,
+        /// The device hotkeys' sounds play on, by name or description (see
+        /// `weirctl devices`), or "auto" for the first bus's device.
+        #[arg(long)]
+        sounds_device: Option<String>,
+        /// How loud hotkeys' sounds play, from -40 to 0 dB.
+        #[arg(long, allow_hyphen_values = true)]
+        sounds_volume: Option<f32>,
     },
     /// Setups: the strips and buses, with their devices, names and layouts.
     Setup {
@@ -180,9 +190,16 @@ pub enum Cmd {
         #[command(subcommand)]
         action: HotkeyCmd,
     },
-    /// Save scenes, setups, hotkeys, equalizer presets, app rules and
-    /// preferences to a .zip, or one of them to a .json, to keep or to take
-    /// to another computer.
+    /// List the sounds hotkeys can play, and where they play.
+    Sounds,
+    /// Add, remove or play a sound for hotkeys.
+    Sound {
+        #[command(subcommand)]
+        action: SoundCmd,
+    },
+    /// Save scenes, setups, hotkeys and their sounds, equalizer presets,
+    /// app rules and preferences to a .zip, or one of them to a .json, to
+    /// keep or to take to another computer.
     Export(ExportArgs),
     /// Bring in settings from a .zip or .json Weir exported. See what it
     /// holds first with --list.
@@ -206,8 +223,8 @@ pub enum Cmd {
 pub struct ExportArgs {
     /// The file to write: a .zip, or a .json for one thing alone.
     pub file: std::path::PathBuf,
-    /// Everything: every scene, setup, hotkey and equalizer preset of your
-    /// own, the app rules and the preferences.
+    /// Everything: every scene, setup, hotkey, sound and equalizer preset
+    /// of your own, the app rules and the preferences.
     #[arg(long)]
     pub all: bool,
     /// A scene, by name. Give it again for more.
@@ -217,17 +234,20 @@ pub struct ExportArgs {
     #[arg(long = "setup", value_name = "NAME")]
     pub setups: Vec<String>,
     /// A hotkey, by name or id. Give it again for more. Their groups and
-    /// order go with them.
+    /// order go with them, and so do the sounds of your own they play.
     #[arg(long = "hotkey", value_name = "HOTKEY")]
     pub hotkeys: Vec<String>,
+    /// A sound of your own, by name. Give it again for more.
+    #[arg(long = "sound", value_name = "NAME")]
+    pub sounds: Vec<String>,
     /// An equalizer preset of your own, by name. Give it again for more.
     #[arg(long = "eq-preset", value_name = "NAME")]
     pub eq_presets: Vec<String>,
     /// The app rules.
     #[arg(long)]
     pub app_rules: bool,
-    /// A part of the preferences: window-look, mixer, audio-timing or
-    /// start-at-login. Give it again for more.
+    /// A part of the preferences: window-look, mixer, hotkey-feedback,
+    /// audio-timing or start-at-login. Give it again for more.
     #[arg(long = "preferences", value_name = "PART")]
     pub preferences: Vec<String>,
 }
@@ -680,4 +700,41 @@ pub struct HotkeyOpts {
     /// The group it is in, by name or id, or "none" for no group.
     #[arg(long)]
     pub group: Option<String>,
+    /// A sound to play when it is pressed, by name (see `weirctl sounds`),
+    /// or "none".
+    #[arg(long, value_name = "SOUND")]
+    pub press_sound: Option<String>,
+    /// A sound to play when its keys are let go, or "none".
+    #[arg(long, value_name = "SOUND")]
+    pub release_sound: Option<String>,
+    /// A sound to play each time it repeats while held, or "none".
+    #[arg(long, value_name = "SOUND")]
+    pub repeat_sound: Option<String>,
+    /// Whether pressing it shows what it did, as the settings say: on or
+    /// off.
+    #[arg(long)]
+    pub popup: Option<String>,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum SoundCmd {
+    /// Add a sound of your own from a .wav, .ogg or .flac file, 10
+    /// seconds at most. Weir keeps a copy.
+    Add {
+        /// Its name.
+        name: String,
+        /// The sound file.
+        file: std::path::PathBuf,
+    },
+    /// Remove a sound of your own. Hotkeys that played it play nothing
+    /// there any more.
+    Remove {
+        /// The sound, by name.
+        name: String,
+    },
+    /// Play a sound where hotkeys' sounds play.
+    Play {
+        /// The sound, by name.
+        name: String,
+    },
 }

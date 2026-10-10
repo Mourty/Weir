@@ -11,9 +11,11 @@ use super::handlers::{check_bands, is_builtin_eq_preset, NAME_MAX};
 use super::names::{self, Mixers};
 use super::Controller;
 use crate::config::{self, HotkeyList};
+use crate::sounds::{decode_bytes, own_files, sound_extension, sound_file};
 use crate::transfer::{self as files, *};
+use base64::Engine as _;
 use serde_json::Value;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use tracing::info;
 use weir_protocol::*;
@@ -50,9 +52,12 @@ enum Content {
     /// With strips and buses by name, and its group's name.
     Hotkey(Hotkey, Option<String>),
     EqPreset(Vec<EqBand>),
+    /// A sound file as it came, and its extension.
+    Sound(String, Vec<u8>),
     AppRules(Vec<RuleFile>),
     WindowLook(Value),
     Mixer(MixerPrefs),
+    Feedback(FeedbackPrefs),
     AudioTiming(AudioTiming),
     StartAtLogin(bool),
     /// Nothing that can be imported: see the item's `broken`.
@@ -81,6 +86,7 @@ struct Here {
     presets: Vec<EqPreset>,
     hotkeys: HotkeyList,
     rules: Vec<AppRule>,
+    sounds: Vec<SoundInfo>,
 }
 
 impl Here {
@@ -98,6 +104,10 @@ impl Here {
                 .presets
                 .iter()
                 .any(|p| p.name.eq_ignore_ascii_case(name)),
+            ExportKind::Sound => self
+                .sounds
+                .iter()
+                .any(|s| s.name.eq_ignore_ascii_case(name)),
             ExportKind::AppRules | ExportKind::Preferences => false,
         }
     }
@@ -106,7 +116,7 @@ impl Here {
 /// The longest name things of `kind` may have.
 fn name_max(kind: ExportKind) -> usize {
     match kind {
-        ExportKind::Scene | ExportKind::Setup => LIBRARY_NAME_MAX,
+        ExportKind::Scene | ExportKind::Setup | ExportKind::Sound => LIBRARY_NAME_MAX,
         ExportKind::Hotkey => HOTKEY_NAME_MAX,
         _ => NAME_MAX,
     }
@@ -115,7 +125,10 @@ fn name_max(kind: ExportKind) -> usize {
 /// What is wrong with `name` as the name of something of `kind`.
 fn name_problem(kind: ExportKind, name: &str) -> Option<String> {
     match kind {
-        ExportKind::Scene | ExportKind::Setup => library_name_problem(name).map(str::to_string),
+        // Sounds become file names too.
+        ExportKind::Scene | ExportKind::Setup | ExportKind::Sound => {
+            library_name_problem(name).map(str::to_string)
+        }
         _ if name.trim().is_empty() => Some("it has no name".into()),
         _ if name.chars().count() > name_max(kind) => Some(format!(
             "its name is longer than {} characters",
@@ -273,6 +286,60 @@ impl Controller {
             ));
         }
 
+        // Sounds asked for, and those of the person's own the hotkeys play,
+        // which they need wherever they go.
+        let own: Vec<String> = own_files(&self.paths.sounds_dir)
+            .into_iter()
+            .map(|(n, _)| n)
+            .collect();
+        let mut sound_names: Vec<String> = Vec::new();
+        let add_sound = |names: &mut Vec<String>, name: &str| {
+            if !names.iter().any(|n| n.eq_ignore_ascii_case(name)) {
+                names.push(name.to_string());
+            }
+        };
+        if p.all {
+            own.iter().for_each(|n| add_sound(&mut sound_names, n));
+        }
+        for name in &p.sounds {
+            match self.sound_named(name) {
+                Some(known) if own.contains(&known) => add_sound(&mut sound_names, &known),
+                Some(known) => {
+                    return Err(RpcError::application(format!(
+                        "'{known}' comes with Weir, so it is not exported"
+                    )))
+                }
+                None => return Err(RpcError::application(format!("no sound called '{name}'"))),
+            }
+        }
+        let mut carried = Vec::new();
+        for h in list.hotkeys.iter().filter(|h| wanted.contains(&h.id)) {
+            for (_, s) in h.sounds.named() {
+                if let Some(known) = own.iter().find(|o| o.eq_ignore_ascii_case(s)) {
+                    if !sound_names.iter().any(|n| n == known) {
+                        carried.push((h.name.clone(), known.clone()));
+                    }
+                    add_sound(&mut sound_names, known);
+                }
+            }
+        }
+        for name in &sound_names {
+            let file = sound_file(&self.paths.sounds_dir, name)
+                .ok_or_else(|| RpcError::application(format!("no sound called '{name}'")))?;
+            let bytes = std::fs::read(&file).map_err(|e| {
+                RpcError::application(format!("could not read {}: {e}", file.display()))
+            })?;
+            out.push((
+                ExportKind::Sound,
+                name.clone(),
+                Body::Sound(SoundFile {
+                    name: name.clone(),
+                    extension: sound_extension(&file).unwrap_or_default(),
+                    data: base64::engine::general_purpose::STANDARD.encode(bytes),
+                }),
+            ));
+        }
+
         let presets = self.eq_presets();
         let preset_names: Vec<String> = if p.all {
             presets
@@ -339,6 +406,11 @@ impl Controller {
         }
         let stamp = self.stamp();
         let written: Vec<String> = if bare {
+            if let Some((hotkey, sound)) = carried.first().filter(|_| out.len() > 1) {
+                return Err(RpcError::application(format!(
+                    "the hotkey '{hotkey}' plays '{sound}', a sound of your own that goes                      with it: export it to a .zip"
+                )));
+            }
             if out.len() > 1 {
                 return Err(RpcError::application(
                     "a .json holds one thing; export to a .zip for more",
@@ -494,6 +566,13 @@ impl Controller {
                         quantum: s.quantum,
                     });
                 }
+                PreferencePart::HotkeyFeedback => {
+                    prefs.hotkey_feedback = Some(FeedbackPrefs {
+                        popup: s.hotkey_popup,
+                        sounds_volume_db: s.sounds_volume_db,
+                        sounds_device: s.sounds_device.clone(),
+                    });
+                }
                 PreferencePart::StartAtLogin => match s.start_at_login {
                     Some(on) => prefs.start_at_login = Some(on),
                     None if p.all => {}
@@ -517,6 +596,8 @@ impl Controller {
 
     /// What is here now, for checks.
     fn here(&self) -> Here {
+        // Before the rest, which locks the state while it is built.
+        let sounds = self.hotkeys_info().sounds;
         Here {
             mixer: self.mixer(),
             scenes: config::list_saved(&self.paths.scenes_dir),
@@ -524,6 +605,7 @@ impl Controller {
             presets: self.eq_presets(),
             hotkeys: self.hotkey_list(),
             rules: self.inner.lock().unwrap().app_rules.clone(),
+            sounds,
         }
     }
 
@@ -533,6 +615,14 @@ impl Controller {
         let file = whole_path(path)?;
         let read = files::read_export(&file).map_err(failed)?;
         let here = self.here();
+        // Hotkeys may play sounds the file brings.
+        let file_sounds: Vec<String> = read
+            .iter()
+            .filter_map(|f| match &f.body {
+                Ok(Body::Sound(s)) => Some(s.name.trim().to_string()),
+                _ => None,
+            })
+            .collect();
         let mut ex = Examined {
             inspection: ImportInspection {
                 path: file.display().to_string(),
@@ -574,11 +664,13 @@ impl Controller {
                 Body::Preferences(prefs) => ex
                     .found
                     .extend(self.check_preferences(&f.path, prefs, &here)),
-                body => ex.found.push(self.check(&f.path, body, &here)),
+                body => ex
+                    .found
+                    .push(self.check(&f.path, body, &here, &file_sounds)),
             }
         }
         ex.found.sort_by_key(|f| f.item.kind);
-        self.place_in_setups(&mut ex.found, &here);
+        self.place_in_setups(&mut ex.found, &here, &file_sounds);
         // A free name must be free of the other imported items too.
         let names: Vec<(ExportKind, String)> = ex
             .found
@@ -607,7 +699,7 @@ impl Controller {
     /// meant for another setup: what a setup saved here or one in the file
     /// has is not missing, and the item says which setups have it. Once
     /// nothing is missing, a hotkey is checked as `set_hotkey` would.
-    fn place_in_setups(&self, found: &mut [Found], here: &Here) {
+    fn place_in_setups(&self, found: &mut [Found], here: &Here, file_sounds: &[String]) {
         let by_name = |kind| matches!(kind, ExportKind::Hotkey | ExportKind::AppRules);
         if !found
             .iter()
@@ -693,21 +785,25 @@ impl Controller {
                 Some(note) => format!("{note} {line}"),
                 None => line,
             });
-            if let (Some(h), true) = (hotkey, item.missing.is_empty()) {
+            if let (Some(mut h), true) = (hotkey, item.missing.is_empty()) {
                 let extra = in_file.iter().map(|(_, _, m)| m.clone()).collect();
-                if let Err(e) = self.checked_hotkey_with(h, extra) {
+                self.without_missing_sounds(&mut h, file_sounds);
+                if let Err(e) = self.checked_hotkey_with(h, extra, file_sounds) {
                     item.broken = Some(e.message);
                 }
             }
         }
     }
 
-    /// Check one scene, setup, hotkey, preset or set of app rules.
-    fn check(&self, id: &str, body: Body, here: &Here) -> Found {
+    /// Check one scene, setup, hotkey, sound, preset or set of app rules.
+    /// `file_sounds` are the sounds the file brings, which its hotkeys may
+    /// play.
+    fn check(&self, id: &str, body: Body, here: &Here, file_sounds: &[String]) -> Found {
         let (kind, name) = match &body {
             Body::Scene(b) => (ExportKind::Scene, b.name.trim().to_string()),
             Body::Setup(b) => (ExportKind::Setup, b.name.trim().to_string()),
             Body::Hotkey(b) => (ExportKind::Hotkey, b.hotkey.name.trim().to_string()),
+            Body::Sound(b) => (ExportKind::Sound, b.name.trim().to_string()),
             Body::EqPreset(b) => (ExportKind::EqPreset, b.name.trim().to_string()),
             _ => (ExportKind::AppRules, "App rules".to_string()),
         };
@@ -741,8 +837,41 @@ impl Controller {
                 Content::Setup(setup)
             }
             Body::Hotkey(b) => {
-                self.check_hotkey(&mut it, &b, here);
+                self.check_hotkey(&mut it, &b, here, file_sounds);
                 Content::Hotkey(b.hotkey, b.group)
+            }
+            Body::Sound(b) => {
+                let ext = b.extension.to_ascii_lowercase();
+                let decoded = base64::engine::general_purpose::STANDARD
+                    .decode(b.data.as_bytes())
+                    .map_err(|e| format!("it is damaged: {e}"))
+                    .and_then(|bytes| {
+                        if !SOUND_EXTENSIONS.contains(&ext.as_str()) {
+                            return Err(format!("Weir does not play .{ext} files"));
+                        }
+                        if bytes.len() as u64 > SOUND_FILE_MAX {
+                            return Err("it is too big".into());
+                        }
+                        let data =
+                            decode_bytes(bytes.clone(), &ext).map_err(|e| format!("{e:#}"))?;
+                        Ok((bytes, data))
+                    });
+                match decoded {
+                    Ok((bytes, data)) => {
+                        it.summary = format!("{:.1} seconds", data.seconds());
+                        if BUILTIN_SOUNDS.iter().any(|b| b.eq_ignore_ascii_case(&name)) {
+                            it.note = Some(
+                                "One of Weir's own sounds has this name, so this one can                                  only come in under another."
+                                    .into(),
+                            );
+                        }
+                        Content::Sound(ext, bytes)
+                    }
+                    Err(reason) => {
+                        it.broken = Some(reason);
+                        Content::Broken
+                    }
+                }
             }
             Body::EqPreset(b) => {
                 if let Err(e) = check_bands(&b.bands) {
@@ -815,8 +944,28 @@ impl Controller {
 
     /// Check an imported hotkey: the strips and buses it names, whether it
     /// would be taken as it is, and the keys hotkeys here have already.
-    fn check_hotkey(&self, it: &mut ImportItem, b: &HotkeyFile, here: &Here) {
-        let h = &b.hotkey;
+    fn check_hotkey(
+        &self,
+        it: &mut ImportItem,
+        b: &HotkeyFile,
+        here: &Here,
+        file_sounds: &[String],
+    ) {
+        let mut h = b.hotkey.clone();
+        let gone_sounds = self.without_missing_sounds(&mut h, file_sounds);
+        if !gone_sounds.is_empty() {
+            it.note = Some(format!(
+                "It plays {}, which neither this file nor this Weir has, so it comes in \
+                 without {}.",
+                gone_sounds
+                    .iter()
+                    .map(|s| format!("the sound '{s}'"))
+                    .collect::<Vec<_>>()
+                    .join(" and "),
+                if gone_sounds.len() == 1 { "it" } else { "them" }
+            ));
+        }
+        let h = &h;
         it.group = b.group.clone();
         it.summary = describe_hotkey(h, &here.mixer);
         let mut missing = BTreeSet::new();
@@ -839,7 +988,7 @@ impl Controller {
         // Its steps can be checked only once their strips and buses are
         // here; its keys always.
         if it.missing.is_empty() {
-            if let Err(e) = self.checked_hotkey(h.clone()) {
+            if let Err(e) = self.checked_hotkey_with(h.clone(), Vec::new(), file_sounds) {
                 it.broken = Some(e.message);
                 return;
             }
@@ -894,6 +1043,31 @@ impl Controller {
         }
         if let Some(mixer) = prefs.mixer {
             part(PreferencePart::Mixer, Content::Mixer(mixer), None);
+        }
+        if let Some(feedback) = prefs.hotkey_feedback {
+            let plugged = |d: &str| {
+                self.inner
+                    .lock()
+                    .unwrap()
+                    .devices
+                    .iter()
+                    .any(|x| x.kind == DeviceKind::Sink && x.name == d)
+            };
+            let note = feedback
+                .sounds_device
+                .as_deref()
+                .filter(|d| !plugged(d))
+                .map(|d| {
+                    format!(
+                        "Sounds are set to play on '{d}', which is not plugged in here; \
+                         until it is, they play on the first bus's device."
+                    )
+                });
+            part(
+                PreferencePart::HotkeyFeedback,
+                Content::Feedback(feedback),
+                note,
+            );
         }
         if let Some(timing) = prefs.audio_timing {
             part(
@@ -997,6 +1171,13 @@ impl Controller {
                     continue;
                 }
                 ImportChoice::Replace => {
+                    if taken && kind == ExportKind::Sound && is_builtin_sound(&f.item.name) {
+                        result.skipped.push(format!(
+                            "{said}: one of Weir's own sounds has this name, and it cannot \
+                             be replaced"
+                        ));
+                        continue;
+                    }
                     if taken && kind == ExportKind::EqPreset && is_builtin_eq_preset(&f.item.name) {
                         result.skipped.push(format!(
                             "{said}: a preset that comes with Weir has this name, and it \
@@ -1010,7 +1191,8 @@ impl Controller {
                     let new = new.trim().to_string();
                     let clash = (here.has(kind, &new)
                         && !(replace_all && kind == ExportKind::Hotkey))
-                        || (kind == ExportKind::EqPreset && is_builtin_eq_preset(&new));
+                        || (kind == ExportKind::EqPreset && is_builtin_eq_preset(&new))
+                        || (kind == ExportKind::Sound && is_builtin_sound(&new));
                     if let Some(problem) = name_problem(kind, &new) {
                         result
                             .skipped
@@ -1028,7 +1210,11 @@ impl Controller {
             };
             if matches!(
                 kind,
-                ExportKind::Scene | ExportKind::Setup | ExportKind::Hotkey | ExportKind::EqPreset
+                ExportKind::Scene
+                    | ExportKind::Setup
+                    | ExportKind::Hotkey
+                    | ExportKind::Sound
+                    | ExportKind::EqPreset
             ) && !used.insert((kind, name.to_lowercase()))
             {
                 result.skipped.push(format!(
@@ -1048,7 +1234,8 @@ impl Controller {
         self.import_library(&plan, &mut result);
         self.import_presets(&plan, &mut result);
         self.import_rules(&plan, &p, &here, &mut result);
-        self.import_hotkeys(&plan, &p, ex.list.as_ref(), &mut result);
+        let sounds = self.import_sounds(&plan, &mut result);
+        self.import_hotkeys(&plan, &p, ex.list.as_ref(), &sounds, &mut result);
         self.import_preferences(&plan, &p, &here, &mut result);
         info!(
             "imported {} settings from {}",
@@ -1075,6 +1262,17 @@ impl Controller {
                 format!("{folder}/{}.toml", x.name),
             ));
         }
+        for x in plan
+            .iter()
+            .filter(|x| x.replace && x.item.kind == ExportKind::Sound)
+        {
+            if let Some(file) = sound_file(&self.paths.sounds_dir, &x.name) {
+                let name = file
+                    .file_name()
+                    .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+                copies.push((file, format!("sounds/{name}")));
+            }
+        }
         if has(ExportKind::Hotkey) {
             copies.push((self.paths.hotkeys_file.clone(), "hotkeys.json".into()));
         }
@@ -1085,7 +1283,10 @@ impl Controller {
         let settings = plan.iter().any(|x| {
             matches!(
                 x.content,
-                Content::Mixer(_) | Content::AudioTiming(_) | Content::StartAtLogin(_)
+                Content::Mixer(_)
+                    | Content::AudioTiming(_)
+                    | Content::StartAtLogin(_)
+                    | Content::Feedback(_)
             )
         });
         if has(ExportKind::AppRules) || settings {
@@ -1244,6 +1445,7 @@ impl Controller {
         plan: &[Planned],
         p: &ImportParams,
         list_file: Option<&HotkeyListFile>,
+        sounds: &BTreeMap<String, String>,
         result: &mut ImportResult,
     ) {
         let replace_all = p.hotkeys == HotkeyImport::ReplaceAll;
@@ -1259,6 +1461,25 @@ impl Controller {
             h.name = x.name.clone();
             for step in h.steps.iter_mut().chain(&mut h.release_steps) {
                 mapped(&step.method, &mut step.params, p);
+            }
+            // Its sounds by the names they came in under; one left out, it
+            // plays nothing there.
+            for s in h.sounds.names_mut() {
+                if let Some(to) = s.as_ref().and_then(|n| sounds.get(&n.to_lowercase())) {
+                    *s = Some(to.clone());
+                }
+            }
+            let left_out = self.without_missing_sounds(&mut h, &[]);
+            if !left_out.is_empty() {
+                result.notes.push(format!(
+                    "The hotkey '{}' came in without its sound {}, which was not imported.",
+                    x.name,
+                    left_out
+                        .iter()
+                        .map(|s| format!("'{s}'"))
+                        .collect::<Vec<_>>()
+                        .join(" and ")
+                ));
             }
             match self.checked_hotkey(h) {
                 Ok(h) => incoming.push((h, group.clone(), x.replace)),
@@ -1416,6 +1637,13 @@ impl Controller {
                     });
                     parts.push(&x.item);
                 }
+                Content::Feedback(f) => {
+                    patch.hotkey_popup = Some(f.popup);
+                    let (lo, hi) = SOUNDS_VOLUME_DB;
+                    patch.sounds_volume_db = Some(f.sounds_volume_db.clamp(lo, hi));
+                    patch.sounds_device = Some(f.sounds_device.clone());
+                    parts.push(&x.item);
+                }
                 Content::AudioTiming(t) => {
                     // 0 asks for PipeWire to decide.
                     patch.sample_rate = Some(t.sample_rate.unwrap_or(0));
@@ -1453,6 +1681,66 @@ impl Controller {
 /// Whether Weir can be made to start at login here.
 fn here_can_start_at_login(c: &Controller) -> bool {
     c.settings().start_at_login.is_some()
+}
+
+/// Whether one of Weir's own sounds is called `name`.
+fn is_builtin_sound(name: &str) -> bool {
+    BUILTIN_SOUNDS
+        .iter()
+        .any(|b| b.eq_ignore_ascii_case(name.trim()))
+}
+
+impl Controller {
+    /// Take out of `h` the sounds neither this Weir nor `also` has, and
+    /// return their names.
+    fn without_missing_sounds(&self, h: &mut Hotkey, also: &[String]) -> Vec<String> {
+        let mut gone = Vec::new();
+        for s in h.sounds.names_mut() {
+            let Some(name) = s.clone() else { continue };
+            let known = self.sound_named(&name).is_some()
+                || also.iter().any(|a| a.eq_ignore_ascii_case(name.trim()));
+            if !known {
+                gone.push(name);
+                *s = None;
+            }
+        }
+        gone
+    }
+
+    /// Sounds, written to the sounds folder. Returns the name each came in
+    /// under, by its name in the file in lower case, for the hotkeys that
+    /// play them.
+    fn import_sounds(
+        &self,
+        plan: &[Planned],
+        result: &mut ImportResult,
+    ) -> BTreeMap<String, String> {
+        let mut names = BTreeMap::new();
+        let dir = &self.paths.sounds_dir;
+        for x in plan {
+            let Content::Sound(ext, bytes) = &x.content else {
+                continue;
+            };
+            let said = format!("sound '{}'", x.name);
+            let written = std::fs::create_dir_all(dir).and_then(|()| {
+                if let Some(old) = sound_file(dir, &x.name) {
+                    std::fs::remove_file(old)?;
+                }
+                std::fs::write(dir.join(format!("{}.{ext}", x.name)), bytes)
+            });
+            match written {
+                Ok(()) => {
+                    names.insert(x.item.name.to_lowercase(), x.name.clone());
+                    result.imported.push(said);
+                }
+                Err(e) => result.skipped.push(format!("{said}: {e}")),
+            }
+        }
+        if !names.is_empty() {
+            self.sounds_changed();
+        }
+        names
+    }
 }
 
 /// An item to import, and how: under which name, and whether it replaces

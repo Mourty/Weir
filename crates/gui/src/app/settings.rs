@@ -295,18 +295,25 @@ impl App {
         ui.add_space(4.0);
         // Where sounds play: a device of the person's choosing, or the first
         // bus's.
+        // A device that is not plugged in goes by the name it had when it
+        // was.
         let describe = |name: &str| {
             state
                 .devices
                 .iter()
                 .find(|d| d.name == name)
                 .map(|d| d.description.clone())
+                .or_else(|| self.prefs.device_names.get(name).cloned())
         };
         let now = sounds_device(s.sounds_device.as_deref(), &state.mixer, &state.devices);
         let selected = match (&s.sounds_device, &now) {
-            (Some(chosen), _) => {
-                describe(chosen).unwrap_or_else(|| format!("{chosen} (not plugged in)"))
+            (Some(chosen), Some(now)) if chosen == now => {
+                describe(chosen).unwrap_or_else(|| chosen.clone())
             }
+            (Some(chosen), _) => format!(
+                "{} (not plugged in)",
+                describe(chosen).unwrap_or_else(|| chosen.clone())
+            ),
             (None, Some(now)) => format!(
                 "Automatic: {}",
                 describe(now).unwrap_or_else(|| now.clone())
@@ -321,6 +328,7 @@ impl App {
                 egui::ComboBox::from_id_salt("sounds_device")
                     .selected_text(selected)
                     .width(260.0)
+                    .truncate()
                     .show_ui(ui, |ui| {
                         if ui
                             .selectable_label(s.sounds_device.is_none(), "Automatic")

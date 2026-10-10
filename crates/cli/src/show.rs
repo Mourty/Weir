@@ -411,20 +411,6 @@ pub fn sounds(st: &FullState) {
     );
 }
 
-/// What sounds a hotkey plays, in words, if any.
-fn hotkey_sounds(h: &Hotkey) -> Option<String> {
-    let words: Vec<String> = h
-        .sounds
-        .named()
-        .map(|(at, s)| match at {
-            "press" => format!("{s} when pressed"),
-            "release" => format!("{s} when let go"),
-            _ => format!("{s} as it repeats"),
-        })
-        .collect();
-    (!words.is_empty()).then(|| format!("plays {}", words.join(", ")))
-}
-
 /// The applications playing sound.
 pub fn apps(apps: &[AppStream], mixer: &MixerState) {
     if apps.is_empty() {
@@ -681,7 +667,7 @@ pub fn hotkeys(info: &HotkeysInfo, mixer: &MixerState) {
                 format!("{keys} (off)")
             };
             let mut does = describe_hotkey(h, mixer);
-            if let Some(sounds) = hotkey_sounds(h) {
+            if let Some(sounds) = h.sounds.describe() {
                 does.push_str("; ");
                 does.push_str(&sounds);
             }

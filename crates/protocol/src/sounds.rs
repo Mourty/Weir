@@ -87,6 +87,20 @@ impl HotkeySounds {
         .filter_map(|(at, s)| s.as_deref().map(|s| (at, s)))
     }
 
+    /// What it plays, in words: `plays Click when pressed, Tick as it
+    /// repeats`, or `None` when it plays nothing.
+    pub fn describe(&self) -> Option<String> {
+        let words: Vec<String> = self
+            .named()
+            .map(|(at, s)| match at {
+                "press" => format!("{s} when pressed"),
+                "release" => format!("{s} when let go"),
+                _ => format!("{s} as it repeats"),
+            })
+            .collect();
+        (!words.is_empty()).then(|| format!("plays {}", words.join(", ")))
+    }
+
     /// Every sound it names, to change.
     pub fn names_mut(&mut self) -> impl Iterator<Item = &mut Option<String>> {
         [&mut self.press, &mut self.release, &mut self.repeat].into_iter()
@@ -176,6 +190,8 @@ mod tests {
         assert_eq!(serde_json::to_value(&s).unwrap(), json!({}));
         let s: HotkeySounds = serde_json::from_value(json!({"press": "Click"})).unwrap();
         assert_eq!(s.named().collect::<Vec<_>>(), [("press", "Click")]);
+        assert_eq!(s.describe().unwrap(), "plays Click when pressed");
+        assert_eq!(HotkeySounds::default().describe(), None);
     }
 
     #[test]

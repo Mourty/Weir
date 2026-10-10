@@ -150,6 +150,18 @@ only the real-time thread touches.
 3. Each bus folds to **mono** if asked, runs its **equalizer**, applies its
    **fader**, then its **limiter** and its **delay**, and meters what
    comes out.
+4. The sounds hotkeys play go to the engine's own stereo output,
+   `hotkey_sounds`, which the daemon links straight to the device chosen
+   for them, past every bus, so nothing recording a bus hears them.
+
+**Hotkeys' sounds** are decoded once by the daemon (Weir's own four are
+made in code; the person's own files are read with symphonia) into a
+`SoundBank` that rides in every snapshot. Playing one is a `PlayRequest`
+in a small ring of atomics, filled under a lock by any thread and emptied
+without one by the real-time thread at the start of each cycle, into at
+most eight voices. A voice reads its sound at its own sample rate,
+interpolating, so a change of rate rebuilds nothing; a new bank stops what
+plays from the old one.
 
 **External effects** can sit between any two of those stages of a strip
 or bus, or after a strip's fader: there the sound is copied to the
@@ -325,6 +337,23 @@ desktop's own shortcuts can do with `weirctl hotkey run`. At login the
 daemon waits for the desktop first, as it does for the window.
 `WEIR_HOTKEYS=desktop`, `x11` or `none` picks the way, for testing.
 
+**What a press shows and plays.** After each press, repeat and letting go,
+the runner plays the hotkey's sound for it, if any (`controller/sounds.rs`
+asks the engine), and hands the steps it did to `hotkeys/popup.rs`, which
+reads what they left in the mixer, rather than what they asked for, so a
+toggle says where it got to: "Mic muted", or a bar for one volume. Its own
+task sends that to KDE Plasma's on-screen display (`org.kde.osdService` on
+`org.kde.plasmashell`: `showText`, and `mediaPlayerVolumeChanged` for a
+bar), the popup its volume keys use, which shows over full-screen games
+and takes no focus; where there is none, or when asked for, it is a
+notification marked transient, replacing Weir's last. When several wait,
+as a held volume key makes them, only the newest is shown. A window of
+Weir's own was ruled out: on Wayland it cannot place itself or stay above
+a game. Where sounds play is worked out again whenever the settings, the
+mixer or the devices change (`sounds_device`, shared with the window so
+both say the same): the device chosen while it is plugged in, otherwise
+the first bus's.
+
 **Starting at login** is systemd's to keep, not the configuration's:
 Weir starts at login when its user unit, `weir.service`, is enabled. The
 daemon asks `systemctl --user is-enabled` when it starts and after
@@ -462,12 +491,9 @@ remote control is ever wanted.
 
 ## What is next
 
-* Next: hotkeys that answer back, with a popup or a notification, and
-  sounds, as they are pressed, so you know a key did what you meant
-  without looking at the mixer.
 * Testing on more real hardware; most of the newer features have been
   developed against a headless PipeWire.
-* Later: mouse side buttons and MIDI controllers as hotkeys' keys.
+* Mouse side buttons and MIDI controllers as hotkeys' keys.
 * An OpenDeck plugin, as its own project on top of the protocol.
 * Perhaps: a routing matrix view for many strips, and positioning sources
   in a sound field.

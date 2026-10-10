@@ -33,7 +33,7 @@ Python and Node.js are in [`examples/`](../examples/).
   * [Equalizer presets and the analyzer](#equalizer-presets-and-the-analyzer): `list_eq_presets`, `apply_eq_preset`, `save_eq_preset`, `delete_eq_preset`, `watch_spectrum`
   * [Scenes and setups](#scenes-and-setups): `save_scene`, `load_scene`, `list_scenes`, `delete_scene` and the same for setups
   * [Undo](#undo): `undo`, `redo`, `history`
-  * [Hotkeys](#hotkeys): `list_hotkeys`, `set_hotkey`, `remove_hotkey`, `switch_hotkey`, `move_hotkey`, `run_hotkey`, `press_hotkey`, `release_hotkey`, `add_hotkey_group`, `set_hotkey_group`, `remove_hotkey_group`, `move_hotkey_group`, `open_shortcut_settings`
+  * [Hotkeys](#hotkeys): `list_hotkeys`, `set_hotkey`, `remove_hotkey`, `switch_hotkey`, `move_hotkey`, `run_hotkey`, `press_hotkey`, `release_hotkey`, `add_hotkey_group`, `set_hotkey_group`, `remove_hotkey_group`, `move_hotkey_group`, `open_shortcut_settings`, `add_sound`, `remove_sound`, `play_sound`
   * [Export and import](#export-and-import): `export_settings`, `inspect_import`, `import_settings`
   * [Settings and the window](#settings-and-the-window): `set_settings`, `show_window`
 * [Notifications](#notifications)
@@ -1239,6 +1239,24 @@ What a press does:
 * a step with `over_ms` fades: `gain_db` in `set_strip` and `set_bus`, and
   `level_db` in `set_route`, move there gradually.
 
+A press can also answer back, so you know a key did what you meant without
+looking at the mixer:
+
+* **Sounds.** A hotkey can play a sound when pressed, another when let go,
+  and, for one that repeats, one each time it repeats. They come from the
+  sounds hotkeys can play: Weir's own (`Click`, `Beep up`, `Beep down`,
+  `Tick`) and any you [add](#add_sound). They play straight to one
+  playback device, past every bus, so nothing recording a bus hears them:
+  the device [Settings](#settings) names in `sounds_device`, or, while that
+  is not plugged in or none is named, the first bus's device.
+* **A popup.** After each press, repeat and letting go, the daemon shows
+  what the hotkey did, read from the mixer afterwards, so a mute that
+  switches on or off says which it is now: "Mic muted", or for a single
+  volume a bar and its level. `hotkey_popup` in [Settings](#settings) says
+  where: the desktop's own small popup, the one its volume keys show
+  (KDE Plasma; a notification elsewhere), a notification, or nothing. A
+  hotkey with `"popup": false` shows nothing.
+
 Each press is one step in the [undo history](#undo-history), labelled
 "NAME (hotkey)", from the keys going down until they are up and its fades
 have finished, however many changes it made. One that puts everything back
@@ -1300,6 +1318,8 @@ Add a hotkey, or replace one. The parameters are the [Hotkey](#hotkey):
 | `on_release` | string, *optional* | What letting go does: `nothing` (the default), `restore` (put back what the press changed) or `steps` (do `release_steps`). |
 | `release_steps` | list of [HotkeyStep](#hotkeystep), *optional* | With `on_release` `steps`: what letting go does, up to 32. |
 | `repeat_ms` | number, *optional* | Do the steps again every this many milliseconds while the keys are held, 20 to 2000. The first repeat waits 400 ms, like a keyboard's, or `repeat_ms` if that is longer. |
+| `sounds` | object, *optional* | The sounds it plays, by name: `press`, `release` (when the keys are let go) and `repeat` (each time a repeating hotkey repeats), such as `{"press": "Beep up", "release": "Beep down"}`. Each must be one of the sounds in [HotkeysInfo](#hotkeysinfo). Left out, it plays none. A tap, as `run_hotkey` makes, plays `press`, or `release` when it has no `press`. |
+| `popup` | boolean, *optional* | `false` shows nothing when it is pressed, whatever `hotkey_popup` says. `true` when left out. |
 
 Returns the Hotkey as saved: with its id, its keys as a list written the
 usual way, and strips and buses by name, as the mixer writes them.
@@ -1561,11 +1581,100 @@ if mixer.call("list_hotkeys")["keys"].get("configurable"):
 await mixer.call("open_shortcut_settings");
 ```
 
+#### `add_sound`
+
+Add a sound of your own for hotkeys to play, from a sound file. The daemon
+keeps a copy in `~/.config/weir/sounds/`, so the file can be moved or
+deleted afterwards, and the copy goes along when settings are
+[exported](#export-and-import).
+
+| Parameter | Type | |
+|---|---|---|
+| `name` | string | Its name: letters, digits, spaces and `_ - .`, 64 characters at most, and not one a sound has already, Weir's own included, ignoring case. |
+| `path` | string | The sound file, a whole path: a `.wav`, `.ogg` or `.flac`, 10 seconds and 10 MB at most. One or two channels are kept (the first two of more), at any sample rate. |
+
+Returns the [SoundInfo](#soundinfo). A file Weir cannot read, or one too
+long, is an error that says so.
+
+```sh
+weirctl raw add_sound "{\"name\": \"Applause\", \"path\": \"$PWD/applause.wav\"}"
+```
+
+```python
+import os
+
+sound = mixer.call("add_sound", name="Applause", path=os.path.abspath("applause.wav"))
+print(sound["name"], sound["seconds"], "seconds")
+```
+
+```js
+const path = require("path");
+const sound = await mixer.call("add_sound", { name: "Applause", path: path.resolve("applause.wav") });
+console.log(sound.name, sound.seconds);
+```
+
+A hotkey that plays it:
+
+```python
+mixer.call("set_hotkey", name="Applause", steps=[
+    {"method": "set_strip", "params": {"id": "Soundboard", "mute": False}},
+], sounds={"press": "Airhorn"})
+```
+
+#### `remove_sound`
+
+Remove a sound of your own. Hotkeys that played it play nothing there any
+more. Weir's own sounds stay.
+
+| Parameter | Type | |
+|---|---|---|
+| `name` | string | The sound, ignoring case. |
+
+Returns the [HotkeysInfo](#hotkeysinfo).
+
+```sh
+weirctl raw remove_sound '{"name": "Airhorn"}'
+```
+
+```python
+mixer.call("remove_sound", name="Airhorn")
+```
+
+```js
+await mixer.call("remove_sound", { name: "Airhorn" });
+```
+
+#### `play_sound`
+
+Play a sound where hotkeys' sounds play, at their volume: to hear it, or
+as a hotkey's step, for a key that only plays a sound.
+
+| Parameter | Type | |
+|---|---|---|
+| `name` | string | The sound, ignoring case: Weir's own or yours. |
+
+Returns `null`, or an error when there is nowhere to play it: no device is
+named for sounds, and no bus plays to a device that is plugged in.
+
+```sh
+weirctl raw play_sound '{"name": "Beep up"}'
+```
+
+```python
+for sound in mixer.call("list_hotkeys")["sounds"]:
+    print(sound["name"], "(Weir's)" if sound.get("builtin") else "(yours)")
+mixer.call("play_sound", name="Airhorn")
+```
+
+```js
+await mixer.call("play_sound", { name: "Tick" });
+```
+
 ### Export and import
 
 Settings to keep safe, to take to another computer, or to share: scenes,
-setups, hotkeys, equalizer presets of your own, the app rules and four
-parts of the preferences. [`export_settings`](#export_settings) writes
+setups, hotkeys and the sounds of your own they play, equalizer presets of
+your own, the app rules and five parts of the preferences. [`export_settings`](#export_settings) writes
 them to a `.zip`, or one of them to a `.json`;
 [`inspect_import`](#inspect_import) says what a file holds and what
 importing each thing would meet here, and
@@ -1588,8 +1697,8 @@ window is open.
 
 A `.zip` holds a manifest, `weir-export.json`, and a folder for each kind:
 `scenes/`, `setups/`, `hotkeys/` (with `groups.json`, the groups and the
-order of the list), `eq-presets/`, `app-rules/` and `preferences/`, one
-JSON file for each thing. Every file starts by saying what it holds, the
+order of the list), `sounds/`, `eq-presets/`, `app-rules/` and
+`preferences/`, one JSON file for each thing. Every file starts by saying what it holds, the
 format it is in and the Weir that wrote it, so that one can be imported on
 its own, and edited by hand:
 
@@ -1614,10 +1723,12 @@ mix, as `strips` and `buses` with their `name`), `setup` (`name`, `setup`:
 set, `device`, `color` and `insert`), `hotkey`
 (`hotkey`: a [Hotkey](#hotkey) without its id, and the name of its
 `group`), `hotkey_list` (`groups`: names and `enabled`; `order`:
-`{"hotkey": name}` and `{"group": name}`), `eq_preset` (`name`, `bands`),
-`app_rules` (`rules`: `{"app": name, "strip": name}`), `preferences`
-(`window_look`, `mixer`, `audio_timing` and `start_at_login`, each there
-only if exported) or `export`, the manifest (`files`). A file in a later
+`{"hotkey": name}` and `{"group": name}`), `sound` (`name`, `extension`:
+`wav`, `ogg` or `flac`, and `data`: the sound file as it was added, in
+base64), `eq_preset` (`name`, `bands`), `app_rules` (`rules`: `{"app":
+name, "strip": name}`), `preferences` (`window_look`, `mixer`,
+`hotkey_feedback`, `audio_timing` and `start_at_login`, each there only if
+exported) or `export`, the manifest (`files`). A file in a later
 `format` than this Weir reads is refused rather than half read.
 
 #### `export_settings`
@@ -1627,13 +1738,14 @@ Write settings to a file. Name each thing, or give `all`.
 | Parameter | Type | |
 |---|---|---|
 | `path` | string | The file to write, a whole path: a `.zip`, or a `.json` for one thing alone. A file already there is replaced. |
-| `all` | boolean, *optional* | Everything: every scene, setup, hotkey and preset of your own, the app rules and every part of the preferences. |
+| `all` | boolean, *optional* | Everything: every scene, setup, hotkey, sound and preset of your own, the app rules and every part of the preferences. |
 | `scenes` | list of strings, *optional* | Scenes, by name. |
 | `setups` | list of strings, *optional* | Setups, by name. |
-| `hotkeys` | list of numbers or strings, *optional* | Hotkeys, by id or name. Their groups and order go with them. |
+| `hotkeys` | list of numbers or strings, *optional* | Hotkeys, by id or name. Their groups and order go with them, and so do the sounds of your own they play; so a hotkey that plays one goes to a `.zip`, not a bare `.json`. |
+| `sounds` | list of strings, *optional* | Sounds of your own, by name. |
 | `eq_presets` | list of strings, *optional* | Presets of your own, by name. |
 | `app_rules` | boolean, *optional* | The app rules. |
-| `preferences` | list of strings, *optional* | Parts of the preferences: `window_look` (light or dark, accent and font, what buses list, app volume sliders, the spectrum), `mixer` (solo, meter speed, the tray icon, what opens at start), `audio_timing` (sample rate and latency) and `start_at_login`. |
+| `preferences` | list of strings, *optional* | Parts of the preferences: `window_look` (light or dark, accent and font, what buses list, app volume sliders, the spectrum), `mixer` (solo, meter speed, the tray icon, what opens at start), `hotkey_feedback` (what hotkeys show, and the device and volume of their sounds), `audio_timing` (sample rate and latency) and `start_at_login`. |
 | `window_look` | object, *optional* | The window's look, which only the window knows: its settings named `appearance`, `system_accent`, `system_font`, `bus_sources`, `show_app_volume` and `spectrum`, as in its `gui.toml`. Without it, `window_look` is not exported. |
 
 Returns `{"path": file, "files": [...]}`, the files in it.
@@ -1736,6 +1848,9 @@ Change the daemon's settings. Only the fields you give change.
 | `start_at_login` | boolean or `"toggle"`, *optional* | Start Weir's service when you log in, or stop doing so, from the next login; the service running now carries on either way. An error where [Settings](#settings) has no `start_at_login`. |
 | `tray` | boolean, *optional* | Show the tray icon. Takes effect when the daemon next starts. |
 | `tray_icon` | string, *optional* | `color`, or `one_color` to match the panel like other tray icons. |
+| `hotkey_popup` | string, *optional* | What pressing a hotkey shows: `popup`, `notification` or `nothing`. See [Settings](#settings). |
+| `sounds_device` | string or `null`, *optional* | The playback device hotkeys' sounds play on, by `node.name`; `null` for the first bus's device. A device not plugged in now is kept, and used once it is. |
+| `sounds_volume_db` | number, *optional* | How loud hotkeys' sounds play, from -40 to 0 dB. |
 
 Returns the [Settings](#settings) as they are now.
 
@@ -1744,6 +1859,15 @@ weirctl raw set_settings '{"solo": {"cue": "A1"}}'
 weirctl raw set_settings '{"sample_rate": 48000, "quantum": 256}'
 weirctl raw set_settings '{"sample_rate": 0, "quantum": 0}'
 weirctl raw set_settings '{"startup": "tray_only"}'
+weirctl raw set_settings '{"hotkey_popup": "notification", "sounds_volume_db": -18}'
+weirctl raw set_settings '{"sounds_device": null}'
+```
+
+Hotkeys' sounds on the speakers rather than the headset:
+
+```python
+speakers = next(d for d in mixer.call("list_devices") if d["kind"] == "sink")
+mixer.call("set_settings", sounds_device=speakers["name"])
 ```
 
 <!-- not tested: changes how the computer running the check starts up -->
@@ -2163,7 +2287,8 @@ name; the daemon keeps the name.
 
 ```json
 {"meter_rate_hz": 30, "startup": "window", "start_at_login": true, "tray": true,
- "tray_icon": "color", "solo": "exclusive", "sample_rate": 48000, "quantum": 256}
+ "tray_icon": "color", "solo": "exclusive", "sample_rate": 48000, "quantum": 256,
+ "hotkey_popup": "popup", "sounds_volume_db": -12}
 ```
 
 | Field | |
@@ -2175,6 +2300,9 @@ name; the daemon keeps the name.
 | `start_at_login` | Whether Weir's service starts when you log in. Left out where that cannot be set: Weir's service is not installed, as when running from a build folder, or systemd is not running. systemd keeps this rather than the configuration file; the daemon reads it back when it starts and after changing it, so a change made with `systemctl --user enable weir` shows after the daemon restarts. |
 | `tray` | Whether it shows a tray icon. |
 | `tray_icon` | `color` or `one_color`. |
+| `hotkey_popup` | What pressing a [hotkey](#hotkeys) shows: `popup`, the desktop's own small popup, the one its volume keys show, which goes over full-screen games and takes no focus (KDE Plasma; a notification where the desktop has none); `notification`, one that does not stay in the desktop's list of them; or `nothing`. |
+| `sounds_device` | The playback device hotkeys' sounds play on, by `node.name` (see [`list_devices`](#list_devices)). Left out for the first bus's device. While it is not plugged in, sounds play on the first bus's device. |
+| `sounds_volume_db` | How loud hotkeys' sounds play, from -40 to 0 dB. |
 
 ### EngineStatus
 
@@ -2260,7 +2388,8 @@ load together (Podcast, above).
 
 The fields are those of [`set_hotkey`](#set_hotkey). Fields at their
 default are left out: `enabled` when `true`, `group` when `0`, `each_press`
-when `all`, `on_release` when `nothing`.
+when `all`, `on_release` when `nothing`, `sounds` when it plays none,
+`popup` when `true`.
 
 ### HotkeyGroup
 
@@ -2311,7 +2440,20 @@ keys, media keys, `Pause`, `Print` and `ScrollLock` can be on their own.
 | `groups` | list of [HotkeyGroup](#hotkeygroup), *optional* | Every group, in their order in the list. Left out when there are none. |
 | `order` | list, *optional* | The list as it is shown: each hotkey in no group, as `{"hotkey": id}`, and each group, as `{"group": id}`, in the order they were put in. A group's hotkeys are listed with it, in their order in `hotkeys`. Left out when there are no hotkeys. |
 | `keys` | [KeysStatus](#keysstatus) | How keys reach Weir on this desktop. |
-| `problems` | list of `{"hotkey": id, "problem": string}` | What is wrong with any of them, in sentences for people: keys another program has, a strip the mixer does not have now. Left out when there is nothing wrong. |
+| `problems` | list of `{"hotkey": id, "problem": string}` | What is wrong with any of them, in sentences for people: keys another program has, a strip the mixer does not have now, a sound that is gone. Left out when there is nothing wrong. |
+| `sounds` | list of [SoundInfo](#soundinfo) | Every sound hotkeys can play: Weir's own, then yours, in alphabetical order. |
+
+### SoundInfo
+
+```json
+{"name": "Airhorn", "seconds": 1.4}
+```
+
+| Field | Type | |
+|---|---|---|
+| `name` | string | Its name, which hotkeys use. |
+| `builtin` | boolean, *optional* | `true` for Weir's own; left out for yours. |
+| `seconds` | number | How long it plays. |
 
 ### KeysStatus
 
@@ -2453,10 +2595,11 @@ detent.
 ### Push to talk
 
 Unmuted while the key is held, as a hotkey: Weir watches the key, and
-letting go puts the mute back as it was.
+letting go puts the mute back as it was. A beep up as the key goes down and
+a beep down as it comes up tell you when you are live.
 
 ```sh
-weirctl raw set_hotkey '{"name": "Talk", "keys": ["F9"], "steps": [{"method": "set_strip", "params": {"id": "Mic", "mute": false}}], "on_release": "restore"}'
+weirctl raw set_hotkey '{"name": "Talk", "keys": ["F9"], "steps": [{"method": "set_strip", "params": {"id": "Mic", "mute": false}}], "on_release": "restore", "sounds": {"press": "Beep up", "release": "Beep down"}}'
 ```
 
 A button on something else, such as a Stream Deck, can hold the same

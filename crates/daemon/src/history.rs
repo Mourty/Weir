@@ -23,6 +23,10 @@ pub struct Step {
     /// Changes with the same non-empty key in quick succession are one
     /// step. An empty key never merges.
     pub key: String,
+    /// It puts another mixer in place of this one, as loading a setup
+    /// does. A strip that keeps its id there may be another strip, so
+    /// undoing or redoing it does not take one as renamed.
+    pub whole: bool,
 }
 
 impl Step {
@@ -31,6 +35,7 @@ impl Step {
         Self {
             label: label.into(),
             key: key.into(),
+            whole: false,
         }
     }
 
@@ -38,11 +43,19 @@ impl Step {
     pub fn single(label: impl Into<String>) -> Self {
         Self::new(label, "")
     }
+
+    /// This step, putting another mixer in place of this one.
+    pub fn whole_mixer(mut self) -> Self {
+        self.whole = true;
+        self
+    }
 }
 
 struct Entry {
     label: String,
     key: String,
+    /// See [`Step::whole`].
+    whole: bool,
     /// The state to go back to: from before the change on the undo list,
     /// from before the undo on the redo list.
     state: MixerState,
@@ -78,6 +91,7 @@ impl History {
             if !step.key.is_empty() && last.key == step.key && last.touched.elapsed() < COALESCE {
                 last.touched = Instant::now();
                 last.at_ms = now_ms();
+                last.whole |= step.whole;
                 // Dragged back to where it started: nothing left to undo.
                 if last.state == *after {
                     self.undo.pop();
@@ -88,6 +102,7 @@ impl History {
         self.undo.push(Entry {
             label: step.label,
             key: step.key,
+            whole: step.whole,
             state: before.clone(),
             touched: Instant::now(),
             created: Instant::now(),
@@ -105,6 +120,7 @@ impl History {
         self.redo.push(Entry {
             label: e.label,
             key: String::new(),
+            whole: e.whole,
             state: current.clone(),
             touched: Instant::now(),
             created: Instant::now(),
@@ -122,12 +138,20 @@ impl History {
         self.undo.push(Entry {
             label: e.label,
             key: String::new(),
+            whole: e.whole,
             state: current.clone(),
             touched: Instant::now(),
             created: Instant::now(),
             at_ms: e.at_ms,
         });
         Some(restore)
+    }
+
+    /// Whether the step an undo (`back`) or a redo would take puts
+    /// another mixer in place, as loading a setup does.
+    pub fn next_is_whole(&self, back: bool) -> bool {
+        let list = if back { &self.undo } else { &self.redo };
+        list.last().is_some_and(|e| e.whole)
     }
 
     /// Rewrite the states of the steps made since `since` with `f`. A held

@@ -435,11 +435,14 @@ impl HotkeyList {
     }
 }
 
-/// What [`HotkeysFile::version`] is now.
-const HOTKEYS_VERSION: u32 = 1;
+/// What [`HotkeysFile::version`] is now. Version 2: steps keep strips and
+/// buses by name, not by id.
+const HOTKEYS_VERSION: u32 = 2;
 
-/// Read the hotkeys at `path`; none when there is no file.
-pub fn load_hotkeys(path: &Path) -> Result<HotkeyList> {
+/// Read the hotkeys at `path`; none when there is no file. A file from an
+/// older Weir is brought up to date and written back, a copy of it kept in
+/// `backups` first; `mixer` is the mixer now.
+pub fn load_hotkeys(path: &Path, backups: &Path, mixer: &MixerState) -> Result<HotkeyList> {
     if !path.exists() {
         return Ok(HotkeyList::default());
     }
@@ -447,12 +450,35 @@ pub fn load_hotkeys(path: &Path) -> Result<HotkeyList> {
         std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
     let file: HotkeysFile =
         serde_json::from_str(&text).with_context(|| format!("parsing {}", path.display()))?;
+    if file.version > HOTKEYS_VERSION {
+        bail!(
+            "{} was made by a newer Weir; update Weir to use these hotkeys",
+            path.display()
+        );
+    }
     let mut list = HotkeyList {
         hotkeys: file.hotkeys,
         groups: file.groups,
         order: file.order,
     };
     list.tidy();
+    if file.version < 2 {
+        // Ids mean other strips in other setups, so hotkeys take the names
+        // their strips and buses have now. Ids the mixer does not have stay
+        // numbers, and the hotkey says it works on something removed.
+        for h in &mut list.hotkeys {
+            h.targets_by_name(mixer);
+        }
+        let copy = backups.join(format!("hotkeys-version-{}.json", file.version));
+        std::fs::create_dir_all(backups)
+            .and_then(|()| std::fs::copy(path, &copy))
+            .with_context(|| format!("copying {} to {}", path.display(), copy.display()))?;
+        save_hotkeys(path, &list)?;
+        tracing::info!(
+            "hotkeys now keep strips and buses by name; the old file is {}",
+            copy.display()
+        );
+    }
     Ok(list)
 }
 

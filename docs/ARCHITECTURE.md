@@ -109,10 +109,10 @@ noted and made again (`pending_relinks`), as lingering links that belong
 to PipeWire, like the ones they replace.
 
 Whether anything plays into a "from effects" device, or straight into the
-return node, is read from the links in the registry mirror. It decides, in the snapshot, whether the
-strip or bus carries on with what comes back or with its fallback, and the
-daemon passes it on so the window can warn about effects that are not
-connected.
+return node, is read from the links in the registry mirror. It decides,
+in the snapshot, whether the strip or bus carries on with what comes back
+or with its fallback, and the daemon passes it on so the window can warn
+about effects that are not connected.
 
 ## The real-time mixer
 
@@ -148,14 +148,15 @@ only the real-time thread touches.
    through that bus's matrix, at its level in that bus's mix, ducked in the
    mixes its ducking covers, with its subwoofer and upmix feeds.
 3. Each bus folds to **mono** if asked, runs its **equalizer**, applies its
-   **fader**, then its **limiter**, and meters what comes out.
+   **fader**, then its **limiter** and its **delay**, and meters what
+   comes out.
 
 **External effects** can sit between any two of those stages of a strip
 or bus, or after a strip's fader: there the sound is copied to the
 outputs to "to effects", and replaced by what came back through "from
-effects", taken from the return node's hand-off. After a strip's fader, the fader is applied before
-sending, and what comes back is mixed at unity, ducking and send levels
-still applying.
+effects", taken from the return node's hand-off. After a strip's fader,
+the fader is applied before sending, and what comes back is mixed at
+unity, ducking and send levels still applying.
 
 **Meters** are atomics the real-time thread raises to each new peak; the
 daemon reads and resets them 30 times a second. The **spectrum** behind
@@ -185,6 +186,7 @@ part only); and speakers a strip has no channel for can be filled by
 | Compressor | A feed-forward compressor with a 6 dB soft knee, and a lift that can be worked out from the threshold and ratio. Its curve is in the protocol crate, for the window's graph. |
 | Ducking | Each strip's level after its fader, gated by its gate, is compared with a threshold; the strips it ducks are turned down in the mixes their ducking names. |
 | Limiter | Looks 1.5 ms ahead, with the channels of a bus linked so the image does not shift. |
+| Delay | A line per channel, long enough for 500 ms at the highest rate Weir asks for. It is allocated zeroed, so the system only hands out the pages a rate actually uses, and a change of delay crossfades from the old time to the new one. |
 | External effects | Not an effect itself: the sound goes out and comes back, crossfading over 10 ms between what comes back, the sound as it went out, and silence, as programs connect and go. |
 
 `dsp/process.rs` has a test `Rig` that drives the processor without
@@ -252,8 +254,8 @@ since its callbacks run on their own task.
 can do whatever the protocol can and needs nothing of its own in the
 engine. The controller keeps the list (`controller/hotkeys.rs`: checking,
 saving to `hotkeys.json`, noticing strips that are not there), and the
-groups with it: every change goes through `edit_hotkeys`, which changes a copy,
-saves it, and only then takes it. The list's order is its own, `order`,
+groups with it: every change goes through `edit_hotkeys`, which changes a
+copy, saves it, and only then takes it. The list's order is its own, `order`,
 places for each hotkey in no group and each group, so they can be
 arranged among each other; `HotkeyList::tidy` keeps it agreeing with the
 hotkeys and groups after every change, and puts those in its order. A
@@ -296,33 +298,32 @@ off, so examples added switched off do not make the desktop ask about
 keys. Shortcut ids carry a hash of the suggested keys, so changed keys are
 offered afresh.
 
-Plasma's portal backend falls short in three ways: it takes one
-suggestion, never changes a known shortcut's keys, and forgets a shortcut
-left out of a binding only if the same session bound it, which a new
-session never has. So on Plasma Weir also talks to Plasma's own shortcut
-service, kglobalaccel (`kde.rs`), as System Settings does, for its own
-component only: it forgets shortcuts no hotkey has (`unregister`), gives a
-hotkey's shortcut all its keys when they change in Weir
-(`setForeignShortcutKeys`, after asking `globalShortcutsByKey` whether
-another program has one), frees a switched-off hotkey's keys
-(`setInactive`; binding again takes them back), and reads keys as Qt key
-codes rather than as text in the desktop's language. Keys changed in
-System Settings come back into the hotkey's `keys`, so the two never pull
-against each other: Weir only sends keys that changed in Weir since the
-last binding. A hotkey keeps its shortcut id when its keys change, and a
-change of keys alone needs no new binding. The portal files shortcuts under the program's
-name and refuses them without one, but works the name out only for
-programs started from the application menu, not for the daemon started at
-login. So the daemon first tells the portal it is `weir` (its `Register`
-call), which the portal takes only because `weir.desktop` is installed. A
-portal that restarts forgets both the name and the shortcuts, so Weir
-starts over when it does. On X11 Weir grabs the keys on the root window
-itself (`x11.rs`, with `x11rb`), with and without Caps Lock and Num Lock,
-and asks XKB not to repeat held keys as presses. Anywhere else hotkeys are
-pressed only by name, which the desktop's own shortcuts can do with
-`weirctl hotkey run`. At login the daemon waits for the desktop first, as
-it does for the window. `WEIR_HOTKEYS=desktop`, `x11` or `none` picks the
-way, for testing.
+Plasma's portal backend falls short in three ways: it takes one suggestion,
+never changes a known shortcut's keys, and forgets a shortcut left out of a
+binding only if the same session bound it, which a new session never has.
+So on Plasma Weir also talks to Plasma's own shortcut service, kglobalaccel
+(`kde.rs`), as System Settings does, for its own component only: it forgets
+shortcuts no hotkey has (`unregister`), gives a hotkey's shortcut all its
+keys when they change in Weir (`setForeignShortcutKeys`, after asking
+`globalShortcutsByKey` whether another program has one), frees a
+switched-off hotkey's keys (`setInactive`; binding again takes them back),
+and reads keys as Qt key codes rather than as text in the desktop's
+language. Keys changed in System Settings come back into the hotkey's
+`keys`, so the two never pull against each other: Weir only sends keys that
+changed in Weir since the last binding. A hotkey keeps its shortcut id when
+its keys change, and a change of keys alone needs no new binding. The
+portal files shortcuts under the program's name and refuses them without
+one, but works the name out only for programs started from the application
+menu, not for the daemon started at login. So the daemon first tells the
+portal it is `weir` (its `Register` call), which the portal takes only
+because `weir.desktop` is installed. A portal that restarts forgets both
+the name and the shortcuts, so Weir starts over when it does. On X11 Weir
+grabs the keys on the root window itself (`x11.rs`, with `x11rb`), with and
+without Caps Lock and Num Lock, and asks XKB not to repeat held keys as
+presses. Anywhere else hotkeys are pressed only by name, which the
+desktop's own shortcuts can do with `weirctl hotkey run`. At login the
+daemon waits for the desktop first, as it does for the window.
+`WEIR_HOTKEYS=desktop`, `x11` or `none` picks the way, for testing.
 
 **Starting at login** is systemd's to keep, not the configuration's:
 Weir starts at login when its user unit, `weir.service`, is enabled. The
@@ -331,27 +332,27 @@ changing it with `enable` or `disable` (in `login.rs`), so the setting
 cannot drift from what systemd will actually do. It never uses `--now`:
 the daemon asking is already running.
 
-**Export and import** (`transfer.rs` for the files, `controller/transfer.rs`
-for the requests) is the daemon's, so `weirctl` and plugins get it as the
-window does. A `.zip` holds a manifest and one JSON file per thing, in a
-folder per kind; each file says what it holds, its format
-(`EXPORT_FORMAT`, now 1) and the Weir that wrote it, so a file can be read
-alone, and a later format is refused rather than half read, while a later
-Weir reads this one. Ids mean nothing on another computer, so strips and
-buses go by name in files, as hotkeys keep them anyway: the walker over a
-request's strips and buses (`visit_targets`) finds the names a mixer lacks
-on import. A hotkey's may be in a setup, saved here or in the file
-(`place_in_setups`), and then it only says which; others the person maps
-to strips of their own or leaves out. Importing is two requests: `inspect_import` checks each
-thing against what is here (names taken, keys taken, strips missing,
-damage) without changing anything, and `import_settings` reads and checks
-the file again with the choices made, copies what it will replace into
-`backups/import-DATE`, and goes through the usual paths: library files,
-`edit_eq_presets`, `set_app_rules`, `edit_hotkeys` (one save for all the
-hotkeys), `set_settings`. The window's look lives in the window's
-`gui.toml`, so the window hands it in to export and takes it back in a
-`window_look` notification; the file dialogs are the desktop's own,
-through the portal's FileChooser.
+**Export and import** (`transfer.rs` for the files,
+`controller/transfer.rs` for the requests) is the daemon's, so `weirctl`
+and plugins get it as the window does. A `.zip` holds a manifest and one
+JSON file per thing, in a folder per kind; each file says what it holds,
+its format (`EXPORT_FORMAT`, now 1) and the Weir that wrote it, so a file
+can be read alone, and a later format is refused rather than half read,
+while a later Weir reads this one. Ids mean nothing on another computer, so
+strips and buses go by name in files, as hotkeys keep them anyway: the
+walker over a request's strips and buses (`visit_targets`) finds the names
+a mixer lacks on import. A hotkey's may be in a setup, saved here or in the
+file (`place_in_setups`), and then it only says which; others the person
+maps to strips of their own or leaves out. Importing is two requests:
+`inspect_import` checks each thing against what is here (names taken, keys
+taken, strips missing, damage) without changing anything, and
+`import_settings` reads and checks the file again with the choices made,
+copies what it will replace into `backups/import-DATE`, and goes through
+the usual paths: library files, `edit_eq_presets`, `set_app_rules`,
+`edit_hotkeys` (one save for all the hotkeys), `set_settings`. The window's
+look lives in the window's `gui.toml`, so the window hands it in to export
+and takes it back in a `window_look` notification; the file dialogs are the
+desktop's own, through the portal's FileChooser.
 
 ## The protocol
 
@@ -401,7 +402,7 @@ change, or shows the error the daemon sent after it saved.
 
 ## Testing
 
-* `cargo test --workspace` runs over 150 unit tests without PipeWire:
+* `cargo test --workspace` runs over 250 unit tests without PipeWire:
   the real-time processor through its test rig, every effect,
   the protocol's parsing and maths, the daemon's request handling, undo,
   configuration migrations, and the window's logic.
@@ -413,8 +414,8 @@ change, or shows the error the daemon sent after it saved.
 
 ## Why it is built this way
 
-**Why not an existing tool?** pulsemeeter drives PulseAudio modules from
-Python with no real-time engine of its own; jack_mixer has strips and
+**Why not an existing tool?** Pulsemeeter links PipeWire's own loopbacks
+from Python, with no real-time engine of its own; jack_mixer has strips and
 meters but JACK ports only, which applications cannot choose as an output;
 qpwgraph, Helvum and Sonusmix route but do not mix; PipeWire's own
 `module-loopback` and `filter-chain` are building blocks configured in
@@ -461,8 +462,12 @@ remote control is ever wanted.
 
 ## What is next
 
+* Next: hotkeys that answer back, with a popup or a notification, and
+  sounds, as they are pressed, so you know a key did what you meant
+  without looking at the mixer.
 * Testing on more real hardware; most of the newer features have been
   developed against a headless PipeWire.
+* Later: mouse side buttons and MIDI controllers as hotkeys' keys.
 * An OpenDeck plugin, as its own project on top of the protocol.
 * Perhaps: a routing matrix view for many strips, and positioning sources
   in a sound field.

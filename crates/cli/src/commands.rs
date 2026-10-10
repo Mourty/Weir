@@ -394,10 +394,16 @@ pub fn rules(c: &mut Client, json: bool) -> Result<()> {
 /// playing, replacing any rule it had.
 pub fn rule(c: &mut Client, app: String, strip: &str, json: bool) -> Result<()> {
     let st = c.state()?;
+    // By name: a strip this setup lacks may be in a saved setup, which the
+    // daemon checks.
     let target = if strip == "leave" {
         None
     } else {
-        Some(find_strip(&st.mixer, strip)?)
+        Some(
+            st.mixer
+                .find_strip(strip)
+                .map_or_else(|| strip.to_string(), |s| s.name.clone()),
+        )
     };
     let mut rules = st.app_rules;
     match rules.iter_mut().find(|r| r.app.eq_ignore_ascii_case(&app)) {
@@ -563,13 +569,25 @@ pub fn library(c: &mut Client, action: LibraryCmd, scene: bool, json: bool) -> R
             };
             (req, done)
         }
-        LibraryCmd::Load { name } => {
-            let done = format!("loaded {word} '{name}'");
-            let p = NameParams { name };
+        LibraryCmd::Load {
+            name,
+            scene: with_scene,
+        } => {
+            if scene && with_scene.is_some() {
+                bail!("--scene is for loading a setup with a scene");
+            }
+            let done = match &with_scene {
+                Some(s) => format!("loaded {word} '{name}' with the scene '{s}'"),
+                None if scene => format!("loaded {word} '{name}'"),
+                None => format!("loaded {word} '{name}', with nothing routed"),
+            };
             let req = if scene {
-                Request::LoadScene(p)
+                Request::LoadScene(NameParams { name })
             } else {
-                Request::LoadSetup(p)
+                Request::LoadSetup(LoadSetupParams {
+                    name,
+                    scene: with_scene,
+                })
             };
             (req, done)
         }

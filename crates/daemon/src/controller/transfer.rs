@@ -8,7 +8,8 @@
 //! files, and named again in this mixer's numbers when imported.
 
 use super::handlers::{check_bands, is_builtin_eq_preset, NAME_MAX};
-use super::{names, Controller};
+use super::names::{self, Mixers};
+use super::Controller;
 use crate::config::{self, HotkeyList};
 use crate::transfer::{self as files, *};
 use serde_json::Value;
@@ -45,7 +46,7 @@ fn is_json(path: &Path) -> bool {
 #[derive(Debug, Clone)]
 enum Content {
     Scene(Scene),
-    Setup(MixerState),
+    Setup(Setup),
     /// With strips and buses by name, and its group's name.
     Hotkey(Hotkey, Option<String>),
     EqPreset(Vec<EqBand>),
@@ -230,7 +231,7 @@ impl Controller {
             ));
         }
         for name in saved(&self.paths.setups_dir, &p.setups, p.all) {
-            let setup: MixerState =
+            let setup: Setup =
                 config::load_saved(&self.paths.setups_dir, &name, "setup").map_err(failed)?;
             out.push((
                 ExportKind::Setup,
@@ -313,10 +314,7 @@ impl Controller {
                 .iter()
                 .map(|r| RuleFile {
                     app: r.app.clone(),
-                    strip: r
-                        .strip
-                        .and_then(|id| mixer.strip(id))
-                        .map(|s| s.name.clone()),
+                    strip: r.strip.clone(),
                 })
                 .collect();
             out.push((
@@ -605,14 +603,15 @@ impl Controller {
         Ok(ex)
     }
 
-    /// A hotkey naming strips or buses this mixer lacks may be meant for
-    /// another setup: what a setup saved here or one in the file has is
-    /// not missing, and the item says which setups have it. Once nothing
-    /// is missing, the hotkey is checked as `set_hotkey` would.
+    /// A hotkey or app rule naming strips or buses this mixer lacks may be
+    /// meant for another setup: what a setup saved here or one in the file
+    /// has is not missing, and the item says which setups have it. Once
+    /// nothing is missing, a hotkey is checked as `set_hotkey` would.
     fn place_in_setups(&self, found: &mut [Found], here: &Here) {
+        let by_name = |kind| matches!(kind, ExportKind::Hotkey | ExportKind::AppRules);
         if !found
             .iter()
-            .any(|f| f.item.kind == ExportKind::Hotkey && !f.item.missing.is_empty())
+            .any(|f| by_name(f.item.kind) && !f.item.missing.is_empty())
         {
             return;
         }
@@ -620,22 +619,25 @@ impl Controller {
             .setups
             .iter()
             .filter_map(|name| {
-                let m = config::load_saved(&self.paths.setups_dir, name, "setup").ok()?;
-                Some((name.clone(), m))
+                let setup: Setup =
+                    config::load_saved(&self.paths.setups_dir, name, "setup").ok()?;
+                Some((name.clone(), setup.mixer()))
             })
             .collect();
         // By item id, and name.
         let in_file: Vec<(String, String, MixerState)> = found
             .iter()
             .filter_map(|f| match &f.content {
-                Content::Setup(m) => Some((f.item.id.clone(), f.item.name.clone(), m.clone())),
+                Content::Setup(s) => Some((f.item.id.clone(), f.item.name.clone(), s.mixer())),
                 _ => None,
             })
             .collect();
         let has = |m: &MixerState, t: &MissingTarget| find_named(m, t.kind, &t.name).is_some();
         for Found { item, content } in found.iter_mut() {
-            let Content::Hotkey(h, _) = content else {
-                continue;
+            let hotkey = match content {
+                Content::Hotkey(h, _) => Some(h.clone()),
+                Content::AppRules(_) => None,
+                _ => continue,
             };
             let elsewhere: Vec<MissingTarget> = item
                 .missing
@@ -676,16 +678,24 @@ impl Controller {
             } else {
                 ("the setups", "have", "one of them")
             };
-            item.note = Some(format!(
-                "This mixer has no {}; {setups} {} {have} {}, and the hotkey works while \
-                 {while_} is loaded.",
+            let line = format!(
+                "This mixer has no {}; {setups} {} {have} {}, and {} while {while_} is loaded.",
                 what.join(" or "),
                 which.join(", "),
                 if what.len() == 1 { "one" } else { "them" },
-            ));
-            if item.missing.is_empty() {
+                if hotkey.is_some() {
+                    "the hotkey works"
+                } else {
+                    "the rules for it work"
+                },
+            );
+            item.note = Some(match item.note.take() {
+                Some(note) => format!("{note} {line}"),
+                None => line,
+            });
+            if let (Some(h), true) = (hotkey, item.missing.is_empty()) {
                 let extra = in_file.iter().map(|(_, _, m)| m.clone()).collect();
-                if let Err(e) = self.checked_hotkey_with(h.clone(), extra) {
+                if let Err(e) = self.checked_hotkey_with(h, extra) {
                     item.broken = Some(e.message);
                 }
             }
@@ -722,8 +732,11 @@ impl Controller {
                 Content::Scene(b.scene)
             }
             Body::Setup(b) => {
-                let mut setup = b.setup;
-                setup.normalize();
+                // Checked as a mixer would be: layouts, names, external
+                // effects' places.
+                let mut m = b.setup.mixer();
+                m.normalize();
+                let setup = Setup::capture(&m);
                 it.summary = format!("{} strips, {} buses", setup.strips.len(), setup.buses.len());
                 Content::Setup(setup)
             }
@@ -1185,6 +1198,9 @@ impl Controller {
         };
         let mut merged = here.rules.clone();
         let mut left_out = Vec::new();
+        // Setups imported a moment ago are saved, so a rule for one of their
+        // strips finds it there.
+        let mixers = Mixers::new(here.mixer.clone(), &self.paths.setups_dir, Vec::new());
         for r in rules {
             let app = r.app.trim().to_string();
             if app.is_empty() {
@@ -1194,8 +1210,11 @@ impl Controller {
                 None => None,
                 Some(name) => {
                     let name = p.map_strips.get(name).unwrap_or(name);
-                    match here.mixer.find_strip(name) {
-                        Some(s) if s.kind == StripKind::Virtual => Some(s.id),
+                    let found = mixers
+                        .locate(TargetKind::Strip, name)
+                        .and_then(|(m, id)| m.strip(id));
+                    match found {
+                        Some(s) if s.kind == StripKind::Virtual => Some(s.name.clone()),
                         _ => {
                             left_out.push(app);
                             continue;

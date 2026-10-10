@@ -91,6 +91,14 @@ async fn main() -> Result<()> {
     back_up_config(&paths);
     let loaded = load_config(&paths, args.reset_config)?;
     let first_run = loaded.first_run;
+    if loaded.split_setups {
+        match config::split_setups(&paths) {
+            Ok(done) => done
+                .iter()
+                .for_each(|d| info!("configuration upgraded: {d}")),
+            Err(e) => warn!("could not part the saved setups into setups and scenes: {e:#}"),
+        }
+    }
 
     let (ev_tx, ev_rx) = tokio::sync::mpsc::unbounded_channel();
     let engine = if args.no_engine {
@@ -209,6 +217,8 @@ struct Loaded {
     setup: Option<String>,
     /// There was no configuration, so this is the default layout.
     first_run: bool,
+    /// Saved setups hold whole mixers still; see [`config::split_setups`].
+    split_setups: bool,
 }
 
 /// Read the configuration, or start from the default layout when there is
@@ -234,6 +244,7 @@ fn load_config(paths: &config::Paths, reset: bool) -> Result<Loaded> {
                 scene: cfg.current_scene,
                 setup: cfg.current_setup,
                 first_run: false,
+                split_setups: report.split_setups,
             }
         }
         (false, Ok(None)) | (true, _) => {
@@ -245,6 +256,7 @@ fn load_config(paths: &config::Paths, reset: bool) -> Result<Loaded> {
                 scene: None,
                 setup: None,
                 first_run: true,
+                split_setups: false,
             }
         }
         (false, Err(e)) => {

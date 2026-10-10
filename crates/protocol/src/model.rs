@@ -594,7 +594,7 @@ fn is_false(b: &bool) -> bool {
 }
 
 /// For `skip_serializing_if`: a delay of nothing is left out of files.
-fn is_zero(v: &f32) -> bool {
+pub(crate) fn is_zero(v: &f32) -> bool {
     *v == 0.0
 }
 
@@ -1466,10 +1466,12 @@ pub struct AppRule {
     /// The application's name, or the name of its program, as `apps` lists
     /// them. Case does not matter.
     pub app: String,
-    /// The virtual strip to put it on, or `None` to leave it where it goes
-    /// by itself.
+    /// The virtual strip to put it on, by name, or `None` to leave it where
+    /// it goes by itself. Given by id, the daemon keeps the strip's name. A
+    /// rule naming a strip the mixer does not have now waits for a setup
+    /// that has one; renaming the strip renames it here too.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub strip: Option<StripId>,
+    pub strip: Option<String>,
 }
 
 impl AppRule {

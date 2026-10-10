@@ -1,10 +1,12 @@
 //! Application rules: putting applications on the strip their rule names
 //! when they start playing.
 
+use super::names::Rename;
 use super::Inner;
 use std::collections::HashSet;
+use std::sync::atomic::Ordering;
 use tracing::warn;
-use weir_protocol::{rule_for, StripId};
+use weir_protocol::{find_named, rule_for, Notification, StripId, TargetKind};
 
 /// How many times a rule tries to move an application before leaving it be,
 /// in case something else keeps moving it back.
@@ -24,11 +26,13 @@ pub(super) fn rule_moves(inner: &mut Inner) -> Vec<(u32, String, StripId)> {
         if inner.rules_done.contains(&key) {
             continue;
         }
-        let target = rule_for(&inner.app_rules, a)
-            .and_then(|r| r.strip)
-            .filter(|id| inner.mixer.strip(*id).is_some());
-        let Some(target) = target else {
+        let Some(name) = rule_for(&inner.app_rules, a).and_then(|r| r.strip.as_deref()) else {
             inner.rules_done.insert(key);
+            continue;
+        };
+        // A strip this setup does not have: the rule waits, and is looked
+        // at again with the next change of applications or setup.
+        let Some(target) = find_named(&inner.mixer, TargetKind::Strip, name) else {
             continue;
         };
         if a.strip == Some(target) {
@@ -51,6 +55,29 @@ pub(super) fn rule_moves(inner: &mut Inner) -> Vec<(u32, String, StripId)> {
 }
 
 impl super::Controller {
+    /// Strips were renamed: rules naming them take the new names.
+    pub(super) fn rules_follow_renames(&self, renamed: &[Rename]) {
+        let changed = {
+            let mut inner = self.inner.lock().unwrap();
+            let mut changed = false;
+            for r in &mut inner.app_rules {
+                let Some(strip) = &mut r.strip else { continue };
+                if let Some((_, _, new)) = renamed
+                    .iter()
+                    .find(|(k, old, _)| *k == TargetKind::Strip && old.eq_ignore_ascii_case(strip))
+                {
+                    *strip = new.clone();
+                    changed = true;
+                }
+            }
+            changed.then(|| inner.app_rules.clone())
+        };
+        if let Some(rules) = changed {
+            self.dirty.store(true, Ordering::Release);
+            self.announce(Notification::AppRulesChanged(rules));
+        }
+    }
+
     /// Carry out moves the application rules asked for.
     pub(super) fn make_moves(&self, moves: Vec<(u32, String, StripId)>) {
         let Some(engine) = self.engine() else {

@@ -413,12 +413,12 @@ pub fn rules(st: &FullState) {
         println!("(no rules)");
     }
     for r in &st.app_rules {
-        let to = match r.strip {
+        let to = match &r.strip {
             None => "leave alone".to_string(),
-            Some(id) => st
-                .mixer
-                .strip(id)
-                .map_or(format!("strip {id} (removed)"), |s| s.name.clone()),
+            Some(name) => match st.mixer.find_strip(name) {
+                Some(s) => s.name.clone(),
+                None => format!("{name} (not in this setup)"),
+            },
         };
         let playing = if st.apps.iter().any(|a| r.matches(a)) {
             "  (playing)"

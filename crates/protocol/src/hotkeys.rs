@@ -640,7 +640,10 @@ pub fn describe_step(step: &HotkeyStep, m: &MixerState) -> String {
             format!("{target}: equalizer preset {}", s("name"))
         }
         "load_scene" => format!("Load the scene {}", s("name")),
-        "load_setup" => format!("Load the setup {}", s("name")),
+        "load_setup" => match p.get("scene").and_then(Value::as_str) {
+            Some(scene) => format!("Load the setup {} with the scene {scene}", s("name")),
+            None => format!("Load the setup {}", s("name")),
+        },
         "save_scene" => format!("Save the scene {}", s("name")),
         "show_window" => "Show the Weir window".into(),
         "undo" | "redo" => {

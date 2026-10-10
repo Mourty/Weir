@@ -228,7 +228,7 @@ weirctl move-bus Speakers 1
 | `weirctl move-app APP STRIP` | Move a playing application, by the id `weirctl apps` shows, to a virtual strip. |
 | `weirctl app-volume APP [--gain DB] [--gain-by DB] [--mute on\|off\|toggle]` | Set an application's own volume, the one the system's volume control shows for it. |
 | `weirctl rules` | List where applications go when they start playing. |
-| `weirctl rule APP STRIP` | Always put an application on a strip when it starts playing, by the name `weirctl apps` shows or its program's name. `leave` in place of a strip leaves it alone. |
+| `weirctl rule APP STRIP` | Always put an application on a strip when it starts playing, by the name `weirctl apps` shows or its program's name. `leave` in place of a strip leaves it alone. The strip may be one only a saved setup has: the rule waits for that setup. |
 | `weirctl unrule APP` | Remove its rule. |
 
 ```sh
@@ -265,21 +265,25 @@ weirctl eq delete "My mic"
 
 ## Scenes and setups
 
-A **scene** keeps the mix: levels, mutes, routes and effects. A **setup**
-keeps the mixer itself: its strips and buses, their devices, names and
-layouts. Both take the same commands:
+A **scene** keeps how it sounds: levels, mutes, routes and effects. A
+**setup** keeps what is there: its strips and buses, their devices,
+names, layouts, colors and external effects. A scene describes the whole
+mix: strips and buses it has no mix for start at their default, with
+nothing routed. Both take the same commands:
 
 | Command | |
 |---|---|
 | `weirctl scene list` | List them, marking the current one. |
 | `weirctl scene save NAME` | Save how things are now, replacing one of that name. |
 | `weirctl scene load NAME` | Bring one back. `weirctl undo` takes it back again. |
+| `weirctl setup load NAME [--scene SCENE]` | Bring back a setup, with a scene, or alone with nothing routed. |
 | `weirctl scene delete NAME` | Delete one. |
 
 ```sh
 weirctl scene save Streaming
 weirctl scene load Streaming
 weirctl setup save Desk
+weirctl setup load Desk --scene Streaming
 weirctl setup list
 ```
 

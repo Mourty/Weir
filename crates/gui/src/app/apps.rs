@@ -8,6 +8,11 @@ use egui::{RichText, Ui};
 use weir_protocol::*;
 
 /// The strips applications can play into.
+/// Whether a rule's strip, `rule`, is the strip called `name`.
+fn same_name(rule: Option<&str>, name: &str) -> bool {
+    rule.is_some_and(|r| r.trim().eq_ignore_ascii_case(name))
+}
+
 fn virtual_strips(state: &FullState) -> Vec<&Strip> {
     state
         .mixer
@@ -59,13 +64,13 @@ impl App {
                 }
                 ui.separator();
                 ui.menu_button(format!("Always play {} into", a.name), |ui| {
-                    let current = rule_for(&state.app_rules, a).and_then(|r| r.strip);
+                    let current = rule_for(&state.app_rules, a).and_then(|r| r.strip.as_deref());
                     for s in &strips {
                         if ui
-                            .selectable_label(current == Some(s.id), &s.name)
+                            .selectable_label(same_name(current, &s.name), &s.name)
                             .clicked()
                         {
-                            self.set_rule(state, &a.name, Some(s.id));
+                            self.set_rule(state, &a.name, Some(s.name.clone()));
                             ui.close();
                         }
                     }
@@ -75,7 +80,7 @@ impl App {
     }
 
     /// Add or change the rule for `app`, keeping the others.
-    fn set_rule(&mut self, state: &FullState, app: &str, strip: Option<StripId>) {
+    fn set_rule(&mut self, state: &FullState, app: &str, strip: Option<String>) {
         let mut rules = state.app_rules.clone();
         match rules.iter_mut().find(|r| r.app.eq_ignore_ascii_case(app)) {
             Some(r) => r.strip = strip,
@@ -130,7 +135,7 @@ impl App {
     /// Returns whether one was added.
     fn new_rule_row(&mut self, ui: &mut Ui, state: &FullState, rules: &mut Vec<AppRule>) -> bool {
         let mut changed = false;
-        let first = virtual_strips(state).first().map(|s| s.id);
+        let first = virtual_strips(state).first().map(|s| s.name.clone());
         ui.horizontal(|ui| {
             let unruled: Vec<&AppStream> = state
                 .apps
@@ -141,9 +146,10 @@ impl App {
                 ui.menu_button("+ Rule for a playing app", |ui| {
                     for a in &unruled {
                         if ui.button(&a.name).clicked() {
+                            let on = a.strip.and_then(|id| state.mixer.strip(id));
                             rules.push(AppRule {
                                 app: a.name.clone(),
-                                strip: a.strip.or(first),
+                                strip: on.map(|s| s.name.clone()).or(first.clone()),
                             });
                             changed = true;
                             ui.close();
@@ -172,7 +178,7 @@ impl App {
             if (clicked || enter) && valid {
                 rules.push(AppRule {
                     app: name,
-                    strip: first,
+                    strip: first.clone(),
                 });
                 self.rule_name.clear();
                 changed = true;
@@ -213,20 +219,24 @@ fn rule_table(ui: &mut Ui, state: &FullState, rules: &mut Vec<AppRule>) -> bool 
                     } else {
                         "Not playing now"
                     });
-                let text = match r.strip.and_then(|id| state.mixer.strip(id)) {
-                    Some(s) => s.name.clone(),
-                    None if r.strip.is_some() => "(removed strip)".to_string(),
-                    None => "leave alone".to_string(),
+                // A strip this setup lacks: the rule waits for one that has
+                // it.
+                let here = r.strip.as_deref().and_then(|n| state.mixer.find_strip(n));
+                let text = match (&r.strip, here) {
+                    (Some(_), Some(s)) => s.name.clone(),
+                    (Some(name), None) => format!("{name} (not in this setup)"),
+                    (None, _) => "leave alone".to_string(),
                 };
                 egui::ComboBox::from_id_salt(("rule", k))
                     .selected_text(text)
+                    .truncate()
                     .show_ui(ui, |ui| {
                         for s in &strips {
                             if ui
-                                .selectable_label(r.strip == Some(s.id), &s.name)
+                                .selectable_label(same_name(r.strip.as_deref(), &s.name), &s.name)
                                 .clicked()
                             {
-                                r.strip = Some(s.id);
+                                r.strip = Some(s.name.clone());
                                 changed = true;
                             }
                         }

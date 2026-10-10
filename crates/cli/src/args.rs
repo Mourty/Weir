@@ -460,8 +460,14 @@ pub enum LibraryCmd {
     List,
     /// Save the mixer as it is now under `name`, replacing one of that name.
     Save { name: String },
-    /// Bring one back.
-    Load { name: String },
+    /// Bring one back. A setup alone starts with nothing routed; give a
+    /// scene to load with it.
+    Load {
+        name: String,
+        /// For a setup: a scene to load with it.
+        #[arg(long)]
+        scene: Option<String>,
+    },
     /// Delete one.
     Delete { name: String },
 }

@@ -2,15 +2,13 @@
 //! saved, saving them, noticing what is wrong with them, and passing
 //! presses on to the runner, which does the work (see [`crate::hotkeys`]).
 
-use super::names::{self, Rename};
+use super::names::{self, Mixers, Rename};
 use super::{Controller, Subscriptions};
 use crate::config::{self, HotkeyList};
 use crate::history::Step;
 use crate::hotkeys::{Command, Runner};
 use serde_json::{json, Value};
-use std::cell::OnceCell;
 use std::collections::BTreeMap;
-use std::path::Path;
 use std::sync::{Arc, Mutex};
 use tracing::{info, warn};
 use weir_protocol::*;
@@ -631,6 +629,9 @@ impl Controller {
     pub fn step_by_id(&self, step: &HotkeyStep) -> Result<HotkeyStep, RpcError> {
         let mixer = self.mixer();
         let mut step = step.clone();
+        if names::takes_names(&step.method) {
+            return Ok(step);
+        }
         visit_targets(&step.method, &mut step.params, &mut |kind, v| {
             if let Value::String(name) = v {
                 let id =
@@ -760,73 +761,6 @@ impl HotkeyList {
     }
 }
 
-/// Where a hotkey's strips and buses are looked for when it is saved: in
-/// the mixer now, then in each saved setup, read only when a name is not
-/// in the mixer now. A hotkey may be meant for another setup.
-struct Mixers<'a> {
-    here: MixerState,
-    setups_dir: &'a Path,
-    /// Setups that are not saved (yet), looked in after the saved ones.
-    extra: Vec<MixerState>,
-    setups: OnceCell<Vec<MixerState>>,
-}
-
-impl<'a> Mixers<'a> {
-    fn new(here: MixerState, setups_dir: &'a Path, extra: Vec<MixerState>) -> Self {
-        Self {
-            here,
-            setups_dir,
-            extra,
-            setups: OnceCell::new(),
-        }
-    }
-
-    fn setups(&self) -> &[MixerState] {
-        self.setups.get_or_init(|| {
-            let mut setups: Vec<MixerState> = config::list_saved(self.setups_dir)
-                .iter()
-                .filter_map(|name| config::load_saved(self.setups_dir, name, "setup").ok())
-                .collect();
-            setups.extend(self.extra.iter().cloned());
-            setups
-        })
-    }
-
-    /// The strip or bus `key` names, as its name and id in the first mixer
-    /// that has it.
-    fn find(&self, kind: TargetKind, key: &str) -> Option<(String, u32)> {
-        let found = |m: &MixerState| {
-            let id = find_named(m, kind, key)?;
-            Some((target_name(m, kind, id)?.to_string(), id))
-        };
-        found(&self.here).or_else(|| self.setups().iter().find_map(found))
-    }
-
-    /// `v`, a strip or bus given by id or by name, as its name: an id is
-    /// one in the mixer now, and a name may be one only a setup has.
-    fn name(&self, kind: TargetKind, v: &mut Value) -> Result<(), RpcError> {
-        match v {
-            Value::Number(n) => {
-                let id = n.as_u64().and_then(|id| u32::try_from(id).ok());
-                let name = id
-                    .and_then(|id| target_name(&self.here, kind, id))
-                    .ok_or_else(|| {
-                        RpcError::application(format!("no {} with id {n}", kind.word()))
-                    })?;
-                *v = Value::String(name.to_string());
-            }
-            Value::String(key) => {
-                let (name, _) = self
-                    .find(kind, key)
-                    .ok_or_else(|| names::no_such(kind, key))?;
-                *v = Value::String(name);
-            }
-            _ => {}
-        }
-        Ok(())
-    }
-}
-
 /// Check one step: a request a hotkey may make, with its strips and buses
 /// kept by name, and a fade only where one works.
 fn check_step(step: &mut HotkeyStep, mixers: &Mixers) -> Result<(), RpcError> {
@@ -834,9 +768,12 @@ fn check_step(step: &mut HotkeyStep, mixers: &Mixers) -> Result<(), RpcError> {
     visit_targets(&step.method, &mut step.params, &mut |kind, v| {
         mixers.name(kind, v)
     })?;
-    // The request is checked with ids, as it runs.
+    // The request is checked with ids, as it runs, unless it takes names.
     let mut by_id = step.clone();
     let _ = visit_targets::<()>(&by_id.method, &mut by_id.params, &mut |kind, v| {
+        if names::takes_names(&step.method) {
+            return Ok(());
+        }
         if let Some((_, id)) = v.as_str().and_then(|name| mixers.find(kind, name)) {
             *v = json!(id);
         }

@@ -223,7 +223,26 @@ daemon keeps a copy of the configuration in `backups/`, the last ten.
 **Application rules** are applied as applications appear: the first
 matching rule moves an application once, retrying a few times if the
 session manager moves it back, and then leaves it alone, so moving it by
-hand is respected.
+hand is respected. A rule keeps its strip's name (`set_app_rules` is one
+of the requests that take names, `names::takes_names`); when the mixer has
+no strip of that name the rule waits, and loading a setup applies the
+rules afresh. Renames reach the rules as they reach hotkeys.
+
+**Scenes and setups** (`protocol/library.rs`) are two halves that do not
+overlap. A `Setup` is what is there: the strips and buses in order, with
+name, kind, layout, device, color and external effects, which belong here
+because switching them on makes devices other programs are wired to. A
+`Scene` is how it sounds: everything else of a strip and bus, a bus's
+delay included. `Scene::apply` describes the whole mix: each strip and bus
+it has a mix for, found by name only, takes it, and every other one gets
+the mix a new one of its kind would have, unrouted. `load_setup` builds
+the setup's mixer at that default (`Setup::mixer`) and applies a scene to
+it if asked, all as one whole-mixer change (`replace_mixer`). The library
+the daemon sends lists each scene's and setup's members, so a client can
+say beforehand what a scene would miss in a setup. Before 1.2.0 a setup
+was a whole mixer whose mix was mostly passed over; config version 4 parts
+those files once, at startup, into a setup and a scene (`split_setups`),
+and turns app rules' ids into names.
 
 **The tray icon** is in the daemon, because the daemon is what keeps
 running when the window is closed. It talks to the rest through a channel,
@@ -429,6 +448,12 @@ window is closed, and a hotkey that only worked while the window was open
 would be a surprise. Steps as requests, rather than a list of actions of
 their own, mean anything new in the protocol can be a hotkey's step at
 once, and that a script, a Stream Deck button and a key can share one.
+
+**Why setups and scenes apart?** With one kind of saved state, every
+combination of hardware and mood needs its own copy: gaming on the
+headset, gaming on speakers, streaming on the headset. Apart, a few of each
+combine freely, and hotkeys, scenes and app rules, which all go by names,
+work with any setup that has the names they use.
 
 **Why only a local socket?** It needs no password: only the user running
 Weir can open it. A TCP listener could be added in the server alone, if

@@ -4,6 +4,7 @@
 //! tells everyone.
 
 use super::hotkeys::Action;
+use super::names::{self, Mixers};
 use super::rules::rule_moves;
 use super::undo_labels::undo_step;
 use super::{Controller, Subscriptions, MAX_SPECTRUM_TARGETS};
@@ -161,35 +162,39 @@ impl Controller {
     }
 
     pub(super) fn set_app_rules(&self, p: AppRulesParams) -> Result<Value, RpcError> {
-        let (rules, moves) = {
-            let mut inner = self.inner.lock().unwrap();
-            let mut rules: Vec<AppRule> = Vec::new();
-            for r in p.rules {
-                let app = r.app.trim().to_string();
-                if app.is_empty() {
-                    return Err(RpcError::invalid_params("a rule needs an application"));
-                }
-                if let Some(id) = r.strip {
-                    if !inner
-                        .mixer
-                        .strip(id)
-                        .is_some_and(|s| s.kind == StripKind::Virtual)
-                    {
+        // A rule's strip may be one only a saved setup has: the rule waits
+        // for it.
+        let mixers = Mixers::new(self.mixer(), &self.paths.setups_dir, Vec::new());
+        let mut rules: Vec<AppRule> = Vec::new();
+        for r in p.rules {
+            let app = r.app.trim().to_string();
+            if app.is_empty() {
+                return Err(RpcError::invalid_params("a rule needs an application"));
+            }
+            let strip = match r.strip.as_deref().map(str::trim) {
+                None | Some("") => None,
+                Some(key) => {
+                    let (m, id) = mixers
+                        .locate(TargetKind::Strip, key)
+                        .ok_or_else(|| names::no_such(TargetKind::Strip, key))?;
+                    let s = m.strip(id).expect("located");
+                    if s.kind != StripKind::Virtual {
                         return Err(RpcError::application(format!(
-                            "strip {id} is not a virtual strip, so applications cannot play \
-                             into it"
+                            "'{}' is not a virtual strip, so applications cannot play into it",
+                            s.name
                         )));
                     }
+                    Some(s.name.clone())
                 }
-                // One rule per application: the first one wins anyway, so a
-                // second would only confuse.
-                if !rules.iter().any(|x| x.app.eq_ignore_ascii_case(&app)) {
-                    rules.push(AppRule {
-                        app,
-                        strip: r.strip,
-                    });
-                }
+            };
+            // One rule per application: the first one wins anyway, so a
+            // second would only confuse.
+            if !rules.iter().any(|x| x.app.eq_ignore_ascii_case(&app)) {
+                rules.push(AppRule { app, strip });
             }
+        }
+        let (rules, moves) = {
+            let mut inner = self.inner.lock().unwrap();
             inner.app_rules = rules.clone();
             // A new rule applies to what is already playing too.
             inner.rules_done.clear();
@@ -353,8 +358,8 @@ impl Controller {
     }
 
     fn save_setup(&self, p: NameParams) -> Result<Value, RpcError> {
-        config::save_saved(&self.paths.setups_dir, &p.name, "setup", &self.mixer())
-            .map_err(app_error)?;
+        let setup = Setup::capture(&self.mixer());
+        config::save_saved(&self.paths.setups_dir, &p.name, "setup", &setup).map_err(app_error)?;
         Ok(to_json(&self.library_changed(None, Some(Some(p.name)))))
     }
 
@@ -364,17 +369,33 @@ impl Controller {
         Ok(to_json(&self.library_changed(Some(Some(p.name)), None)))
     }
 
-    fn load_setup(&self, p: NameParams, step: Option<Step>) -> Result<Value, RpcError> {
-        let loaded: MixerState =
+    fn load_setup(&self, p: LoadSetupParams, step: Option<Step>) -> Result<Value, RpcError> {
+        let setup: Setup =
             config::load_saved(&self.paths.setups_dir, &p.name, "setup").map_err(app_error)?;
+        let scene: Option<Scene> = match &p.scene {
+            Some(name) => {
+                Some(config::load_saved(&self.paths.scenes_dir, name, "scene").map_err(app_error)?)
+            }
+            None => None,
+        };
+        // Without a scene, every strip and bus starts at its default mix,
+        // nothing routed: as a scene that mentions nothing would leave it.
+        let mut loaded = setup.mixer();
+        if let Some(scene) = &scene {
+            scene.apply(&mut loaded);
+        }
         let result = self.replace_mixer(step, |m| {
-            // Strips and buses in both keep the mix they have now.
-            let keep = Scene::capture(m);
             *m = loaded;
-            keep.apply(m, MatchBy::Id);
             Ok(m.clone())
         })?;
-        self.library_changed(None, Some(Some(p.name)));
+        {
+            // Another setup: app rules apply afresh, to strips of their
+            // names here, when the applications show up on its devices.
+            let mut inner = self.inner.lock().unwrap();
+            inner.rules_done.clear();
+            inner.rules_tried.clear();
+        }
+        self.library_changed(Some(p.scene), Some(Some(p.name)));
         Ok(result)
     }
 
@@ -382,7 +403,7 @@ impl Controller {
         let scene: Scene =
             config::load_saved(&self.paths.scenes_dir, &p.name, "scene").map_err(app_error)?;
         let result = self.mutate(step, |m| {
-            scene.apply(m, MatchBy::Name);
+            scene.apply(m);
             Ok(m.clone())
         })?;
         self.library_changed(Some(Some(p.name)), None);

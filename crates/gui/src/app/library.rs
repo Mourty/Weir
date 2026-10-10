@@ -135,6 +135,21 @@ fn missing_note(ui: &mut Ui, missing: &[(TargetKind, String)], where_: &str) {
     ));
 }
 
+/// A saved scene's or setup's name as a button to load it. Every name gets
+/// the same width, cut short with "…" when it is longer, so whatever follows
+/// it lines up. The filler after the name keeps it at the left.
+fn name_button(ui: &mut Ui, selected: bool, name: &str) -> egui::Response {
+    let size = vec2(LIBRARY_NAME_W, ui.spacing().interact_size.y);
+    ui.allocate_ui(size, |ui| {
+        ui.add(
+            egui::Button::selectable(selected, (name, egui::Atom::grow()))
+                .truncate()
+                .min_size(size),
+        )
+    })
+    .inner
+}
+
 impl App {
     /// The Scenes or Setups menu: what it keeps, the saved ones with the
     /// current one ticked, and saving. Resting on a setup lists the scenes
@@ -209,10 +224,14 @@ impl App {
             .get(setup)
             .cloned()
             .unwrap_or_default();
+        let loaded = |scene: &str| {
+            library.setup.as_deref() == Some(setup) && library.scene.as_deref() == Some(scene)
+        };
         for scene in &library.scenes {
             let missing = scene_misses(library, scene, &there);
             ui.horizontal(|ui| {
-                let load = ui.add(egui::Button::new(scene.as_str()).truncate());
+                let load = name_button(ui, loaded(scene), scene)
+                    .on_hover_text(format!("{scene}\n\nClick to load {setup} with this scene."));
                 missing_note(ui, &missing, "this setup");
                 if load.clicked() {
                     self.actions.push(Request::LoadSetup(LoadSetupParams {
@@ -237,19 +256,7 @@ impl App {
     /// One saved scene or setup: its name, which loads it, then buttons to
     /// save over it and delete it.
     fn library_row(&mut self, ui: &mut Ui, kind: LibraryKind, n: &str, is_current: bool) {
-        // Every name gets the same width, cut short with "…" when it is
-        // longer, so the buttons after it line up. The filler after the name
-        // keeps it at the left.
-        let size = vec2(LIBRARY_NAME_W, ui.spacing().interact_size.y);
-        let load = ui
-            .allocate_ui(size, |ui| {
-                ui.add(
-                    egui::Button::selectable(is_current, (n, egui::Atom::grow()))
-                        .truncate()
-                        .min_size(size),
-                )
-            })
-            .inner;
+        let load = name_button(ui, is_current, n);
         let word = kind.word();
         let click = match kind {
             LibraryKind::Scene => format!("Click to load this {word}."),

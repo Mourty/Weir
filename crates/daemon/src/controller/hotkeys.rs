@@ -785,7 +785,8 @@ impl<'a> Mixers<'a> {
         self.setups.get_or_init(|| {
             let mut setups: Vec<MixerState> = config::list_saved(self.setups_dir)
                 .iter()
-                .filter_map(|name| config::load_saved(self.setups_dir, name, "setup").ok())
+                .filter_map(|name| config::load_saved::<Setup>(self.setups_dir, name, "setup").ok())
+                .map(|setup| setup.mixer())
                 .collect();
             setups.extend(self.extra.iter().cloned());
             setups

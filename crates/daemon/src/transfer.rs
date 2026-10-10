@@ -14,9 +14,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::io::{Cursor, Read, Write};
 use std::path::Path;
-use weir_protocol::{
-    EqBand, ExportKind, Hotkey, MixerState, Scene, Startup, TrayIcon, EXPORT_FORMAT,
-};
+use weir_protocol::{EqBand, ExportKind, Hotkey, Scene, Setup, Startup, TrayIcon, EXPORT_FORMAT};
 
 /// The manifest's name in a `.zip`: what is in it, and who wrote it.
 pub const MANIFEST: &str = "weir-export.json";
@@ -60,11 +58,11 @@ pub struct SceneFile {
     pub scene: Scene,
 }
 
-/// A setup: a whole mixer.
+/// A setup: the strips and buses, their devices and external effects.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SetupFile {
     pub name: String,
-    pub setup: MixerState,
+    pub setup: Setup,
 }
 
 /// A hotkey, its steps naming strips and buses rather than numbering them,

@@ -158,7 +158,10 @@ pub(super) fn undo_step(req: &Request, m: &MixerState) -> Option<Step> {
             format!("Move bus {}", bus(p.id)),
             format!("move/bus/{}", p.id),
         ),
-        Request::LoadSetup(p) => Step::single(format!("Load setup {}", p.name)),
+        Request::LoadSetup(p) => Step::single(match &p.scene {
+            Some(scene) => format!("Load setup {} with scene {scene}", p.name),
+            None => format!("Load setup {}", p.name),
+        }),
         Request::LoadScene(p) => Step::single(format!("Load scene {}", p.name)),
         Request::ApplyEqPreset(p) => {
             let target = match (p.strip, p.bus) {

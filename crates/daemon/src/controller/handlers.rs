@@ -353,8 +353,8 @@ impl Controller {
     }
 
     fn save_setup(&self, p: NameParams) -> Result<Value, RpcError> {
-        config::save_saved(&self.paths.setups_dir, &p.name, "setup", &self.mixer())
-            .map_err(app_error)?;
+        let setup = Setup::capture(&self.mixer());
+        config::save_saved(&self.paths.setups_dir, &p.name, "setup", &setup).map_err(app_error)?;
         Ok(to_json(&self.library_changed(None, Some(Some(p.name)))))
     }
 
@@ -364,17 +364,26 @@ impl Controller {
         Ok(to_json(&self.library_changed(Some(Some(p.name)), None)))
     }
 
-    fn load_setup(&self, p: NameParams, step: Option<Step>) -> Result<Value, RpcError> {
-        let loaded: MixerState =
+    fn load_setup(&self, p: LoadSetupParams, step: Option<Step>) -> Result<Value, RpcError> {
+        let setup: Setup =
             config::load_saved(&self.paths.setups_dir, &p.name, "setup").map_err(app_error)?;
+        let scene: Option<Scene> = match &p.scene {
+            Some(name) => {
+                Some(config::load_saved(&self.paths.scenes_dir, name, "scene").map_err(app_error)?)
+            }
+            None => None,
+        };
+        // Without a scene, every strip and bus starts at its default mix,
+        // nothing routed: as a scene that mentions nothing would leave it.
+        let mut loaded = setup.mixer();
+        if let Some(scene) = &scene {
+            scene.apply(&mut loaded);
+        }
         let result = self.replace_mixer(step, |m| {
-            // Strips and buses in both keep the mix they have now.
-            let keep = Scene::capture(m);
             *m = loaded;
-            keep.apply(m, MatchBy::Id);
             Ok(m.clone())
         })?;
-        self.library_changed(None, Some(Some(p.name)));
+        self.library_changed(Some(p.scene), Some(Some(p.name)));
         Ok(result)
     }
 
@@ -382,7 +391,7 @@ impl Controller {
         let scene: Scene =
             config::load_saved(&self.paths.scenes_dir, &p.name, "scene").map_err(app_error)?;
         let result = self.mutate(step, |m| {
-            scene.apply(m, MatchBy::Name);
+            scene.apply(m);
             Ok(m.clone())
         })?;
         self.library_changed(Some(Some(p.name)), None);

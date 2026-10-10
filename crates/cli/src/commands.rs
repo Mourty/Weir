@@ -563,13 +563,25 @@ pub fn library(c: &mut Client, action: LibraryCmd, scene: bool, json: bool) -> R
             };
             (req, done)
         }
-        LibraryCmd::Load { name } => {
-            let done = format!("loaded {word} '{name}'");
-            let p = NameParams { name };
+        LibraryCmd::Load {
+            name,
+            scene: with_scene,
+        } => {
+            if scene && with_scene.is_some() {
+                bail!("--scene is for loading a setup with a scene");
+            }
+            let done = match &with_scene {
+                Some(s) => format!("loaded {word} '{name}' with the scene '{s}'"),
+                None if scene => format!("loaded {word} '{name}'"),
+                None => format!("loaded {word} '{name}', with nothing routed"),
+            };
             let req = if scene {
-                Request::LoadScene(p)
+                Request::LoadScene(NameParams { name })
             } else {
-                Request::LoadSetup(p)
+                Request::LoadSetup(LoadSetupParams {
+                    name,
+                    scene: with_scene,
+                })
             };
             (req, done)
         }

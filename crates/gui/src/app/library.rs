@@ -40,10 +40,9 @@ impl LibraryKind {
     }
 
     fn load(self, name: String) -> Request {
-        let params = NameParams { name };
         match self {
-            LibraryKind::Scene => Request::LoadScene(params),
-            LibraryKind::Setup => Request::LoadSetup(params),
+            LibraryKind::Scene => Request::LoadScene(NameParams { name }),
+            LibraryKind::Setup => Request::LoadSetup(LoadSetupParams { name, scene: None }),
         }
     }
 

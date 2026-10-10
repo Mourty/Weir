@@ -371,11 +371,31 @@ impl Controller {
             let inner = self.inner.lock().unwrap();
             (inner.scene.clone(), inner.setup.clone())
         };
+        let scenes = config::list_saved(&self.paths.scenes_dir);
+        let setups = config::list_saved(&self.paths.setups_dir);
+        // Who each one has, so clients can say what a scene would miss in a
+        // setup. A file that cannot be read has none.
+        let scene_members = scenes
+            .iter()
+            .filter_map(|n| {
+                let scene: Scene = config::load_saved(&self.paths.scenes_dir, n, "scene").ok()?;
+                Some((n.clone(), scene.members()))
+            })
+            .collect();
+        let setup_members = setups
+            .iter()
+            .filter_map(|n| {
+                let setup: Setup = config::load_saved(&self.paths.setups_dir, n, "setup").ok()?;
+                Some((n.clone(), setup.members()))
+            })
+            .collect();
         Library {
-            scenes: config::list_saved(&self.paths.scenes_dir),
-            setups: config::list_saved(&self.paths.setups_dir),
+            scenes,
+            setups,
             scene,
             setup,
+            scene_members,
+            setup_members,
         }
     }
 

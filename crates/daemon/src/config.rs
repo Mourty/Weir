@@ -14,7 +14,7 @@ pub use weir_protocol::Settings;
 /// The configuration format this build writes. Bump it whenever an older
 /// file needs changing to mean the same thing under the new code, and add a
 /// step to [`migrate`].
-pub const CONFIG_VERSION: u32 = 3;
+pub const CONFIG_VERSION: u32 = 4;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -56,6 +56,9 @@ pub struct LoadReport {
     pub migrated: Vec<String>,
     /// The file came from a newer Weir than this one.
     pub from_newer: Option<u32>,
+    /// Saved setups still hold whole mixers: [`split_setups`] must part
+    /// them into setups and scenes.
+    pub split_setups: bool,
 }
 
 /// Bring `cfg` up to [`CONFIG_VERSION`], one version at a time.
@@ -105,11 +108,85 @@ pub fn migrate(cfg: &mut Config) -> LoadReport {
                         .push("kept strips and buses in the order the window showed them".into());
                 }
             }
+            3 => {
+                // Setups used to keep a whole mixer, though loading one kept
+                // the mix there was. Now a setup is what is there and a
+                // scene how it sounds; the files are parted after loading,
+                // since they are not in this one.
+                report.split_setups = true;
+            }
             _ => report.migrated.push(format!("format {v} to {}", v + 1)),
         }
         cfg.version = v + 1;
     }
     report
+}
+
+/// Part each saved setup that still holds a whole mixer, from before setups
+/// and scenes were told apart, into a setup, what is there, and a scene of
+/// the same name, how it sounded, so nothing it held is lost. A scene of
+/// that name already there keeps it, and the new one gets a number. Old
+/// files are copied into `backups` first. Returns what was done, a line
+/// each.
+pub fn split_setups(paths: &Paths) -> Result<Vec<String>> {
+    let names = list_saved(&paths.setups_dir);
+    if names.is_empty() {
+        return Ok(Vec::new());
+    }
+    let copies = paths.backups_dir.join("setups-before-scenes");
+    std::fs::create_dir_all(&copies).with_context(|| format!("creating {}", copies.display()))?;
+    let mut done = Vec::new();
+    for name in names {
+        let old = saved_path(&paths.setups_dir, &name, "setup")?;
+        // Parted already, if the daemon stopped before saving the new
+        // version: a setup file has no levels.
+        let text = std::fs::read_to_string(&old).unwrap_or_default();
+        if !holds_a_mix(&text) {
+            continue;
+        }
+        let mixer: MixerState = match load_saved(&paths.setups_dir, &name, "setup") {
+            Ok(m) => m,
+            Err(e) => {
+                tracing::warn!("left the setup '{name}' as it is: {e:#}");
+                continue;
+            }
+        };
+        std::fs::copy(&old, copies.join(format!("{name}.toml")))
+            .with_context(|| format!("copying {}", old.display()))?;
+        let scenes = list_saved(&paths.scenes_dir);
+        let scene_name = weir_protocol::free_name(&name, weir_protocol::LIBRARY_NAME_MAX, |n| {
+            scenes.iter().any(|s| s.eq_ignore_ascii_case(n))
+        });
+        save_saved(
+            &paths.scenes_dir,
+            &scene_name,
+            "scene",
+            &weir_protocol::Scene::capture(&mixer),
+        )?;
+        save_saved(
+            &paths.setups_dir,
+            &name,
+            "setup",
+            &weir_protocol::Setup::capture(&mixer),
+        )?;
+        done.push(format!(
+            "the setup '{name}' keeps its strips and devices; its mix is the scene '{scene_name}'"
+        ));
+    }
+    Ok(done)
+}
+
+/// Whether the TOML `text` of a setup is a whole mixer, levels and all.
+fn holds_a_mix(text: &str) -> bool {
+    let Ok(table) = toml::from_str::<toml::Table>(text) else {
+        return false;
+    };
+    ["strips", "buses"].iter().any(|list| {
+        table
+            .get(*list)
+            .and_then(toml::Value::as_array)
+            .is_some_and(|items| items.iter().any(|x| x.get("gain_db").is_some()))
+    })
 }
 
 /// Where the daemon keeps its files.
@@ -718,6 +795,58 @@ mod version_tests {
         let order: Vec<u32> = cfg.mixer.strips.iter().map(|s| s.id).collect();
         assert_eq!(order, [2, 1, 3]);
         assert_eq!(report.migrated.len(), 1, "{:?}", report.migrated);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn version_3_setups_part_into_setups_and_scenes() {
+        use weir_protocol::{Bus, BusKind, ChannelLayout, Scene, Setup, Strip, StripKind};
+        let dir = std::env::temp_dir().join(format!("weir-ver-split-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = write(&dir, "version = 3\n");
+        let (_, report) = load(&path).unwrap().unwrap();
+        assert!(report.split_setups);
+
+        let paths = Paths::resolve(Some(path));
+        let mut old = MixerState {
+            strips: vec![Strip {
+                gain_db: -6.0,
+                device: Some("alsa_input.usb".into()),
+                routes: [1].into_iter().collect(),
+                ..Strip::new(1, "Mic", StripKind::Hardware, ChannelLayout::Mono)
+            }],
+            buses: vec![Bus::new(
+                1,
+                "Main Mic",
+                BusKind::Virtual,
+                ChannelLayout::Stereo,
+            )],
+        };
+        old.buses[0].limiter.enabled = true;
+        save_saved(&paths.setups_dir, "Main with Headset", "setup", &old).unwrap();
+        // A scene of the same name is kept, and the mix gets a number.
+        save_saved(
+            &paths.scenes_dir,
+            "Main with Headset",
+            "scene",
+            &Scene::default(),
+        )
+        .unwrap();
+
+        let done = split_setups(&paths).unwrap();
+        assert_eq!(done.len(), 1, "{done:?}");
+        let scene: Scene = load_saved(&paths.scenes_dir, "Main with Headset 2", "scene").unwrap();
+        assert_eq!(scene, Scene::capture(&old));
+        let kept: Scene = load_saved(&paths.scenes_dir, "Main with Headset", "scene").unwrap();
+        assert_eq!(kept, Scene::default());
+        let setup: Setup = load_saved(&paths.setups_dir, "Main with Headset", "setup").unwrap();
+        assert_eq!(setup, Setup::capture(&old));
+        assert!(paths
+            .backups_dir
+            .join("setups-before-scenes/Main with Headset.toml")
+            .exists());
+        // Once is enough.
+        assert!(split_setups(&paths).unwrap().is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

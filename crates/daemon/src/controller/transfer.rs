@@ -45,7 +45,7 @@ fn is_json(path: &Path) -> bool {
 #[derive(Debug, Clone)]
 enum Content {
     Scene(Scene),
-    Setup(MixerState),
+    Setup(Setup),
     /// With strips and buses by name, and its group's name.
     Hotkey(Hotkey, Option<String>),
     EqPreset(Vec<EqBand>),
@@ -230,7 +230,7 @@ impl Controller {
             ));
         }
         for name in saved(&self.paths.setups_dir, &p.setups, p.all) {
-            let setup: MixerState =
+            let setup: Setup =
                 config::load_saved(&self.paths.setups_dir, &name, "setup").map_err(failed)?;
             out.push((
                 ExportKind::Setup,
@@ -620,15 +620,16 @@ impl Controller {
             .setups
             .iter()
             .filter_map(|name| {
-                let m = config::load_saved(&self.paths.setups_dir, name, "setup").ok()?;
-                Some((name.clone(), m))
+                let setup: Setup =
+                    config::load_saved(&self.paths.setups_dir, name, "setup").ok()?;
+                Some((name.clone(), setup.mixer()))
             })
             .collect();
         // By item id, and name.
         let in_file: Vec<(String, String, MixerState)> = found
             .iter()
             .filter_map(|f| match &f.content {
-                Content::Setup(m) => Some((f.item.id.clone(), f.item.name.clone(), m.clone())),
+                Content::Setup(s) => Some((f.item.id.clone(), f.item.name.clone(), s.mixer())),
                 _ => None,
             })
             .collect();
@@ -722,8 +723,11 @@ impl Controller {
                 Content::Scene(b.scene)
             }
             Body::Setup(b) => {
-                let mut setup = b.setup;
-                setup.normalize();
+                // Checked as a mixer would be: layouts, names, external
+                // effects' places.
+                let mut m = b.setup.mixer();
+                m.normalize();
+                let setup = Setup::capture(&m);
                 it.summary = format!("{} strips, {} buses", setup.strips.len(), setup.buses.len());
                 Content::Setup(setup)
             }

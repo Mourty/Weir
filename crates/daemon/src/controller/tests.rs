@@ -435,6 +435,79 @@ fn scenes_bring_a_mix_back() {
 }
 
 #[test]
+fn setups_hold_what_is_there_and_scenes_how_it_sounds() {
+    let mut r = Rig::new("setups");
+    r.ok("set_strip", json!({"id": "Music", "gain_db": -12}));
+    r.ok("set_bus", json!({"id": "Stream Mic", "delay_ms": 40}));
+    r.ok("save_scene", json!({"name": "Main"}));
+    let lib = r.ok("save_setup", json!({"name": "Headset"}));
+    // What each holds, for telling what a scene would miss in a setup.
+    assert_eq!(
+        lib["setup_members"]["Headset"]["strips"],
+        json!(["Mic", "Music"])
+    );
+    assert_eq!(
+        lib["scene_members"]["Main"]["buses"],
+        json!(["Headset", "Stream Mic"])
+    );
+
+    // Alone, a setup brings what is there, at its default mix: nothing
+    // routed, whatever the mix was.
+    let m = r.ok("load_setup", json!({"name": "Headset"}));
+    assert_eq!(m["strips"][1]["gain_db"].as_f64(), Some(0.0));
+    assert!(m["strips"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|s| s["routes"] == json!([])));
+    let lib = r.ok("list_scenes", json!({}));
+    assert_eq!(lib, json!(["Main"]));
+    let state = r.ok("get_state", json!({}));
+    assert!(
+        state["library"].get("scene").is_none(),
+        "no scene is current"
+    );
+
+    // With a scene, the scene's mix, bus delay included. One undo step.
+    let m = r.ok("load_setup", json!({"name": "Headset", "scene": "Main"}));
+    assert_eq!(m["strips"][1]["gain_db"].as_f64(), Some(-12.0));
+    assert_eq!(m["buses"][1]["delay_ms"].as_f64(), Some(40.0));
+    let state = r.ok("get_state", json!({}));
+    assert_eq!(state["library"]["scene"], json!("Main"));
+    let history = r.ok("history", json!({}));
+    assert_eq!(
+        history["undo"][0]["label"],
+        json!("Load setup Headset with scene Main")
+    );
+
+    // A scene describes the whole mix: a strip it never knew goes back to
+    // its default, unrouted, when it loads, alone or with a setup.
+    let game = r.ok(
+        "add_strip",
+        json!({"name": "Game", "kind": "virtual", "routes": [1]}),
+    );
+    r.ok("set_strip", json!({"id": game["id"], "gain_db": -5}));
+    let m = r.ok("load_scene", json!({"name": "Main"}));
+    let game = &m["strips"][2];
+    assert_eq!(
+        (game["gain_db"].as_f64(), game["routes"].clone()),
+        (Some(0.0), json!([]))
+    );
+
+    // A scene with strips the setup lacks still loads what it can.
+    r.ok("save_scene", json!({"name": "With game"}));
+    let m = r.ok(
+        "load_setup",
+        json!({"name": "Headset", "scene": "With game"}),
+    );
+    assert_eq!(m["strips"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        r.code("load_setup", json!({"name": "Headset", "scene": "Nope"})),
+        RpcError::APPLICATION
+    );
+}
+
+#[test]
 fn equalizer_presets() {
     let mut r = Rig::new("eq");
     let both = json!({"name": "Bass boost", "strip": 2, "bus": 1});

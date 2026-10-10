@@ -1001,6 +1001,19 @@ pub struct NameParams {
     pub name: String,
 }
 
+/// Parameters of `load_setup`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct LoadSetupParams {
+    /// The setup's name.
+    pub name: String,
+    /// A scene to load with it, by name. Left out, every strip and bus
+    /// starts at its default mix with nothing routed, as a scene that
+    /// mentions nothing would leave them. A scene with strips or buses the
+    /// setup lacks still loads; those parts of it are passed over.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scene: Option<String>,
+}
+
 /// Parameters of `save_eq_preset`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct SaveEqPresetParams {
@@ -1095,18 +1108,21 @@ pub enum Request {
     ShowWindow,
     /// Returns `Vec<String>`, the saved setups.
     ListSetups,
-    /// Save the whole mixer as a setup. Returns [`Library`].
+    /// Save what is there as a setup: the strips and buses, their devices,
+    /// names, layouts, colors and external effects, without the mix.
+    /// Returns [`Library`].
     SaveSetup(NameParams),
-    /// Switch to a setup, keeping the mix of every strip and bus that is in
-    /// both. Returns the new [`MixerState`].
-    LoadSetup(NameParams),
+    /// Switch to a setup, with a scene or with nothing routed. Returns the
+    /// new [`MixerState`].
+    LoadSetup(LoadSetupParams),
     /// Returns [`Library`].
     DeleteSetup(NameParams),
     /// Returns `Vec<String>`, the saved scenes.
     ListScenes,
     /// Save the current mix as a scene. Returns [`Library`].
     SaveScene(NameParams),
-    /// Bring back a scene's mix. Returns the new [`MixerState`].
+    /// Bring back a scene's mix: strips and buses it has no mix for go
+    /// back to their default, unrouted. Returns the new [`MixerState`].
     LoadScene(NameParams),
     /// Returns [`Library`].
     DeleteScene(NameParams),

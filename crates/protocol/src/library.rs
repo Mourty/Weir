@@ -1,16 +1,23 @@
 //! Scenes and setups: the two kinds of saved mixer state.
 //!
-//! A **setup** is the mixer's shape: which strips and buses there are, the
-//! devices they use, their layouts, names, colors and order. It is saved as
-//! a whole [`MixerState`], so it is also a full snapshot.
+//! A **setup** is what is there: which strips and buses there are, in
+//! which order, their names, kinds, layouts, devices, colors and external
+//! effects. Nothing about how they sound: loaded alone, every strip and
+//! bus starts at its default mix, with nothing routed.
 //!
-//! A **scene** is only the mix: levels, mutes, routes, send levels and
-//! effects. Loading one never changes which devices are used, so the same
-//! "Streaming" or "Late night" scene works on any setup that has strips and
-//! buses of the same names.
+//! A **scene** is how it sounds: levels, mutes, routes, route levels and
+//! effects. It describes the whole mix: loading one gives each strip and
+//! bus it has a mix for that mix, found by name, and every other one its
+//! default mix, unrouted. It never changes which devices are used, so the
+//! same "Streaming" or "Late night" scene works on any setup that has
+//! strips and buses of the same names, and a setup can be loaded with one.
 
-use crate::fx::{Compressor, Denoise, Ducking, Equalizer, Gate, Limiter};
-use crate::model::{Bus, BusId, Downmix, MixerState, Strip, StripId, Upmix};
+use crate::fx::{Compressor, Denoise, Ducking, Equalizer, Gate, Insert, Limiter};
+use crate::model::{
+    is_zero, Bus, BusId, BusKind, ChannelLayout, Downmix, MixerState, Strip, StripId, StripKind,
+    Upmix,
+};
+use crate::targets::TargetKind;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -156,6 +163,9 @@ pub struct BusMix {
     /// See [`Bus::downmix`].
     #[serde(default, skip_serializing_if = "Downmix::is_default")]
     pub downmix: Downmix,
+    /// See [`Bus::delay_ms`].
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub delay_ms: f32,
 }
 
 impl BusMix {
@@ -169,6 +179,7 @@ impl BusMix {
             eq: b.eq.clone(),
             limiter: b.limiter,
             downmix: b.downmix,
+            delay_ms: b.delay_ms,
         }
     }
 
@@ -179,6 +190,7 @@ impl BusMix {
         b.eq = self.eq.clone();
         b.limiter = self.limiter;
         b.downmix = self.downmix;
+        b.delay_ms = self.delay_ms;
     }
 }
 
@@ -193,37 +205,6 @@ pub struct Scene {
     pub buses: Vec<BusMix>,
 }
 
-/// How [`Scene::apply`] finds the strip or bus a saved mix belongs to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MatchBy {
-    /// By name first, then by id: for scenes, which should work on any
-    /// setup with strips and buses of the same names.
-    Name,
-    /// By id only: for keeping the mix while switching setups, where the
-    /// same strip keeps its id.
-    Id,
-}
-
-impl MatchBy {
-    /// Where in `items` the one saved as `id` and `name` is now.
-    fn find<T>(
-        self,
-        items: &[T],
-        id: u32,
-        name: &str,
-        key: impl Fn(&T) -> (u32, &str),
-    ) -> Option<usize> {
-        let by_id = || items.iter().position(|x| key(x).0 == id);
-        match self {
-            MatchBy::Id => by_id(),
-            MatchBy::Name => items
-                .iter()
-                .position(|x| key(x).1.eq_ignore_ascii_case(name))
-                .or_else(by_id),
-        }
-    }
-}
-
 impl Scene {
     /// The mix of `m`.
     pub fn capture(m: &MixerState) -> Self {
@@ -233,40 +214,231 @@ impl Scene {
         }
     }
 
-    /// Put this mix onto the strips and buses of `m` it belongs to, leaving
-    /// the rest alone. Routes and ducking are translated to the ids of the
-    /// buses and strips they meant, and dropped where those are missing.
-    pub fn apply(&self, m: &mut MixerState, by: MatchBy) {
-        // Where each saved strip and bus is in `m` now, if anywhere.
-        let strip_at: Vec<(&StripMix, usize)> = self
+    /// Put this mix onto `m`. Each strip and bus this scene has a mix for,
+    /// found by name, takes it; every other one goes back to its default
+    /// mix, unrouted, since a scene describes the whole mix. Routes and
+    /// ducking are translated to the ids the buses and strips they meant
+    /// have in `m`, and dropped where those are missing.
+    pub fn apply(&self, m: &mut MixerState) {
+        let named = |a: &str, b: &str| a.trim().eq_ignore_ascii_case(b.trim());
+        let strip_mix: Vec<Option<&StripMix>> = m
             .strips
             .iter()
-            .filter_map(|s| {
-                let i = by.find(&m.strips, s.id, &s.name, |x| (x.id, &x.name))?;
-                Some((s, i))
-            })
+            .map(|x| self.strips.iter().find(|s| named(&s.name, &x.name)))
             .collect();
-        let bus_at: Vec<(&BusMix, usize)> = self
+        let bus_mix: Vec<Option<&BusMix>> = m
             .buses
             .iter()
-            .filter_map(|b| {
-                let i = by.find(&m.buses, b.id, &b.name, |x| (x.id, &x.name))?;
-                Some((b, i))
-            })
+            .map(|x| self.buses.iter().find(|b| named(&b.name, &x.name)))
             .collect();
         // Saved id -> id in `m`.
-        let strip_ids: BTreeMap<StripId, StripId> = strip_at
+        let strip_ids: BTreeMap<StripId, StripId> = strip_mix
             .iter()
-            .map(|(s, i)| (s.id, m.strips[*i].id))
+            .zip(&m.strips)
+            .filter_map(|(saved, x)| Some((saved.as_ref()?.id, x.id)))
             .collect();
-        let bus_ids: BTreeMap<BusId, BusId> =
-            bus_at.iter().map(|(b, i)| (b.id, m.buses[*i].id)).collect();
-        for (saved, i) in strip_at {
-            saved.apply(&mut m.strips[i], &bus_ids, &strip_ids);
+        let bus_ids: BTreeMap<BusId, BusId> = bus_mix
+            .iter()
+            .zip(&m.buses)
+            .filter_map(|(saved, x)| Some((saved.as_ref()?.id, x.id)))
+            .collect();
+        for (s, saved) in m.strips.iter_mut().zip(strip_mix) {
+            match saved {
+                Some(saved) => saved.apply(s, &bus_ids, &strip_ids),
+                None => StripMix::of(&Strip::new(s.id, "", s.kind, s.layout.clone())).apply(
+                    s,
+                    &BTreeMap::new(),
+                    &BTreeMap::new(),
+                ),
+            }
         }
-        for (saved, i) in bus_at {
-            saved.apply(&mut m.buses[i]);
+        for (b, saved) in m.buses.iter_mut().zip(bus_mix) {
+            match saved {
+                Some(saved) => saved.apply(b),
+                None => BusMix::of(&Bus::new(b.id, "", b.kind, b.layout.clone())).apply(b),
+            }
         }
+    }
+
+    /// Who this scene has a mix for, by name.
+    pub fn members(&self) -> Members {
+        Members {
+            strips: self.strips.iter().map(|s| s.name.clone()).collect(),
+            buses: self.buses.iter().map(|b| b.name.clone()).collect(),
+        }
+    }
+}
+
+/// What a setup keeps of one strip: what makes it the strip it is, and
+/// nothing about how it sounds.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct SetupStrip {
+    /// See [`Strip::id`].
+    pub id: StripId,
+    /// See [`Strip::name`].
+    pub name: String,
+    /// See [`Strip::kind`].
+    pub kind: StripKind,
+    /// See [`Strip::layout`].
+    #[serde(default)]
+    pub layout: ChannelLayout,
+    /// See [`Strip::device`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub device: Option<String>,
+    /// See [`Strip::color`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    /// See [`Strip::insert`]: switching external effects on makes devices
+    /// another program is wired to, so they belong with the devices.
+    #[serde(default, skip_serializing_if = "Insert::is_default")]
+    pub insert: Insert,
+}
+
+/// What a setup keeps of one bus: what makes it the bus it is, and nothing
+/// about how it sounds.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct SetupBus {
+    /// See [`Bus::id`].
+    pub id: BusId,
+    /// See [`Bus::name`].
+    pub name: String,
+    /// See [`Bus::kind`].
+    pub kind: BusKind,
+    /// See [`Bus::layout`].
+    #[serde(default)]
+    pub layout: ChannelLayout,
+    /// See [`Bus::device`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub device: Option<String>,
+    /// See [`Bus::color`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    /// See [`Bus::insert`].
+    #[serde(default, skip_serializing_if = "Insert::is_default")]
+    pub insert: Insert,
+}
+
+/// A saved setup: the strips and buses there are, in order, and their
+/// devices, without the mix. Files saved before setups and scenes were
+/// told apart hold a whole mixer; they read as this, the mix passed over.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct Setup {
+    /// Every strip, left to right.
+    #[serde(default)]
+    pub strips: Vec<SetupStrip>,
+    /// Every bus, left to right.
+    #[serde(default)]
+    pub buses: Vec<SetupBus>,
+}
+
+impl Setup {
+    /// What is there in `m`.
+    pub fn capture(m: &MixerState) -> Self {
+        Self {
+            strips: m
+                .strips
+                .iter()
+                .map(|s| SetupStrip {
+                    id: s.id,
+                    name: s.name.clone(),
+                    kind: s.kind,
+                    layout: s.layout.clone(),
+                    device: s.device.clone(),
+                    color: s.color.clone(),
+                    insert: s.insert,
+                })
+                .collect(),
+            buses: m
+                .buses
+                .iter()
+                .map(|b| SetupBus {
+                    id: b.id,
+                    name: b.name.clone(),
+                    kind: b.kind,
+                    layout: b.layout.clone(),
+                    device: b.device.clone(),
+                    color: b.color.clone(),
+                    insert: b.insert,
+                })
+                .collect(),
+        }
+    }
+
+    /// The mixer this setup makes, every strip and bus at its default mix
+    /// with nothing routed: what loading it with no scene gives.
+    pub fn mixer(&self) -> MixerState {
+        MixerState {
+            strips: self
+                .strips
+                .iter()
+                .map(|s| Strip {
+                    device: s.device.clone(),
+                    color: s.color.clone(),
+                    insert: s.insert,
+                    ..Strip::new(s.id, s.name.clone(), s.kind, s.layout.clone())
+                })
+                .collect(),
+            buses: self
+                .buses
+                .iter()
+                .map(|b| Bus {
+                    device: b.device.clone(),
+                    color: b.color.clone(),
+                    insert: b.insert,
+                    ..Bus::new(b.id, b.name.clone(), b.kind, b.layout.clone())
+                })
+                .collect(),
+        }
+    }
+
+    /// Its strips and buses, by name.
+    pub fn members(&self) -> Members {
+        Members {
+            strips: self.strips.iter().map(|s| s.name.clone()).collect(),
+            buses: self.buses.iter().map(|b| b.name.clone()).collect(),
+        }
+    }
+}
+
+/// The strips and buses of a saved scene or setup, by name.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct Members {
+    /// Strips, by name.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub strips: Vec<String>,
+    /// Buses, by name.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub buses: Vec<String>,
+}
+
+impl Members {
+    /// The strips and buses of `m`, by name.
+    pub fn of_mixer(m: &MixerState) -> Self {
+        Self {
+            strips: m.strips.iter().map(|s| s.name.clone()).collect(),
+            buses: m.buses.iter().map(|b| b.name.clone()).collect(),
+        }
+    }
+
+    /// Those of these that `there` has none called: what a scene with these
+    /// members would find missing in a setup with `there`'s.
+    pub fn missing_in(&self, there: &Members) -> Vec<(TargetKind, String)> {
+        let lacks = |names: &[String], name: &String| {
+            !names
+                .iter()
+                .any(|n| n.trim().eq_ignore_ascii_case(name.trim()))
+        };
+        let strips = self
+            .strips
+            .iter()
+            .filter(|n| lacks(&there.strips, n))
+            .map(|n| (TargetKind::Strip, n.clone()));
+        let buses = self
+            .buses
+            .iter()
+            .filter(|n| lacks(&there.buses, n))
+            .map(|n| (TargetKind::Bus, n.clone()));
+        strips.chain(buses).collect()
     }
 }
 
@@ -309,6 +481,14 @@ pub struct Library {
     /// The setup last loaded or saved, until it is deleted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub setup: Option<String>,
+    /// Who each saved scene has a mix for, by the scene's name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub scene_members: BTreeMap<String, Members>,
+    /// The strips and buses of each saved setup, by the setup's name. With
+    /// `scene_members`, which strips and buses a scene would find missing
+    /// in a setup.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub setup_members: BTreeMap<String, Members>,
 }
 
 #[cfg(test)]
@@ -346,7 +526,7 @@ mod tests {
         let mut now = mixer();
         now.buses[0].device = Some("alsa_output.usb".into());
         now.strips[1].name = "Music".into();
-        scene.apply(&mut now, MatchBy::Name);
+        scene.apply(&mut now);
         assert_eq!(now.strips[1].gain_db, -12.0);
         assert_eq!(now.strips[1].send_db(2), -6.0);
         assert!(now.buses[0].mute);
@@ -378,7 +558,7 @@ mod tests {
                 ChannelLayout::Stereo,
             )],
         };
-        scene.apply(&mut other, MatchBy::Name);
+        scene.apply(&mut other);
         let music = &other.strips[0];
         assert_eq!(music.routes, [5].into_iter().collect());
         assert_eq!(music.ducking.triggers, [9].into_iter().collect());
@@ -402,13 +582,71 @@ mod tests {
     }
 
     #[test]
-    fn matching_by_id_ignores_names() {
+    fn what_a_scene_does_not_mention_goes_back_to_default() {
         let mut m = mixer();
         m.strips[0].gain_db = -3.0;
+        m.buses[1].delay_ms = 40.0;
         let scene = Scene::capture(&m);
-        let mut renamed = mixer();
-        renamed.strips[0].name = "Headset mic".into();
-        scene.apply(&mut renamed, MatchBy::Id);
-        assert_eq!(renamed.strips[0].gain_db, -3.0);
+
+        // Mic renamed: the scene has no mix for "Headset mic", and the same
+        // id is not taken for the same strip. A strip the scene never knew
+        // starts at its default, unrouted.
+        let mut now = mixer();
+        now.strips[0].name = "Headset mic".into();
+        now.strips[0].gain_db = -9.0;
+        now.strips.push(Strip {
+            gain_db: -20.0,
+            routes: [1].into_iter().collect(),
+            ..Strip::new(3, "Game", StripKind::Virtual, ChannelLayout::Stereo)
+        });
+        now.buses[0].limiter = Limiter::on();
+        let mut headset = Bus::new(1, "Headset", BusKind::Hardware, ChannelLayout::Stereo);
+        headset.limiter = Limiter::on();
+        now.buses[0] = headset;
+        scene.apply(&mut now);
+        assert_eq!(now.strips[0].gain_db, 0.0);
+        assert!(now.strips[0].routes.is_empty());
+        assert_eq!(now.strips[2].gain_db, 0.0);
+        assert!(now.strips[2].routes.is_empty());
+        assert_eq!(now.strips[1].routes, [1, 2].into_iter().collect());
+        // The bus delay is part of the mix now; the Headset's limiter is
+        // the scene's (off), not what it had.
+        assert_eq!(now.buses[1].delay_ms, 40.0);
+        assert!(!now.buses[0].limiter.enabled);
+    }
+
+    #[test]
+    fn a_setup_keeps_what_is_there_and_nothing_of_the_mix() {
+        let mut m = mixer();
+        m.strips[0].device = Some("alsa_input.usb".into());
+        m.strips[0].color = Some("#ff8800".into());
+        m.strips[1].gain_db = -12.0;
+        m.buses[1].limiter.enabled = false;
+        let setup = Setup::capture(&m);
+        let back = setup.mixer();
+        assert_eq!(back.strips[0].device.as_deref(), Some("alsa_input.usb"));
+        assert_eq!(back.strips[0].color.as_deref(), Some("#ff8800"));
+        assert_eq!(back.strips[1].gain_db, 0.0);
+        assert!(back.strips.iter().all(|s| s.routes.is_empty()));
+        // A virtual bus starts with its limiter on, as a new one does.
+        assert!(back.buses[1].limiter.enabled);
+
+        // A setup saved as a whole mixer, before the two were told apart,
+        // reads as a setup.
+        let old: Setup = serde_json::from_value(serde_json::to_value(&m).unwrap()).unwrap();
+        assert_eq!(old, setup);
+    }
+
+    #[test]
+    fn missing_members_are_named() {
+        let scene = Members {
+            strips: vec!["Mic".into(), "Podcast".into()],
+            buses: vec!["Stream".into()],
+        };
+        let there = Members::of_mixer(&mixer());
+        assert_eq!(
+            scene.missing_in(&there),
+            vec![(TargetKind::Strip, "Podcast".to_string())]
+        );
     }
 }

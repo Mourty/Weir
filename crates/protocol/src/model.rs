@@ -594,7 +594,7 @@ fn is_false(b: &bool) -> bool {
 }
 
 /// For `skip_serializing_if`: a delay of nothing is left out of files.
-fn is_zero(v: &f32) -> bool {
+pub(crate) fn is_zero(v: &f32) -> bool {
     *v == 0.0
 }
 

@@ -124,7 +124,9 @@ impl ImportWindow {
                 Pane::Footer => self.footer(ui, ctx, state, actions),
             },
         );
-        (self.raise, self.closed) = (raise, closed);
+        // Buttons drawn in the window close it too.
+        self.raise = raise;
+        self.closed |= closed;
     }
 
     /// Read the file at `path`.

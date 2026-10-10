@@ -175,7 +175,9 @@ impl ExportWindow {
                 Pane::Footer => self.footer(ui, ctx, look, actions),
             },
         );
-        (self.raise, self.closed) = (raise, closed);
+        // Buttons drawn in the window close it too.
+        self.raise = raise;
+        self.closed |= closed;
     }
 
     fn body(&mut self, ui: &mut Ui, all: &[(ExportKind, Vec<Line>)]) {

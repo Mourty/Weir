@@ -38,6 +38,23 @@ pub struct SoundInfo {
     pub seconds: f32,
 }
 
+impl SoundInfo {
+    /// How long it plays, in words: `15 ms`, `2.4 s`.
+    pub fn length(&self) -> String {
+        sound_length(self.seconds)
+    }
+}
+
+/// A sound's length in words: milliseconds under a second, `15 ms`, and
+/// seconds from there, `2.4 s`.
+pub fn sound_length(seconds: f32) -> String {
+    if seconds < 1.0 {
+        format!("{} ms", (seconds * 1000.0).round())
+    } else {
+        format!("{seconds:.1} s")
+    }
+}
+
 /// The sounds a hotkey plays, each by name, or left out for none.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct HotkeySounds {
@@ -190,6 +207,13 @@ mod tests {
         assert_eq!(sounds_device(Some("usb"), &m, &both).unwrap(), "headset");
         assert_eq!(sounds_device(None, &m, &both[1..]).unwrap(), "speakers");
         assert_eq!(sounds_device(None, &m, &[]), None);
+    }
+
+    #[test]
+    fn lengths_read_in_the_unit_that_suits_them() {
+        assert_eq!(sound_length(0.015), "15 ms");
+        assert_eq!(sound_length(0.999), "999 ms");
+        assert_eq!(sound_length(2.44), "2.4 s");
     }
 
     #[test]

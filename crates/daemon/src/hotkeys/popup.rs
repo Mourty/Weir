@@ -112,7 +112,7 @@ fn patch_lines(step: &HotkeyStep, obj: &Value, name: &str, mic: bool, out: &mut 
                 out.push(Line::Level(
                     volume_icon(to, muted),
                     to,
-                    format!("{name}  {}", db(to)),
+                    format!("{name}: {}", db(to)),
                 ));
             }
             "solo" | "mono" => {
@@ -190,7 +190,7 @@ fn step_lines(step: &HotkeyStep, m: &MixerState, out: &mut Vec<Line>) {
                 out.push(Line::Level(
                     volume_icon(to, !on),
                     to,
-                    format!("{} in {}  {}", strip.name, bus.name, db(to)),
+                    format!("{} in {}: {}", strip.name, bus.name, db(to)),
                 ));
             }
         }
@@ -439,7 +439,7 @@ mod tests {
             Some(Popup::Level {
                 icon: "audio-volume-medium",
                 percent: 67,
-                text: "Music  -12 dB".into()
+                text: "Music: -12 dB".into()
             })
         );
         // A fade shows where it is going.
@@ -450,7 +450,7 @@ mod tests {
             Some(Popup::Level {
                 icon: "audio-volume-low",
                 percent: 1,
-                text: "Music  -60 dB".into()
+                text: "Music: -60 dB".into()
             })
         );
     }
@@ -467,7 +467,7 @@ mod tests {
             p,
             Some(Popup::Text {
                 icon: "microphone-sensitivity-muted",
-                text: "Mic muted · Music  -12 dB · Scene: Gaming".into()
+                text: "Mic muted · Music: -12 dB · Scene: Gaming".into()
             }),
             "read from the mixer after; a strip that is gone shows nothing"
         );

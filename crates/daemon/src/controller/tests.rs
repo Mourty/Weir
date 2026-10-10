@@ -1494,7 +1494,7 @@ fn sounds_go_with_their_hotkeys_to_another_computer() {
         .unwrap();
     assert_eq!(sound["taken"], json!(true));
     assert_eq!(sound["free_name"], json!("Airhorn 2"));
-    assert_eq!(sound["summary"], json!("0.1 seconds"));
+    assert_eq!(sound["summary"], json!("100 ms"));
     b.ok(
         "import_settings",
         json!({"path": zip, "choices": {"sounds/Airhorn.json": {"rename": "Airhorn 2"}}}),

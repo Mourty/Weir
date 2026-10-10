@@ -858,7 +858,7 @@ impl Controller {
                     });
                 match decoded {
                     Ok((bytes, data)) => {
-                        it.summary = format!("{:.1} seconds", data.seconds());
+                        it.summary = sound_length(data.seconds());
                         if BUILTIN_SOUNDS.iter().any(|b| b.eq_ignore_ascii_case(&name)) {
                             it.note = Some(
                                 "One of Weir's own sounds has this name, so this one can                                  only come in under another."

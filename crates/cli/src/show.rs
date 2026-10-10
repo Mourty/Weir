@@ -399,7 +399,7 @@ pub fn sounds(st: &FullState) {
     for s in &st.hotkeys.sounds {
         t.row(vec![
             s.name.clone(),
-            format!("{:.1} s", s.seconds),
+            s.length(),
             if s.builtin { "Weir" } else { "you" }.into(),
         ]);
     }

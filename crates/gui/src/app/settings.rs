@@ -412,7 +412,7 @@ impl App {
                 ui.add(egui::Label::new(&sound.name).truncate())
                     .on_hover_text(&sound.name);
                 ui.label(
-                    RichText::new(format!("{:.1} s", sound.seconds))
+                    RichText::new(sound.length())
                         .size(11.0)
                         .color(theme::p().text_dim),
                 );

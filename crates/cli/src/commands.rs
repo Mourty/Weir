@@ -792,7 +792,7 @@ pub fn sound(c: &mut Client, action: SoundCmd, json: bool) -> Result<()> {
                 .to_string();
             let req = Request::AddSound(AddSoundParams { name, path });
             call(c, &req, json, |s: SoundInfo| {
-                println!("Added the sound '{}' ({:.1} s)", s.name, s.seconds);
+                println!("Added the sound '{}' ({})", s.name, s.length());
                 Ok(())
             })
         }

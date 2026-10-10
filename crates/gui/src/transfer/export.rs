@@ -65,7 +65,7 @@ fn lines(state: &FullState) -> Vec<(ExportKind, Vec<Line>)> {
         .map(|s| Line {
             item: Item::Sound(s.name.clone()),
             name: s.name.clone(),
-            detail: format!("{:.1} s", s.seconds),
+            detail: s.length(),
         })
         .collect();
     let presets = state

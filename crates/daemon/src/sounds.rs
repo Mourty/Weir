@@ -210,7 +210,7 @@ impl Library {
         SoundInfo {
             name: s.name.clone(),
             builtin: s.builtin,
-            seconds: (s.data.seconds() * 100.0).round() / 100.0,
+            seconds: (s.data.seconds() * 1000.0).round() / 1000.0,
         }
     }
 
@@ -295,6 +295,7 @@ pub mod tests {
         assert!(!lib.info("Zap").unwrap().builtin && lib.info("click").unwrap().builtin);
         assert_eq!(lib.bank().sounds.len(), 6);
         assert_eq!(lib.info("Zap").unwrap().seconds, 0.01);
+        assert_eq!(lib.info("Click").unwrap().length(), "15 ms");
         assert_eq!(
             sound_file(&dir, "AIRHORN").unwrap(),
             dir.join("airhorn.WAV")

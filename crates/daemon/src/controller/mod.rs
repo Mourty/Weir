@@ -12,11 +12,13 @@
 //! * [`names`]: looking strips and buses up by name in a request.
 //! * [`undo_labels`]: what each change is called in the undo history.
 //! * [`rules`]: putting applications where their rules say.
+//! * [`sounds`]: hotkeys' sounds and popups.
 
 mod handlers;
 pub mod hotkeys;
 mod names;
 mod rules;
+mod sounds;
 mod transfer;
 mod undo_labels;
 
@@ -92,6 +94,11 @@ struct Inner {
     key_problems: BTreeMap<HotkeyId, String>,
     /// Hotkeys that work on strips or buses that are gone, as last told.
     target_problems: Vec<HotkeyProblem>,
+    /// The sounds hotkeys can play.
+    sounds: crate::sounds::Library,
+    /// The device they play on, as the engine was last told; `None` before
+    /// it has been told.
+    sounds_device: Option<Option<String>>,
 }
 
 /// The daemon's state and its request handlers, shared by every
@@ -121,6 +128,11 @@ pub struct Controller {
     /// Asks the desktop's shortcut service to open its settings at Weir's
     /// hotkeys; the keys task listens.
     shortcut_settings: tokio::sync::Notify,
+    /// Shows what hotkeys did, once started.
+    popups: Mutex<Option<crate::hotkeys::popup::Popups>>,
+    /// The sounds asked to play, by name, for tests to check.
+    #[cfg(test)]
+    pub(crate) played: Mutex<Vec<String>>,
 }
 
 impl Controller {
@@ -173,6 +185,8 @@ impl Controller {
                 },
                 key_problems: BTreeMap::new(),
                 target_problems: Vec::new(),
+                sounds: crate::sounds::Library::load(&paths.sounds_dir),
+                sounds_device: None,
             }),
             engine,
             notify,
@@ -184,6 +198,9 @@ impl Controller {
             login: Box::new(login::Systemd),
             hotkey_runner: Mutex::new(None),
             shortcut_settings: tokio::sync::Notify::new(),
+            popups: Mutex::new(None),
+            #[cfg(test)]
+            played: Mutex::new(Vec::new()),
         }
     }
 
@@ -354,8 +371,12 @@ impl Controller {
                 }
             }
         };
+        let devices = matches!(n, Notification::DevicesChanged(_));
         self.announce(n);
         self.make_moves(moves);
+        if devices {
+            self.update_sounds_device();
+        }
     }
 
     /// Remember which scene and setup were in use, from the config file.
@@ -597,6 +618,7 @@ impl Controller {
         self.dirty.store(true, Ordering::Release);
         self.check_hotkey_targets(&state);
         self.announce(Notification::StateChanged(state));
+        self.update_sounds_device();
     }
 
     /// Built-in presets first, then the user's own.

@@ -29,15 +29,27 @@ lets the rest flow on.*
   bus's mix.
 * **Effects for voices**: noise suppression, a noise gate, a compressor,
   and a 16-band equalizer with a live analyzer behind its curve. **Ducking**
-  turns the music down while you talk, and a **safety limiter** keeps every
-  output from distorting.
+  turns the music down while you talk, a **safety limiter** keeps every
+  output from distorting, and a **delay** lines up an output that lags,
+  such as a Bluetooth speaker.
+* **External effects.** For anything else, send a strip or bus through
+  another program, such as Carla with your own plugins, and back.
 * **Surround**, up to 7.1, with the standard ways of fitting surround onto
   stereo and stereo onto surround.
-* **Scenes and setups** save how things sound and how the mixer is laid
-  out, **rules** put applications on the right strip as they start, and
-  every change can be **undone**.
+* **Hotkeys** for anything the mixer does: push to talk, mute, turn the
+  music down, load a scene. They work with the window closed and in
+  full-screen games, and on KDE Plasma they sit in System Settings beside
+  your other shortcuts. A beep or a sound of your own, and the desktop's
+  own volume popup, tell you a key worked, and your stream never hears
+  the beep.
+* **Setups and scenes.** A setup keeps which strips and buses you have,
+  a scene how they sound, and any setup loads with any scene. **Rules**
+  put applications on the right strip as they start, and every change
+  can be **undone**.
+* **Export and import** your scenes, setups, hotkeys and their sounds, and
+  preferences, to keep them safe or take them to another computer.
 * **Scriptable.** `weirctl` does everything the window does from a
-  terminal or a hotkey, and a documented protocol lets any program, such
+  terminal or a script, and a documented protocol lets any program, such
   as a Stream Deck plugin, do the same.
 * **Made for the desktop it runs on.** All the mixing happens in a single
   PipeWire node, adding nothing to PipeWire's own latency. Weir follows
@@ -45,6 +57,8 @@ lets the rest flow on.*
   window is closed.
 
 ![A strip's settings: noise gate, compressor and equalizer](docs/images/settings.png)
+
+![The Hotkeys window: push to talk, mute and music keys, some in groups](docs/images/hotkeys.png)
 
 ## Install
 
@@ -195,8 +209,8 @@ you sent them.
 
 | | |
 |---|---|
-| [User guide](docs/USER_GUIDE.md) | Everything in the window: routing, effects, surround, scenes, preferences, and what to do when something is wrong. |
-| [weirctl](docs/CLI.md) | The command line, with a mute key for your keyboard. |
+| [User guide](docs/USER_GUIDE.md) | Everything in the window: routing, effects, surround, setups and scenes, hotkeys, export and import, preferences, and what to do when something is wrong. |
+| [weirctl](docs/CLI.md) | The command line, for scripts and anything else that can run a command. |
 | [Control protocol](docs/API.md) | For Stream Deck plugins, scripts and anything else, with examples in the shell, Python and JavaScript. Ready-made clients are in [examples](examples/). |
 | [How Weir works](docs/ARCHITECTURE.md) | The design, for the curious and for contributors. |
 | [Contributing](CONTRIBUTING.md) | Building, testing without a sound card, and the rules the code follows. |

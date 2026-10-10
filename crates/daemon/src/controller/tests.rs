@@ -1287,3 +1287,278 @@ fn settings_go_to_another_mixer_by_name() {
         e.message
     );
 }
+
+#[test]
+fn sounds_of_your_own_are_checked_kept_and_taken_out_of_hotkeys() {
+    let mut r = Rig::new("sounds");
+    let file = r.dir.join("horn.wav");
+    std::fs::write(&file, crate::sounds::tests::wav(48_000, 1, &[8000; 4800])).unwrap();
+    let path = file.to_str().unwrap();
+    let added = r.ok("add_sound", json!({"name": "Airhorn", "path": path}));
+    assert_eq!(added, json!({"name": "Airhorn", "seconds": 0.1}));
+    assert!(r.dir.join("sounds/Airhorn.wav").is_file(), "a copy is kept");
+    std::fs::remove_file(&file).unwrap();
+    // The name is taken, Weir's own, or not a file name; the file is not
+    // whole, not a sound, or not there.
+    std::fs::write(&file, b"RIFF").unwrap();
+    for (name, path, code) in [
+        ("airhorn", path, RpcError::APPLICATION),
+        ("Click", path, RpcError::INVALID_PARAMS),
+        ("a/b", path, RpcError::INVALID_PARAMS),
+        ("Horn", "horn.wav", RpcError::INVALID_PARAMS),
+        ("Horn", "/tmp/horn.mp3", RpcError::INVALID_PARAMS),
+        ("Horn", path, RpcError::APPLICATION),
+    ] {
+        assert_eq!(
+            r.code("add_sound", json!({"name": name, "path": path})),
+            code,
+            "{name} {path}"
+        );
+    }
+    let info: HotkeysInfo = serde_json::from_value(r.ok("list_hotkeys", json!({}))).unwrap();
+    let names: Vec<&str> = info.sounds.iter().map(|s| s.name.as_str()).collect();
+    assert_eq!(names, ["Click", "Beep up", "Beep down", "Tick", "Airhorn"]);
+    // Hotkeys name sounds as the library does, and only sounds it has.
+    let h = r.ok(
+        "set_hotkey",
+        json!({"name": "Horn", "steps": [], "sounds": {"press": "airhorn", "release": " click "}}),
+    );
+    assert_eq!(h["sounds"], json!({"press": "Airhorn", "release": "Click"}));
+    assert_eq!(
+        r.code(
+            "set_hotkey",
+            json!({"name": "Other", "steps": [], "sounds": {"repeat": "Nope"}})
+        ),
+        RpcError::INVALID_PARAMS
+    );
+    // Nowhere to play: no bus has a device.
+    let e = r
+        .call("play_sound", json!({"name": "airhorn"}))
+        .unwrap_err();
+    assert!(e.message.contains("Preferences"), "{}", e.message);
+    assert_eq!(*r.c.played.lock().unwrap(), ["Airhorn"]);
+    assert_eq!(
+        r.code("remove_sound", json!({"name": "Click"})),
+        RpcError::APPLICATION
+    );
+    let info: HotkeysInfo =
+        serde_json::from_value(r.ok("remove_sound", json!({"name": "AIRHORN"}))).unwrap();
+    assert!(!r.dir.join("sounds/Airhorn.wav").exists());
+    assert_eq!(info.sounds.len(), 4);
+    assert_eq!(
+        info.hotkeys[0].sounds,
+        HotkeySounds {
+            release: Some("Click".into()),
+            ..Default::default()
+        },
+        "the hotkey plays nothing where it played the removed sound"
+    );
+}
+
+#[test]
+fn a_sound_file_removed_by_hand_is_a_problem_for_its_hotkey() {
+    let mut r = Rig::new("sound-gone");
+    let file = r.dir.join("zap.wav");
+    std::fs::write(&file, crate::sounds::tests::wav(48_000, 1, &[8000; 480])).unwrap();
+    r.ok(
+        "add_sound",
+        json!({"name": "Zap", "path": file.to_str().unwrap()}),
+    );
+    r.ok(
+        "set_hotkey",
+        json!({"name": "Zap it", "steps": [], "sounds": {"press": "Zap"}}),
+    );
+    std::fs::remove_file(r.dir.join("sounds/Zap.wav")).unwrap();
+    r.c.sounds_changed();
+    let info: HotkeysInfo = serde_json::from_value(r.ok("list_hotkeys", json!({}))).unwrap();
+    assert!(
+        info.problems[0].problem.contains("'Zap', which is gone"),
+        "{:?}",
+        info.problems
+    );
+}
+
+#[test]
+fn sounds_play_on_the_device_chosen_while_it_is_plugged_in() {
+    let mut r = Rig::new("sounds-device");
+    let sink = |name: &str| DeviceInfo {
+        id: 1,
+        name: name.into(),
+        description: name.into(),
+        kind: DeviceKind::Sink,
+        channels: vec![ChannelPosition::FL, ChannelPosition::FR],
+    };
+    let now = |r: &Rig| r.c.inner.lock().unwrap().sounds_device.clone().flatten();
+    r.ok("set_bus", json!({"id": "Headset", "device": "headset"}));
+    assert_eq!(now(&r), None, "not plugged in");
+    r.c.on_engine_event(EngineEvent::Devices(vec![sink("headset")]));
+    assert_eq!(
+        now(&r).as_deref(),
+        Some("headset"),
+        "the first bus's device"
+    );
+    let s = r.ok(
+        "set_settings",
+        json!({"sounds_device": "speakers", "hotkey_popup": "notification", "sounds_volume_db": -20}),
+    );
+    assert_eq!(s["sounds_device"], "speakers");
+    assert_eq!(s["hotkey_popup"], "notification");
+    assert_eq!(
+        now(&r).as_deref(),
+        Some("headset"),
+        "until it is plugged in"
+    );
+    r.c.on_engine_event(EngineEvent::Devices(vec![
+        sink("headset"),
+        sink("speakers"),
+    ]));
+    assert_eq!(now(&r).as_deref(), Some("speakers"));
+    let s = r.ok("set_settings", json!({"sounds_device": null}));
+    assert!(s.get("sounds_device").is_none());
+    assert_eq!(now(&r).as_deref(), Some("headset"));
+    assert_eq!(
+        r.code("set_settings", json!({"sounds_volume_db": 6})),
+        RpcError::INVALID_PARAMS
+    );
+}
+
+#[test]
+fn sounds_go_with_their_hotkeys_to_another_computer() {
+    let wav = |samples: &[i16]| crate::sounds::tests::wav(48_000, 1, samples);
+    let add = |r: &mut Rig, name: &str, samples: &[i16]| {
+        let file = r.dir.join(format!("{name}-source.wav"));
+        std::fs::write(&file, wav(samples)).unwrap();
+        r.ok(
+            "add_sound",
+            json!({"name": name, "path": file.to_str().unwrap()}),
+        );
+    };
+    let mut a = Rig::new("sounds-export-a");
+    add(&mut a, "Airhorn", &[9000; 4800]);
+    add(&mut a, "Unused", &[100; 480]);
+    a.ok(
+        "set_hotkey",
+        json!({"name": "Horn", "steps": [], "sounds": {"press": "Airhorn", "release": "Click"}}),
+    );
+    // A hotkey and its own sound are two files, so not a bare .json.
+    let e = a
+        .call(
+            "export_settings",
+            json!({"path": a.dir.join("Horn.json"), "hotkeys": ["Horn"]}),
+        )
+        .unwrap_err();
+    assert!(
+        e.message.contains("'Airhorn'") && e.message.contains(".zip"),
+        "{}",
+        e.message
+    );
+    let zip = a.dir.join("horn.zip");
+    let out = a.ok("export_settings", json!({"path": zip, "hotkeys": ["Horn"]}));
+    assert_eq!(
+        out["files"],
+        json!([
+            "hotkeys/Horn.json",
+            "hotkeys/groups.json",
+            "sounds/Airhorn.json"
+        ]),
+        "the sound goes along; Weir's own Click need not"
+    );
+    let one = a.dir.join("Unused.json");
+    a.ok(
+        "export_settings",
+        json!({"path": one, "sounds": ["unused"]}),
+    );
+    assert_eq!(
+        a.code(
+            "export_settings",
+            json!({"path": a.dir.join("c.json"), "sounds": ["Click"]})
+        ),
+        RpcError::APPLICATION
+    );
+    a.ok(
+        "set_settings",
+        json!({"hotkey_popup": "nothing", "sounds_volume_db": -20, "sounds_device": "usb-speakers"}),
+    );
+    let all = a.dir.join("all.zip");
+    a.ok("export_settings", json!({"path": all, "all": true}));
+
+    // Another computer, with an Airhorn of its own.
+    let mut b = Rig::new("sounds-export-b");
+    add(&mut b, "Airhorn", &[50; 480]);
+    let seen = b.ok("inspect_import", json!({"path": zip}));
+    let sound = seen["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| i["kind"] == "sound")
+        .unwrap();
+    assert_eq!(sound["taken"], json!(true));
+    assert_eq!(sound["free_name"], json!("Airhorn 2"));
+    assert_eq!(sound["summary"], json!("100 ms"));
+    b.ok(
+        "import_settings",
+        json!({"path": zip, "choices": {"sounds/Airhorn.json": {"rename": "Airhorn 2"}}}),
+    );
+    let info: HotkeysInfo = serde_json::from_value(b.ok("list_hotkeys", json!({}))).unwrap();
+    assert_eq!(
+        info.hotkeys[0].sounds.press.as_deref(),
+        Some("Airhorn 2"),
+        "the hotkey plays the sound it came with, under its new name"
+    );
+    assert_eq!(
+        info.sounds
+            .iter()
+            .find(|s| s.name == "Airhorn")
+            .unwrap()
+            .seconds,
+        0.01,
+        "the one here stays"
+    );
+
+    // Only the hotkey: it comes without the sound, and says so.
+    let mut c = Rig::new("sounds-export-c");
+    let done = c.ok(
+        "import_settings",
+        json!({"path": zip, "items": ["hotkeys/Horn.json"]}),
+    );
+    assert!(
+        done["notes"]
+            .to_string()
+            .contains("without its sound 'Airhorn'"),
+        "{done}"
+    );
+    let info: HotkeysInfo = serde_json::from_value(c.ok("list_hotkeys", json!({}))).unwrap();
+    assert_eq!(
+        info.hotkeys[0].sounds,
+        HotkeySounds {
+            release: Some("Click".into()),
+            ..Default::default()
+        }
+    );
+    // A bare sound comes back from its .json.
+    c.ok("import_settings", json!({"path": one}));
+    assert!(c.dir.join("sounds/Unused.wav").is_file());
+
+    // The preferences carry the popup and the sounds' device and volume.
+    let mut d = Rig::new("sounds-export-d");
+    let seen = d.ok("inspect_import", json!({"path": all}));
+    let part = seen["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| i["id"] == "preferences/preferences.json#hotkey_feedback")
+        .unwrap()
+        .clone();
+    assert!(
+        part["note"].as_str().unwrap().contains("not plugged in"),
+        "{part}"
+    );
+    d.ok(
+        "import_settings",
+        json!({"path": all, "items": ["preferences/preferences.json#hotkey_feedback"]}),
+    );
+    let s = d.c.settings();
+    assert_eq!(s.hotkey_popup, HotkeyPopup::Nothing);
+    assert_eq!(s.sounds_volume_db, -20.0);
+    assert_eq!(s.sounds_device.as_deref(), Some("usb-speakers"));
+}

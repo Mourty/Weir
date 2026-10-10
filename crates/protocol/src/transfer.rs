@@ -1,7 +1,7 @@
 //! Settings to share, or to take to another computer: scenes, setups,
-//! hotkeys, equalizer presets, app rules and preferences, exported to a
-//! `.zip` of JSON files, or one of them to a bare `.json`, and imported
-//! again.
+//! hotkeys and the sounds they play, equalizer presets, app rules and
+//! preferences, exported to a `.zip` of JSON files, or one of them to a
+//! bare `.json`, and imported again.
 //!
 //! The files are described in `docs/API.md`; here are the requests that
 //! write and read them. Importing is two steps: `inspect_import` says what
@@ -57,6 +57,8 @@ pub enum ExportKind {
     Setup,
     /// A hotkey.
     Hotkey,
+    /// A sound of the user's own, for hotkeys to play.
+    Sound,
     /// An equalizer preset of the user's own.
     EqPreset,
     /// The app rules, all together.
@@ -67,10 +69,11 @@ pub enum ExportKind {
 
 impl ExportKind {
     /// Every kind, in the order lists show them.
-    pub const ALL: [ExportKind; 6] = [
+    pub const ALL: [ExportKind; 7] = [
         ExportKind::Scene,
         ExportKind::Setup,
         ExportKind::Hotkey,
+        ExportKind::Sound,
         ExportKind::EqPreset,
         ExportKind::AppRules,
         ExportKind::Preferences,
@@ -82,6 +85,7 @@ impl ExportKind {
             ExportKind::Scene => "scene",
             ExportKind::Setup => "setup",
             ExportKind::Hotkey => "hotkey",
+            ExportKind::Sound => "sound",
             ExportKind::EqPreset => "equalizer preset",
             ExportKind::AppRules => "app rules",
             ExportKind::Preferences => "preferences",
@@ -94,6 +98,7 @@ impl ExportKind {
             ExportKind::Scene => "Scenes",
             ExportKind::Setup => "Setups",
             ExportKind::Hotkey => "Hotkeys",
+            ExportKind::Sound => "Sounds",
             ExportKind::EqPreset => "Equalizer presets",
             ExportKind::AppRules => "App rules",
             ExportKind::Preferences => "Preferences",
@@ -128,13 +133,17 @@ pub enum PreferencePart {
     AudioTiming,
     /// Whether Weir starts when you log in.
     StartAtLogin,
+    /// What hotkeys show when pressed, and where and how loud their sounds
+    /// play.
+    HotkeyFeedback,
 }
 
 impl PreferencePart {
     /// Every part, in the order lists show them.
-    pub const ALL: [PreferencePart; 4] = [
+    pub const ALL: [PreferencePart; 5] = [
         PreferencePart::WindowLook,
         PreferencePart::Mixer,
+        PreferencePart::HotkeyFeedback,
         PreferencePart::AudioTiming,
         PreferencePart::StartAtLogin,
     ];
@@ -146,6 +155,7 @@ impl PreferencePart {
             PreferencePart::Mixer => "Mixer behavior",
             PreferencePart::AudioTiming => "Audio timing",
             PreferencePart::StartAtLogin => "Start at login",
+            PreferencePart::HotkeyFeedback => "Hotkey popups and sounds",
         }
     }
 
@@ -158,6 +168,9 @@ impl PreferencePart {
             PreferencePart::Mixer => "Solo, meter speed, tray icon, what opens when Weir starts",
             PreferencePart::AudioTiming => "Sample rate and latency",
             PreferencePart::StartAtLogin => "Whether Weir starts when you log in",
+            PreferencePart::HotkeyFeedback => {
+                "What hotkeys show, and where and how loud their sounds play"
+            }
         }
     }
 
@@ -168,6 +181,7 @@ impl PreferencePart {
             PreferencePart::Mixer => "mixer",
             PreferencePart::AudioTiming => "audio_timing",
             PreferencePart::StartAtLogin => "start_at_login",
+            PreferencePart::HotkeyFeedback => "hotkey_feedback",
         }
     }
 }
@@ -179,8 +193,8 @@ pub struct ExportParams {
     /// The file to write: a `.zip`, or a `.json` for exactly one item. A
     /// file already there is replaced.
     pub path: String,
-    /// Everything there is: every scene, setup, hotkey and preset of your
-    /// own, the app rules and every part of the preferences.
+    /// Everything there is: every scene, setup, hotkey, sound and preset
+    /// of your own, the app rules and every part of the preferences.
     #[serde(default, skip_serializing_if = "is_false")]
     pub all: bool,
     /// Scenes, by name.
@@ -190,9 +204,13 @@ pub struct ExportParams {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub setups: Vec<String>,
     /// Hotkeys, by id or name. Their groups and the list's order go with
-    /// them.
+    /// them, and so do the sounds of your own they play, so a hotkey with
+    /// one goes to a `.zip`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hotkeys: Vec<HotkeyKey>,
+    /// Sounds of your own, by name.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sounds: Vec<String>,
     /// Equalizer presets of your own, by name.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub eq_presets: Vec<String>,

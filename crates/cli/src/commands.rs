@@ -4,7 +4,8 @@
 //! set, and something for people otherwise.
 
 use crate::args::{
-    BusArgs, EqCmd, EqTarget, HotkeyCmd, HotkeyGroupCmd, HotkeyOpts, LibraryCmd, StripArgs,
+    BusArgs, EqCmd, EqTarget, HotkeyCmd, HotkeyGroupCmd, HotkeyOpts, LibraryCmd, SoundCmd,
+    StripArgs,
 };
 use crate::client::Client;
 use crate::parse::*;
@@ -501,6 +502,9 @@ pub struct SettingsArgs {
     pub start_at_login: Option<String>,
     pub tray: Option<String>,
     pub tray_icon: Option<String>,
+    pub popup: Option<String>,
+    pub sounds_device: Option<String>,
+    pub sounds_volume: Option<f32>,
 }
 
 /// Change the settings the command names, then show them all.
@@ -519,6 +523,13 @@ pub fn settings(c: &mut Client, a: SettingsArgs, json: bool) -> Result<()> {
         },
         sample_rate: number_or_auto(a.rate.as_deref(), "rate")?,
         quantum: number_or_auto(a.buffer.as_deref(), "buffer")?,
+        hotkey_popup: a.popup.as_deref().map(parse_popup).transpose()?,
+        sounds_device: match a.sounds_device.as_deref() {
+            None => None,
+            Some("auto") => Some(None),
+            Some(d) => Some(Some(find_sink(&st.devices, d)?)),
+        },
+        sounds_volume_db: a.sounds_volume,
     };
     let settings: Settings = if patch == SettingsPatch::default() {
         st.settings.clone()
@@ -745,7 +756,58 @@ fn apply_hotkey_opts(c: &mut Client, h: &mut Hotkey, opts: HotkeyOpts) -> Result
     if let Some(f) = flag(opts.enabled.as_deref())? {
         h.enabled = f.apply(h.enabled);
     }
+    let sound = |s: String| (!s.eq_ignore_ascii_case("none") && !s.is_empty()).then_some(s);
+    if let Some(s) = opts.press_sound {
+        h.sounds.press = sound(s);
+    }
+    if let Some(s) = opts.release_sound {
+        h.sounds.release = sound(s);
+    }
+    if let Some(s) = opts.repeat_sound {
+        h.sounds.repeat = sound(s);
+    }
+    if let Some(p) = opts.popup.as_deref() {
+        h.popup = parse_bool(p)?;
+    }
     Ok(())
+}
+
+/// The sounds hotkeys can play, and where they play.
+pub fn sounds(c: &mut Client, json: bool) -> Result<()> {
+    let st = c.state()?;
+    if json {
+        return print_json(&st.hotkeys.sounds);
+    }
+    show::sounds(&st);
+    Ok(())
+}
+
+/// Add, remove or play a sound.
+pub fn sound(c: &mut Client, action: SoundCmd, json: bool) -> Result<()> {
+    match action {
+        SoundCmd::Add { name, file } => {
+            let path = std::path::absolute(&file)
+                .with_context(|| file.display().to_string())?
+                .display()
+                .to_string();
+            let req = Request::AddSound(AddSoundParams { name, path });
+            call(c, &req, json, |s: SoundInfo| {
+                println!("Added the sound '{}' ({})", s.name, s.length());
+                Ok(())
+            })
+        }
+        SoundCmd::Remove { name } => {
+            let req = Request::RemoveSound(NameParams { name: name.clone() });
+            call(c, &req, json, |_: Value| {
+                println!("Removed the sound '{name}'");
+                Ok(())
+            })
+        }
+        SoundCmd::Play { name } => {
+            let req = Request::PlaySound(NameParams { name: name.clone() });
+            call(c, &req, json, |_: Value| Ok(()))
+        }
+    }
 }
 
 /// Add, change, remove or press a hotkey.
@@ -774,6 +836,8 @@ pub fn hotkey(c: &mut Client, action: HotkeyCmd, json: bool) -> Result<()> {
                 on_release: OnRelease::Nothing,
                 release_steps: Vec::new(),
                 repeat_ms: None,
+                sounds: HotkeySounds::default(),
+                popup: true,
             };
             apply_hotkey_opts(c, &mut h, opts)?;
             save_hotkey(c, &h, "added", json)

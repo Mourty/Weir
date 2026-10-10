@@ -38,6 +38,7 @@ mod library;
 mod meters;
 mod mixer;
 mod settings;
+mod sounds;
 mod status;
 mod strip;
 mod top_bar;
@@ -172,6 +173,13 @@ pub struct App {
     /// The Hotkeys window, and the window making or changing one.
     hotkeys_window: Option<crate::hotkeys::HotkeysWindow>,
     hotkey_editor: Option<crate::hotkeys::Editor>,
+    /// The file dialog for a sound to add, and which of the editor's sounds
+    /// it is for.
+    sound_dialog: Option<(crate::file_dialog::Dialog, Option<crate::sounds::SoundSlot>)>,
+    /// A sound sent to be added, until it arrives.
+    sound_wanted: Option<(String, Option<crate::sounds::SoundSlot>, Instant)>,
+    /// The sound of the person's own being asked about removing.
+    sound_remove: Option<String>,
     /// The App rules window, and the name typed into its "by name" field.
     show_rules: bool,
     rule_name: String,
@@ -239,6 +247,9 @@ impl App {
             export_waiters: std::collections::VecDeque::new(),
             hotkeys_window: None,
             hotkey_editor: None,
+            sound_dialog: None,
+            sound_wanted: None,
+            sound_remove: None,
             show_rules: false,
             rule_name: String::new(),
             history: HistoryInfo::default(),
@@ -578,6 +589,7 @@ impl eframe::App for App {
         self.show_fx_windows(ctx, &state, &spectra);
         if connected {
             self.show_hotkeys(ctx, &state, error_at.as_ref());
+            self.poll_sounds(&state);
             self.show_transfer(ctx, &state, transfers);
         }
         self.flush(false);

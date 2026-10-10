@@ -374,6 +374,43 @@ pub fn devices(devices: &[DeviceInfo]) {
     t.print();
 }
 
+/// Where hotkeys' sounds play, in words.
+fn sounds_where(settings: &Settings, st: &FullState) -> String {
+    let named = |name: &str| {
+        st.devices
+            .iter()
+            .find(|d| d.name == name)
+            .map_or(name.to_string(), |d| d.description.clone())
+    };
+    let now = sounds_device(settings.sounds_device.as_deref(), &st.mixer, &st.devices);
+    match (&settings.sounds_device, now) {
+        (Some(chosen), Some(now)) if *chosen == now => named(&now),
+        (Some(chosen), Some(now)) => {
+            format!("{} ({} is not plugged in)", named(&now), named(chosen))
+        }
+        (None, Some(now)) => format!("{}, the first bus's device", named(&now)),
+        (_, None) => "nothing: no bus has a device plugged in".into(),
+    }
+}
+
+/// The sounds hotkeys can play, and where they play.
+pub fn sounds(st: &FullState) {
+    let mut t = Table::new(&["Sound", "Length", "From"], &[1]);
+    for s in &st.hotkeys.sounds {
+        t.row(vec![
+            s.name.clone(),
+            s.length(),
+            if s.builtin { "Weir" } else { "you" }.into(),
+        ]);
+    }
+    t.print();
+    println!(
+        "They play on {}, at {:+.1} dB.",
+        sounds_where(&st.settings, st),
+        st.settings.sounds_volume_db
+    );
+}
+
 /// The applications playing sound.
 pub fn apps(apps: &[AppStream], mixer: &MixerState) {
     if apps.is_empty() {
@@ -460,6 +497,17 @@ pub fn settings(settings: &Settings, st: &FullState) {
     };
     println!("at login:     {login}");
     println!("tray icon:    {tray}");
+    let popup = match settings.hotkey_popup {
+        HotkeyPopup::Popup => "the desktop's popup",
+        HotkeyPopup::Notification => "a notification",
+        HotkeyPopup::Nothing => "nothing",
+    };
+    println!("hotkeys show: {popup}");
+    println!(
+        "sounds:       {:+.1} dB on {}",
+        settings.sounds_volume_db,
+        sounds_where(settings, st)
+    );
     println!(
         "running at:   {} Hz, {} frames",
         st.engine.sample_rate, st.engine.quantum
@@ -618,12 +666,12 @@ pub fn hotkeys(info: &HotkeysInfo, mixer: &MixerState) {
             } else {
                 format!("{keys} (off)")
             };
-            t.row(vec![
-                h.id.to_string(),
-                h.name.clone(),
-                keys,
-                describe_hotkey(h, mixer),
-            ]);
+            let mut does = describe_hotkey(h, mixer);
+            if let Some(sounds) = h.sounds.describe() {
+                does.push_str("; ");
+                does.push_str(&sounds);
+            }
+            t.row(vec![h.id.to_string(), h.name.clone(), keys, does]);
         }
         t
     };

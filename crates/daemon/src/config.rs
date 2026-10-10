@@ -205,6 +205,9 @@ pub struct Paths {
     /// Hotkeys, as JSON: their steps are requests, which may hold `null`,
     /// and TOML has no null.
     pub hotkeys_file: PathBuf,
+    /// Sounds of the user's own for hotkeys, one file each, named after
+    /// the sound.
+    pub sounds_dir: PathBuf,
 }
 
 impl Paths {
@@ -227,6 +230,7 @@ impl Paths {
             eq_presets_file: base.join("eq-presets.toml"),
             backups_dir: base.join("backups"),
             hotkeys_file: base.join("hotkeys.json"),
+            sounds_dir: base.join("sounds"),
         }
     }
 }

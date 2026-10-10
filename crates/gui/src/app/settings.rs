@@ -2,9 +2,9 @@
 //!
 //! Preferences mixes two kinds of setting. Appearance, the bus source lists
 //! and the application sliders belong to this window and are saved in its
-//! own file ([`Prefs`]). Sample rate, buffer size, solo, what happens at
-//! startup and the tray icon belong to the daemon, and changing them sends
-//! a `set_settings` request.
+//! own file ([`Prefs`]). Sample rate, buffer size, solo, hotkeys' popups
+//! and sounds, what happens at startup and the tray icon belong to the
+//! daemon, and changing them sends a `set_settings` request.
 
 use super::{bus_title, fmt_rate, frames_ms, App};
 use crate::appearance;
@@ -46,6 +46,8 @@ impl App {
                         self.audio_prefs(ui, state);
                         ui.add_space(10.0);
                         self.solo_prefs(ui, state);
+                        ui.add_space(10.0);
+                        self.hotkey_prefs(ui, state);
                         ui.add_space(10.0);
                         self.layout_prefs(ui);
                         ui.add_space(10.0);
@@ -250,6 +252,218 @@ impl App {
                     }
                 });
         });
+    }
+
+    /// What hotkeys show when pressed, and where and how loud their sounds
+    /// play, and the sounds of the person's own.
+    fn hotkey_prefs(&mut self, ui: &mut Ui, state: &FullState) {
+        let s = &state.settings;
+        let set = |patch: SettingsPatch| Request::SetSettings(patch);
+        ui.label(RichText::new("Hotkeys").strong());
+        explain(ui, "When a hotkey is pressed, show what it did in:");
+        let mut popup = s.hotkey_popup;
+        let choices = [
+            (
+                HotkeyPopup::Popup,
+                "The desktop's popup",
+                "The small popup your volume keys show, over everything, even a \
+                 full-screen game. KDE Plasma has one; elsewhere Weir shows a notification \
+                 instead.",
+            ),
+            (
+                HotkeyPopup::Notification,
+                "A notification",
+                "It goes away by itself, and does not stay in your list of notifications.",
+            ),
+            (HotkeyPopup::Nothing, "Nothing", "Hotkeys work quietly."),
+        ];
+        ui.horizontal(|ui| {
+            for (value, label, hover) in choices {
+                if ui
+                    .radio_value(&mut popup, value, label)
+                    .on_hover_text(hover)
+                    .clicked()
+                    && popup != s.hotkey_popup
+                {
+                    self.actions.push(set(SettingsPatch {
+                        hotkey_popup: Some(popup),
+                        ..Default::default()
+                    }));
+                }
+            }
+        });
+        ui.add_space(4.0);
+        // Where sounds play: a device of the person's choosing, or the first
+        // bus's.
+        // A device that is not plugged in goes by the name it had when it
+        // was.
+        let describe = |name: &str| {
+            state
+                .devices
+                .iter()
+                .find(|d| d.name == name)
+                .map(|d| d.description.clone())
+                .or_else(|| self.prefs.device_names.get(name).cloned())
+        };
+        let now = sounds_device(s.sounds_device.as_deref(), &state.mixer, &state.devices);
+        let selected = match (&s.sounds_device, &now) {
+            (Some(chosen), Some(now)) if chosen == now => {
+                describe(chosen).unwrap_or_else(|| chosen.clone())
+            }
+            (Some(chosen), _) => format!(
+                "{} (not plugged in)",
+                describe(chosen).unwrap_or_else(|| chosen.clone())
+            ),
+            (None, Some(now)) => format!(
+                "Automatic: {}",
+                describe(now).unwrap_or_else(|| now.clone())
+            ),
+            (None, None) => "Automatic".to_string(),
+        };
+        egui::Grid::new("hotkey_prefs")
+            .num_columns(2)
+            .spacing([10.0, 6.0])
+            .show(ui, |ui| {
+                ui.label("Sounds play on");
+                egui::ComboBox::from_id_salt("sounds_device")
+                    .selected_text(selected)
+                    .width(260.0)
+                    .truncate()
+                    .show_ui(ui, |ui| {
+                        if ui
+                            .selectable_label(s.sounds_device.is_none(), "Automatic")
+                            .on_hover_text("The device of the first bus that plays to one")
+                            .clicked()
+                        {
+                            self.actions.push(set(SettingsPatch {
+                                sounds_device: Some(None),
+                                ..Default::default()
+                            }));
+                        }
+                        for d in state.devices.iter().filter(|d| d.kind == DeviceKind::Sink) {
+                            let picked = s.sounds_device.as_deref() == Some(&d.name);
+                            if ui.selectable_label(picked, &d.description).clicked() {
+                                self.actions.push(set(SettingsPatch {
+                                    sounds_device: Some(Some(d.name.clone())),
+                                    ..Default::default()
+                                }));
+                            }
+                        }
+                    });
+                ui.end_row();
+                ui.label("Sound volume");
+                ui.horizontal(|ui| {
+                    let mut db = s.sounds_volume_db;
+                    let (lo, hi) = SOUNDS_VOLUME_DB;
+                    let r = ui.add(egui::Slider::new(&mut db, lo..=hi).suffix(" dB"));
+                    if r.changed() {
+                        self.actions.push(set(SettingsPatch {
+                            sounds_volume_db: Some(db),
+                            ..Default::default()
+                        }));
+                    }
+                    if ui
+                        .small_button("Test")
+                        .on_hover_text("Play a click where hotkeys' sounds play")
+                        .clicked()
+                    {
+                        self.actions.push(Request::PlaySound(NameParams {
+                            name: BUILTIN_SOUNDS[0].into(),
+                        }));
+                    }
+                });
+                ui.end_row();
+            });
+        match (&s.sounds_device, &now) {
+            (Some(chosen), Some(now)) if chosen != now => {
+                ui.label(
+                    RichText::new(format!(
+                        "That device is not plugged in, so sounds play on {} for now.",
+                        describe(now).unwrap_or_else(|| now.clone())
+                    ))
+                    .size(11.0)
+                    .color(theme::p().warning),
+                );
+            }
+            (_, None) => {
+                ui.label(
+                    RichText::new("Sounds have nowhere to play: pick a device, or give a bus one.")
+                        .size(11.0)
+                        .color(theme::p().warning),
+                );
+            }
+            _ => {}
+        }
+        explain(
+            ui,
+            "Hotkeys' sounds go straight to this device, past every bus, so your stream and \
+             recordings never hear them. Each hotkey picks its own sounds.",
+        );
+        ui.add_space(6.0);
+        self.own_sounds(ui, state);
+    }
+
+    /// The sounds of the person's own, to hear or remove, and a button to
+    /// add one.
+    fn own_sounds(&mut self, ui: &mut Ui, state: &FullState) {
+        ui.label("Your sounds");
+        let own: Vec<&SoundInfo> = state.hotkeys.sounds.iter().filter(|s| !s.builtin).collect();
+        if own.is_empty() {
+            explain(
+                ui,
+                "Add .wav, .ogg or .flac files of your own, 10 seconds at most, for hotkeys to \
+                 play. Weir keeps a copy, and exports them with your settings.",
+            );
+        }
+        for sound in own {
+            ui.horizontal(|ui| {
+                ui.add(egui::Label::new(&sound.name).truncate())
+                    .on_hover_text(&sound.name);
+                ui.label(
+                    RichText::new(sound.length())
+                        .size(11.0)
+                        .color(theme::p().text_dim),
+                );
+                if ui.small_button("Play").clicked() {
+                    self.actions.push(Request::PlaySound(NameParams {
+                        name: sound.name.clone(),
+                    }));
+                }
+                let users: Vec<&str> = state
+                    .hotkeys
+                    .hotkeys
+                    .iter()
+                    .filter(|h| h.sounds.named().any(|(_, s)| s == sound.name))
+                    .map(|h| h.name.as_str())
+                    .collect();
+                if self.sound_remove.as_deref() == Some(sound.name.as_str()) {
+                    let what = match users.len() {
+                        0 => "Remove it?".to_string(),
+                        1 => format!("Remove it? '{}' plays it.", users[0]),
+                        n => format!("Remove it? {n} hotkeys play it."),
+                    };
+                    ui.label(RichText::new(what).color(theme::p().warning));
+                    if ui.small_button("Remove").clicked() {
+                        self.actions.push(Request::RemoveSound(NameParams {
+                            name: sound.name.clone(),
+                        }));
+                        self.sound_remove = None;
+                    }
+                    if ui.small_button("Keep").clicked() {
+                        self.sound_remove = None;
+                    }
+                } else if ui.small_button("Remove…").clicked() {
+                    self.sound_remove = Some(sound.name.clone());
+                }
+            });
+        }
+        if ui
+            .button("Add a sound…")
+            .on_hover_text("A .wav, .ogg or .flac file, 10 seconds at most")
+            .clicked()
+        {
+            self.open_add_sound(ui.ctx(), None);
+        }
     }
 
     /// How much the mixer shows: the strips under each bus, and a volume

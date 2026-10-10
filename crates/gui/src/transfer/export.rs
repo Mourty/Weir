@@ -1,6 +1,6 @@
-//! The Export window: every scene, setup, hotkey, equalizer preset of the
-//! user's own, the app rules and the parts of the preferences, in a
-//! section each, to tick what goes in the `.zip`.
+//! The Export window: every scene, setup, hotkey, sound and equalizer
+//! preset of the user's own, the app rules and the parts of the
+//! preferences, in a section each, to tick what goes in the `.zip`.
 
 use super::{count, item_row, section, today, window, Pane};
 use crate::file_dialog::{Dialog, Picked};
@@ -17,6 +17,7 @@ enum Item {
     Scene(String),
     Setup(String),
     Hotkey(HotkeyId),
+    Sound(String),
     EqPreset(String),
     AppRules,
     Part(PreferencePart),
@@ -57,6 +58,16 @@ fn lines(state: &FullState) -> Vec<(ExportKind, Vec<Line>)> {
             }
         })
         .collect();
+    let sounds = info
+        .sounds
+        .iter()
+        .filter(|s| !s.builtin)
+        .map(|s| Line {
+            item: Item::Sound(s.name.clone()),
+            name: s.name.clone(),
+            detail: s.length(),
+        })
+        .collect();
     let presets = state
         .eq_presets
         .iter()
@@ -90,6 +101,7 @@ fn lines(state: &FullState) -> Vec<(ExportKind, Vec<Line>)> {
         (ExportKind::Scene, named(Item::Scene, &state.library.scenes)),
         (ExportKind::Setup, named(Item::Setup, &state.library.setups)),
         (ExportKind::Hotkey, hotkeys),
+        (ExportKind::Sound, sounds),
         (ExportKind::EqPreset, presets),
         (ExportKind::AppRules, rules),
         (ExportKind::Preferences, parts),
@@ -214,6 +226,15 @@ impl ExportWindow {
                         .count();
                     let id = egui::Id::new(("export-section", *kind));
                     let asked = section(ui, id, kind.heading(), ticked, lines.len(), |ui| {
+                        if *kind == ExportKind::Sound {
+                            ui.label(
+                                RichText::new(
+                                    "Your own sounds. A hotkey takes the ones it plays with it.",
+                                )
+                                .size(12.0)
+                                .color(theme::p().text_dim),
+                            );
+                        }
                         if lines.is_empty() {
                             ui.label(
                                 RichText::new(format!("No {} yet.", kind.heading().to_lowercase()))
@@ -325,6 +346,7 @@ impl ExportWindow {
             (n(|i| matches!(i, Item::Scene(_))), "scene", "scenes"),
             (n(|i| matches!(i, Item::Setup(_))), "setup", "setups"),
             (n(|i| matches!(i, Item::Hotkey(_))), "hotkey", "hotkeys"),
+            (n(|i| matches!(i, Item::Sound(_))), "sound", "sounds"),
             (n(|i| matches!(i, Item::EqPreset(_))), "preset", "presets"),
             (n(|i| matches!(i, Item::AppRules)), "app rules", "app rules"),
             (
@@ -361,6 +383,7 @@ impl ExportWindow {
                 Item::Scene(n) => p.scenes.push(n.clone()),
                 Item::Setup(n) => p.setups.push(n.clone()),
                 Item::Hotkey(id) => p.hotkeys.push(HotkeyKey::Id(*id)),
+                Item::Sound(n) => p.sounds.push(n.clone()),
                 Item::EqPreset(n) => p.eq_presets.push(n.clone()),
                 Item::AppRules => p.app_rules = true,
                 Item::Part(part) => p.preferences.push(*part),

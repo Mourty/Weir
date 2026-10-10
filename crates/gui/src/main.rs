@@ -9,6 +9,7 @@ mod fx_window;
 mod hotkeys;
 mod patch;
 mod prefs;
+mod sounds;
 mod theme;
 mod transfer;
 mod widgets;

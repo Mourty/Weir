@@ -5,6 +5,7 @@
 use super::filter::FilterShared;
 use super::runner;
 use crate::dsp::analyzer::Analyzer;
+use crate::dsp::sounds::{PlayRequest, SoundBank};
 use std::collections::BTreeSet;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
@@ -43,6 +44,10 @@ pub(super) enum EngineCommand {
     SetState(MixerState),
     /// Change how the engine runs.
     SetOptions(EngineOptions),
+    /// Replace the sounds hotkeys play.
+    SetSounds(Arc<SoundBank>),
+    /// Play them on this device, by `node.name`, or nowhere.
+    SetSoundsDevice(Option<String>),
     /// Move an application stream to a virtual input strip.
     MoveApp { app: u32, strip: StripId },
     /// Set an application stream's own volume and/or mute.
@@ -104,6 +109,31 @@ impl EngineHandle {
     /// Change how the engine runs.
     pub fn set_options(&self, options: EngineOptions) -> Result<(), EngineError> {
         self.send(EngineCommand::SetOptions(options))
+    }
+
+    /// Replace the sounds the engine can play: `play_sound` names them by
+    /// their place in `bank`. Whatever is playing stops.
+    pub fn set_sounds(&self, bank: SoundBank) -> Result<(), EngineError> {
+        self.send(EngineCommand::SetSounds(Arc::new(bank)))
+    }
+
+    /// Play the sounds on sink `device`, by `node.name`, or nowhere. The
+    /// engine has a stereo output for them, `hotkey_sounds`, only while
+    /// they have somewhere to play, linked to the device whenever it is
+    /// there.
+    pub fn set_sounds_device(&self, device: Option<String>) -> Result<(), EngineError> {
+        self.send(EngineCommand::SetSoundsDevice(device))
+    }
+
+    /// Play sound number `sound` of the bank, `gain` linear, from the next
+    /// cycle. Returns false when it cannot, such as when the engine is not
+    /// running.
+    pub fn play_sound(&self, sound: usize, gain: f32) -> bool {
+        let Ok(sound) = u32::try_from(sound) else {
+            return false;
+        };
+        let params = self.shared.params.load();
+        params.sound_queue.push(PlayRequest { sound, gain })
     }
 
     /// Move application stream `app` onto virtual strip `strip`.

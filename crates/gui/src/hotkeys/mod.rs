@@ -344,13 +344,21 @@ impl HotkeysWindow {
                         }));
                     }
                 }
-                if let Some(tag) = tag(h) {
+                let pill = |ui: &mut Ui, text: &str| {
                     ui.add(
-                        egui::Button::new(RichText::new(tag).size(11.0).color(theme::p().text))
+                        egui::Button::new(RichText::new(text).size(11.0).color(theme::p().text))
                             .fill(theme::p().button_off)
                             .corner_radius(9)
                             .sense(egui::Sense::hover()),
-                    );
+                    )
+                };
+                if let Some(tag) = tag(h) {
+                    pill(ui, tag);
+                }
+                if let Some(sounds) = h.sounds.describe() {
+                    let mut words = sounds;
+                    words.replace_range(..1, "P");
+                    pill(ui, "sounds").on_hover_text(words);
                 }
                 ui.with_layout(Layout::top_down(Align::Min), |ui| {
                     ui.add(egui::Label::new(RichText::new(&h.name).strong()).truncate());
@@ -872,11 +880,16 @@ pub(crate) fn examples(state: &FullState) -> Vec<Hotkey> {
     let mut out = Vec::new();
     let base = |id| Simple::new(StripOrBus::Strip(id), state);
     if let Some(mic) = mic {
-        out.push(
-            base(mic.id)
-                .with(Action::PushToTalk)
-                .hotkey("Push to talk", &["Ctrl+Alt+Space".into()]),
-        );
+        // Push to talk beeps, so you know you are live without looking.
+        let mut talk = base(mic.id)
+            .with(Action::PushToTalk)
+            .hotkey("Push to talk", &["Ctrl+Alt+Space".into()]);
+        talk.sounds = HotkeySounds {
+            press: Some("Beep up".into()),
+            release: Some("Beep down".into()),
+            repeat: None,
+        };
+        out.push(talk);
         out.push(base(mic.id).hotkey("Mute mic", &["Ctrl+Alt+M".into()]));
     }
     if let Some(music) = music {
@@ -928,6 +941,8 @@ mod tests {
         let all = examples(&st);
         assert_eq!(all.len(), 6);
         assert!(all.iter().all(|h| !h.enabled));
+        assert_eq!(all[0].sounds.press.as_deref(), Some("Beep up"));
+        assert!(all[1].sounds.is_empty(), "only push to talk makes a sound");
         let mut mine = all[1].clone();
         mine.name = "My mute".into();
         mine.keys = vec!["Ctrl+Alt+Up".into()];

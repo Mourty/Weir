@@ -19,6 +19,7 @@ use weir_protocol::{
 use super::fx::{DenoiseBank, EqParams, FxState, RtDuck};
 use super::handoff::Handoff;
 use super::mapping::{channel_matrix, surround_feed_row, wants_surround_feed};
+use super::sounds::{SoundBank, SoundQueue};
 
 /// Peak levels in dBFS per channel, for strips and buses, keyed by id.
 pub type PeakSet = (Vec<(StripId, Vec<f32>)>, Vec<(BusId, Vec<f32>)>);
@@ -249,6 +250,16 @@ pub struct RtParams {
     pub strips: Vec<RtStrip>,
     /// Every bus, in mixer order.
     pub buses: Vec<RtBus>,
+    /// The sounds hotkeys play, carried from snapshot to snapshot until a
+    /// new bank replaces them.
+    pub sounds: Arc<SoundBank>,
+    /// Sounds asked to play, waiting for the next cycle. The same queue in
+    /// every snapshot.
+    pub sound_queue: Arc<SoundQueue>,
+    /// The `hotkey_sounds` output's left and right ports, may be null.
+    pub sound_ports: [PortPtr; 2],
+    /// Per-cycle cache of their buffers.
+    pub sound_bufs: [RtCell<*mut f32>; 2],
 }
 
 // Raw port pointers are only dereferenced by PipeWire on its own thread; the
@@ -333,6 +344,11 @@ pub trait PortResolver {
     fn insert_connected(&self, _target: StripOrBus) -> bool {
         false
     }
+    /// The `hotkey_sounds` output's port for `channel` (0 left, 1 right),
+    /// or null.
+    fn sound_port(&self, _channel: usize) -> PortPtr {
+        std::ptr::null_mut()
+    }
 }
 
 /// A resolver that yields no ports at all (used by tests and before the
@@ -395,7 +411,16 @@ pub fn build_rt_params(
             build_strip(s, state, cue, ports, before)
         })
         .collect();
-    Arc::new(RtParams { strips, buses })
+    let sounds = prev.map(|p| p.sounds.clone()).unwrap_or_default();
+    let sound_queue = prev.map(|p| p.sound_queue.clone()).unwrap_or_default();
+    Arc::new(RtParams {
+        strips,
+        buses,
+        sounds,
+        sound_queue,
+        sound_ports: [ports.sound_port(0), ports.sound_port(1)],
+        sound_bufs: std::array::from_fn(|_| RtCell::new(std::ptr::null_mut())),
+    })
 }
 
 /// One bus of a snapshot. `before` is the same bus in the previous one,

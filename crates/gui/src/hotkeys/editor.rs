@@ -4,6 +4,7 @@
 use super::record::{self, Recorded};
 use super::simple::{Action, Fx, Mode, Simple};
 use super::{key_chips, keys_hint};
+use crate::sounds::{self, SoundSlot};
 use crate::theme;
 use egui::{vec2, RichText, Ui};
 use std::time::{Duration, Instant};
@@ -40,6 +41,10 @@ pub struct Editor {
     json: String,
     json_of: Option<Hotkey>,
     json_error: Option<String>,
+    /// The sounds it plays, and whether it shows a popup: the same in the
+    /// simple form and under More options.
+    sounds: HotkeySounds,
+    popup: bool,
     /// Why it cannot be saved, or why the daemon did not take it.
     error: Option<String>,
     /// Sent to be saved: the hotkeys as they were then, and when.
@@ -48,6 +53,8 @@ pub struct Editor {
     pub closed: bool,
     /// Asked to export the hotkey, as saved, for the mixer to ask where.
     pub export: bool,
+    /// Asked to add a sound from a file, for one of its sounds.
+    pub wants_sound: Option<SoundSlot>,
 }
 
 impl Editor {
@@ -69,11 +76,14 @@ impl Editor {
             json: String::new(),
             json_of: None,
             json_error: None,
+            sounds: HotkeySounds::default(),
+            popup: true,
             error: None,
             saving: None,
             raise: false,
             closed: false,
             export: false,
+            wants_sound: None,
         }
     }
 
@@ -97,12 +107,20 @@ impl Editor {
             json: String::new(),
             json_of: None,
             json_error: None,
+            sounds: h.sounds.clone(),
+            popup: h.popup,
             error: None,
             saving: None,
             raise: false,
             closed: false,
             export: false,
+            wants_sound: None,
         }
+    }
+
+    /// Play `name` for its `slot` sound: a sound just added for it.
+    pub fn set_sound(&mut self, slot: SoundSlot, name: String) {
+        *slot.of(&mut self.sounds) = Some(name);
     }
 
     /// The hotkey it edits: 0 for a new one.
@@ -124,6 +142,8 @@ impl Editor {
         h.keys = self.keys.clone();
         h.enabled = self.enabled;
         h.group = self.group;
+        h.sounds = self.sounds.clone();
+        h.popup = self.popup;
         h.targets_by_name(mixer);
         h
     }
@@ -286,7 +306,7 @@ impl Editor {
         if self.advanced {
             self.name_row(ui, state);
             ui.add_space(6.0);
-            self.full_form(ui, state);
+            self.full_form(ui, state, actions);
         } else {
             let before = self.simple.clone();
             simple_form(ui, state, &mut self.simple, true, "simple");
@@ -310,8 +330,62 @@ impl Editor {
                     ui.label(describe_hotkey(&h, &state.mixer));
                 });
             ui.add_space(6.0);
+            self.feedback_section(ui, state, actions);
+            ui.add_space(6.0);
             self.name_row(ui, state);
         }
+    }
+
+    /// The sounds it plays, and whether it shows a popup.
+    fn feedback_section(&mut self, ui: &mut Ui, state: &FullState, actions: &mut Vec<Request>) {
+        heading(ui, "Sounds and popup");
+        let repeats = self.assemble(&state.mixer).repeat_ms.is_some();
+        let mut rows = vec![
+            (SoundSlot::Press, "When pressed"),
+            (SoundSlot::Release, "When let go"),
+        ];
+        if repeats {
+            rows.push((SoundSlot::Repeat, "Each time it repeats"));
+        }
+        egui::Grid::new("hotkey_sounds")
+            .num_columns(2)
+            .spacing([10.0, 6.0])
+            .show(ui, |ui| {
+                for (slot, label) in rows {
+                    ui.label(label);
+                    ui.horizontal(|ui| {
+                        let salt = format!("{slot:?}");
+                        let current = slot.of(&mut self.sounds);
+                        let asked =
+                            sounds::picker(ui, &salt, current, &state.hotkeys.sounds, actions);
+                        if let sounds::Picked::Add = asked {
+                            self.wants_sound = Some(slot);
+                        }
+                    });
+                    ui.end_row();
+                }
+            });
+        if !repeats && self.sounds.repeat.is_some() {
+            // Kept, but it only plays when the hotkey repeats.
+            ui.label(
+                RichText::new(format!(
+                    "It also plays {} each time it repeats, if it is made to repeat.",
+                    self.sounds.repeat.as_deref().unwrap_or_default()
+                ))
+                .size(12.0)
+                .color(theme::p().text_dim),
+            );
+        }
+        let how = match state.settings.hotkey_popup {
+            HotkeyPopup::Popup => "the desktop's popup",
+            HotkeyPopup::Notification => "a notification",
+            HotkeyPopup::Nothing => "nothing, as Preferences says",
+        };
+        ui.checkbox(&mut self.popup, "Show what it did when pressed")
+            .on_hover_text(format!(
+                "Such as \"Mic muted\", or a bar for a volume. Shown as {how}; Preferences \
+                 picks which."
+            ));
     }
 
     /// The keys, and how to change them: with the desktop's when it looks
@@ -635,7 +709,7 @@ impl Editor {
 
     /// More options: every step, what each press and letting go do, and the
     /// hotkey as the requests Weir runs.
-    fn full_form(&mut self, ui: &mut Ui, state: &FullState) {
+    fn full_form(&mut self, ui: &mut Ui, state: &FullState, actions: &mut Vec<Request>) {
         heading(ui, "Steps");
         if self.full.steps.is_empty() {
             ui.label(RichText::new("No steps yet.").color(theme::p().text_dim));
@@ -698,6 +772,8 @@ impl Editor {
             steps_list(ui, state, &mut self.full.release_steps, "release");
             self.step_builder(ui, state, true);
         }
+        ui.add_space(6.0);
+        self.feedback_section(ui, state, actions);
         ui.add_space(6.0);
         self.json_section(ui, &state.mixer);
     }
@@ -789,6 +865,8 @@ impl Editor {
                     self.keys = h.keys.clone();
                     self.enabled = h.enabled;
                     self.group = h.group;
+                    self.sounds = h.sounds.clone();
+                    self.popup = h.popup;
                     self.full = Hotkey { id: self.id, ..h };
                     self.json_of = Some(self.assemble(mixer));
                     self.json_error = None;

@@ -25,6 +25,7 @@ weirctl scene load Streaming           # everything as saved for streaming
 * [Scenes and setups](#scenes-and-setups): `scene`, `setup`
 * [Undo](#undo): `undo`, `redo`, `history`
 * [Hotkeys](#hotkeys): `hotkeys`, `hotkey`
+* [Hotkeys' sounds](#hotkeys-sounds): `sounds`, `sound`
 * [Export and import](#export-and-import): `export`, `import`
 * [Settings and the window](#settings-and-the-window): `settings`, `show`
 * [Watching and anything else](#watching-and-anything-else): `watch`, `raw`
@@ -341,11 +342,15 @@ take:
 | `--repeat MS` | Do the steps again every MS milliseconds while held, 20 to 2000; `0` not to. |
 | `--enabled on\|off\|toggle` | Switch its keys on or off. Off, it can still be run by name. |
 | `--group GROUP` | The group it is in, or `none`. |
+| `--press-sound SOUND` | A sound to play when it is pressed, by name (see [`weirctl sounds`](#hotkeys-sounds)), or `none`. |
+| `--release-sound SOUND` | A sound to play when its keys are let go, or `none`. |
+| `--repeat-sound SOUND` | A sound to play each time it repeats while held, or `none`. |
+| `--popup on\|off` | Whether pressing it shows what it did, as the settings say (`--popup` in [`weirctl settings`](#weirctl-settings-options)). |
 
 ```sh
 weirctl hotkey add "Mic on/off" --keys Ctrl+Alt+M --do 'set_strip {"id": "Mic", "mute": "toggle"}'
-weirctl hotkey add "Talk" --keys F9 --keys Ctrl+Alt+T --do 'set_strip {"id": "Mic", "mute": false}' --release restore
-weirctl hotkey add "Music down" --keys Ctrl+Alt+Down --do 'set_strip {"id": "Music", "gain_delta_db": -2}' --repeat 150
+weirctl hotkey add "Talk" --keys F9 --keys Ctrl+Alt+T --do 'set_strip {"id": "Mic", "mute": false}' --release restore --press-sound "Beep up" --release-sound "Beep down"
+weirctl hotkey add "Music down" --keys Ctrl+Alt+Down --do 'set_strip {"id": "Music", "gain_delta_db": -2}' --repeat 150 --repeat-sound Tick
 weirctl hotkey add "Fade out" --do '{"method": "set_bus", "params": {"id": "A1", "gain_db": -60}, "over_ms": 3000}'
 weirctl hotkey add "Scenes" --keys Ctrl+Alt+S --each-press next --do 'load_scene {"name": "Streaming"}' --do 'load_scene {"name": "Late night"}'
 weirctl hotkey change "Music down" --keys Ctrl+Shift+Down
@@ -369,11 +374,35 @@ other desktops only the first is suggested, and more are added there.
 `weirctl hotkeys` shows every key the desktop has for each hotkey, and
 `weirctl hotkey settings` opens those settings.
 
+## Hotkeys' sounds
+
+Hotkeys can play a sound when pressed, when let go, and each time they
+repeat: Weir's own (Click, Beep up, Beep down, Tick) or sounds of your own.
+They play straight to one device, past every bus, so your stream and
+recordings never hear them: the device `weirctl settings --sounds-device`
+names, or the first bus's.
+
+| Command | |
+|---|---|
+| `weirctl sounds` | List the sounds, and where and how loud they play. |
+| `weirctl sound add NAME FILE` | Add a sound of your own from a `.wav`, `.ogg` or `.flac` file, 10 seconds at most. Weir keeps a copy, and exports it with your settings. |
+| `weirctl sound remove NAME` | Remove a sound of your own. Hotkeys that played it play nothing there any more. |
+| `weirctl sound play NAME` | Play a sound where hotkeys' sounds play, to hear it. |
+
+```sh
+weirctl sound add Applause applause.wav
+weirctl sounds
+weirctl sound play Applause
+weirctl hotkey add "Clap" --do 'set_strip {"id": "Soundboard", "mute": false}' --press-sound Applause
+weirctl sound remove Applause
+```
+
 ## Export and import
 
 Settings to keep safe, take to another computer or share: scenes, setups,
-hotkeys, equalizer presets of your own, the app rules and parts of the
-preferences, in a `.zip`, or one of them in a `.json`. Strips and buses go
+hotkeys and the sounds of your own they play, equalizer presets of your
+own, the app rules and parts of the preferences, in a `.zip`, or one of
+them in a `.json`. Strips and buses go
 by name, so a hotkey for "Music" works on any mixer with a strip called
 Music. [What is in the files](API.md#exported-files).
 
@@ -384,10 +413,11 @@ Music. [What is in the files](API.md#exported-files).
 | `weirctl import FILE [options]` | Import it. Scenes and setups are added to your library, never loaded. Copies of anything replaced are kept in `~/.config/weir/backups/`. |
 
 `export` takes `--all`, or any of `--scene NAME`, `--setup NAME`, `--hotkey
-HOTKEY`, `--eq-preset NAME` (each as often as needed), `--app-rules` and
-`--preferences PART`, where PART is `window-look`, `mixer`, `audio-timing`
-or `start-at-login`. The window look is read from the window's own
-settings.
+HOTKEY`, `--sound NAME`, `--eq-preset NAME` (each as often as needed),
+`--app-rules` and `--preferences PART`, where PART is `window-look`,
+`mixer`, `hotkey-feedback`, `audio-timing` or `start-at-login`. A hotkey
+brings the sounds of your own it plays, so one that plays any goes to a
+`.zip`. The window look is read from the window's own settings.
 
 `import` takes:
 
@@ -403,6 +433,7 @@ settings.
 ```sh
 weirctl export /tmp/weir-settings.zip --all
 weirctl export /tmp/mute.json --hotkey "Mute mic"
+weirctl export /tmp/airhorn.json --sound Airhorn
 weirctl import /tmp/weir-settings.zip --list
 weirctl import /tmp/weir-settings.zip --only "hotkeys/Mute mic.json" --taken keep-both
 weirctl import /tmp/mute.json --rename "mute.json=Mute mic too"
@@ -427,12 +458,17 @@ Without options, shows the daemon's settings. With them, changes them.
 | `--start-at-login on\|off\|toggle` | Start Weir when you log in, from the next login. Needs Weir installed as the install steps describe. |
 | `--tray on\|off` | Show the tray icon, from the next start. |
 | `--tray-icon color\|one-color` | The tray icon in color, or in one color like the panel's other icons. |
+| `--popup popup\|notification\|nothing` | What pressing a hotkey shows: the desktop's own popup, the one its volume keys show (KDE Plasma; a notification elsewhere), a notification, or nothing. |
+| `--sounds-device DEVICE\|auto` | The device hotkeys' sounds play on, by its name or description from `weirctl devices`, or `auto` for the first bus's device. |
+| `--sounds-volume DB` | How loud hotkeys' sounds play, from -40 to 0 dB. |
 
 ```sh
 weirctl settings
 weirctl settings --rate 48000 --buffer 256
 weirctl settings --solo A1
 weirctl settings --rate auto --buffer auto --solo exclusive
+weirctl settings --popup notification --sounds-volume -18
+weirctl settings --sounds-device auto
 ```
 
 <!-- not tested: changes how the computer running the check starts up -->

@@ -12,6 +12,7 @@
 //! * [`library`]: scenes and setups, the two kinds of saved mix.
 //! * [`hotkeys`]: keys that do things in the mixer, and their descriptions.
 //! * [`keys`]: key combinations such as `Ctrl+Alt+M`.
+//! * [`sounds`]: what hotkeys show and play when pressed.
 //! * [`targets`]: where requests name strips and buses, and finding them.
 //! * [`transfer`]: exporting settings to files, and importing them.
 //! * [`rpc`]: every request, response and notification.
@@ -28,6 +29,7 @@ pub mod keys;
 pub mod library;
 pub mod model;
 pub mod rpc;
+pub mod sounds;
 pub mod targets;
 pub mod transfer;
 
@@ -37,6 +39,7 @@ pub use keys::*;
 pub use library::*;
 pub use model::*;
 pub use rpc::*;
+pub use sounds::*;
 pub use targets::*;
 pub use transfer::*;
 

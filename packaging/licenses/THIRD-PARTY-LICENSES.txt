@@ -5,15 +5,15 @@ Weir is built from these open-source libraries. Their licenses ask that
 their notices travel with every copy of Weir, so here they are. Weir's own
 license is in LICENSE.
 
-Apache License 2.0: 197 libraries
-MIT License: 75 libraries
+Apache License 2.0: 202 libraries
+MIT License: 76 libraries
 Unicode License v3: 19 libraries
-BSD 3-Clause "New" or "Revised" License: 3 libraries
+Mozilla Public License 2.0: 10 libraries
+BSD 3-Clause "New" or "Revised" License: 5 libraries
 zlib License: 2 libraries
 BSD Zero Clause License: 1 library
 BSD 2-Clause "Simplified" License: 1 library
 ISC License: 1 library
-Mozilla Public License 2.0: 1 library
 SIL Open Font License 1.1: 1 library
 Ubuntu Font Licence v1.0: 1 library
 The Unlicense: 1 library
@@ -461,7 +461,7 @@ Used by: cursor-icon 1.2.0
 --------------------------------------------------------------------------
 Apache License 2.0
 
-Used by: as-raw-xcb-connection 1.0.1, nohash-hasher 0.2.0, static_assertions 1.1.0, utf8_iter 1.0.4, x11rb-protocol 0.13.2, x11rb 0.13.2
+Used by: as-raw-xcb-connection 1.0.1, encoding_rs 0.8.42, multiversion_no_op 1.0.0, nohash-hasher 0.2.0, static_assertions 1.1.0, utf8_iter 1.0.4, x11rb-protocol 0.13.2, x11rb 0.13.2
 --------------------------------------------------------------------------
 
 
@@ -3192,7 +3192,7 @@ limitations under the License.
 --------------------------------------------------------------------------
 Apache License 2.0
 
-Used by: async-recursion 1.1.1
+Used by: async-recursion 1.1.1, core_detect 1.0.0
 --------------------------------------------------------------------------
 
                               Apache License
@@ -3400,7 +3400,7 @@ limitations under the License.
 --------------------------------------------------------------------------
 Apache License 2.0
 
-Used by: ahash 0.8.12, arc-swap 1.9.2, arrayvec 0.7.8, async-channel 2.5.0, async-executor 1.14.0, async-io 2.6.0, async-lock 3.4.2, async-process 2.5.0, async-signal 0.2.14, async-task 4.7.1, atomic-waker 1.1.2, base64 0.22.1, bitflags 2.13.2, blocking 1.7.0, cfg-if 1.0.5, concurrent-queue 2.5.0, crossbeam-utils 0.8.23, displaydoc 0.2.7, equivalent 1.0.2, errno 0.3.14, event-listener-strategy 0.5.4, event-listener 5.4.2, fastrand 2.5.0, flate2 1.1.10, form_urlencoded 1.2.2, futures-lite 2.6.1, gethostname 1.1.0, hashbrown 0.15.5, hashbrown 0.17.1, heck 0.5.0, idna 1.1.0, idna_adapter 1.2.2, indexmap 2.14.2, lazy_static 1.5.0, linux-raw-sys 0.12.1, linux-raw-sys 0.4.15, lock_api 0.4.14, log 0.4.34, num-complex 0.4.6, num-integer 0.1.47, num-traits 0.2.19, once_cell 1.21.4, ordered-stream 0.2.0, parking 2.2.1, parking_lot 0.12.5, parking_lot_core 0.9.12, percent-encoding 2.3.2, piper 0.2.5, png 0.18.1, polling 3.11.0, primal-check 0.3.4, regex-automata 0.4.18, regex-syntax 0.8.11, ron 0.11.0, rustix 0.38.44, rustix 1.1.5, scoped-tls 1.0.1, scopeguard 1.2.0, signal-hook-registry 1.4.8, smallvec 1.16.1, smol_str 0.2.2, socket2 0.6.5, stable_deref_trait 1.2.1, thread_local 1.1.10, ttf-parser 0.25.1, unicode-segmentation 1.13.3, url 2.5.8, uuid 1.26.1
+Used by: ahash 0.8.12, arc-swap 1.9.2, arrayvec 0.7.8, async-channel 2.5.0, async-executor 1.14.0, async-io 2.6.0, async-lock 3.4.2, async-process 2.5.0, async-signal 0.2.14, async-task 4.7.1, atomic-waker 1.1.2, base64 0.22.1, bitflags 1.3.2, bitflags 2.13.2, blocking 1.7.0, cfg-if 1.0.5, concurrent-queue 2.5.0, crossbeam-utils 0.8.23, displaydoc 0.2.7, equivalent 1.0.2, errno 0.3.14, event-listener-strategy 0.5.4, event-listener 5.4.2, fastrand 2.5.0, flate2 1.1.10, form_urlencoded 1.2.2, futures-lite 2.6.1, gethostname 1.1.0, hashbrown 0.15.5, hashbrown 0.17.1, heck 0.5.0, idna 1.1.0, idna_adapter 1.2.2, indexmap 2.14.2, lazy_static 1.5.0, linux-raw-sys 0.12.1, linux-raw-sys 0.4.15, lock_api 0.4.14, log 0.4.34, num-complex 0.4.6, num-integer 0.1.47, num-traits 0.2.19, once_cell 1.21.4, ordered-stream 0.2.0, parking 2.2.1, parking_lot 0.12.5, parking_lot_core 0.9.12, percent-encoding 2.3.2, piper 0.2.5, png 0.18.1, polling 3.11.0, primal-check 0.3.4, regex-automata 0.4.18, regex-syntax 0.8.11, ron 0.11.0, rustix 0.38.44, rustix 1.1.5, scoped-tls 1.0.1, scopeguard 1.2.0, signal-hook-registry 1.4.8, smallvec 1.16.1, smol_str 0.2.2, socket2 0.6.5, stable_deref_trait 1.2.1, thread_local 1.1.10, ttf-parser 0.25.1, unicode-segmentation 1.13.3, url 2.5.8, uuid 1.26.1
 --------------------------------------------------------------------------
 
                               Apache License
@@ -5893,7 +5893,7 @@ limitations under the License.
 --------------------------------------------------------------------------
 Apache License 2.0
 
-Used by: ab_glyph 0.2.32, ab_glyph_rasterizer 0.1.10, accesskit 0.21.1, accesskit_atspi_common 0.14.2, accesskit_consumer 0.31.0, accesskit_unix 0.17.2, accesskit_winit 0.29.2, anyhow 1.0.104, anymap3 1.1.0, arboard 3.6.1, async-trait 0.1.92, atspi-proxies 0.9.0, dirs-sys 0.5.0, dirs 6.0.0, document-features 0.2.12, dyn-clone 1.0.20, ecolor 0.33.3, eframe 0.33.3, egui-winit 0.33.3, egui 0.33.3, egui_glow 0.33.3, emath 0.33.3, enumn 0.1.14, epaint 0.33.3, epaint_default_fonts 0.33.3, fdeflate 0.3.7, image 0.25.10, itoa 1.0.18, libc 0.2.189, litrs 1.0.0, miniz_oxide 0.8.9, miniz_oxide 0.9.1, owned_ttf_parser 0.25.1, pastey 0.2.3, pin-project-lite 0.2.17, proc-macro2 1.0.107, profiling 1.0.18, quote 1.0.47, rand 0.9.5, rand_chacha 0.9.0, raw-window-handle 0.6.2, ref-cast-impl 1.0.27, ref-cast 1.0.27, rustversion 1.0.23, serde 1.0.229, serde_core 1.0.229, serde_derive 1.0.229, serde_derive_internals 0.30.0, serde_json 1.0.151, serde_repr 0.1.21, syn 2.0.119, syn 3.0.6, thiserror-impl 1.0.69, thiserror-impl 2.0.20, thiserror 1.0.69, thiserror 2.0.20, typed-path 0.12.3, unicode-ident 1.0.26, utf8parse 0.2.2
+Used by: ab_glyph 0.2.32, ab_glyph_rasterizer 0.1.10, accesskit 0.21.1, accesskit_atspi_common 0.14.2, accesskit_consumer 0.31.0, accesskit_unix 0.17.2, accesskit_winit 0.29.2, anyhow 1.0.104, anymap3 1.1.0, arboard 3.6.1, async-trait 0.1.92, atspi-proxies 0.9.0, dirs-sys 0.5.0, dirs 6.0.0, document-features 0.2.12, dyn-clone 1.0.20, ecolor 0.33.3, eframe 0.33.3, egui-winit 0.33.3, egui 0.33.3, egui_glow 0.33.3, emath 0.33.3, enumn 0.1.14, epaint 0.33.3, epaint_default_fonts 0.33.3, fdeflate 0.3.7, image 0.25.10, itoa 1.0.18, libc 0.2.189, litrs 1.0.0, miniz_oxide 0.8.9, miniz_oxide 0.9.1, owned_ttf_parser 0.25.1, pastey 0.2.3, pin-project-lite 0.2.17, proc-macro2 1.0.107, profiling 1.0.18, quote 1.0.47, rand 0.9.5, rand_chacha 0.9.0, raw-window-handle 0.6.2, ref-cast-impl 1.0.27, ref-cast 1.0.27, rustversion 1.0.23, serde 1.0.229, serde_core 1.0.229, serde_derive 1.0.229, serde_derive_internals 0.30.0, serde_json 1.0.151, serde_repr 0.1.21, simdutf8 0.1.5, syn 2.0.119, syn 3.0.6, thiserror-impl 1.0.69, thiserror-impl 2.0.20, thiserror 1.0.69, thiserror 2.0.20, typed-path 0.12.3, unicode-ident 1.0.26, utf8parse 0.2.2
 --------------------------------------------------------------------------
 
 Apache License
@@ -6008,6 +6008,68 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 --------------------------------------------------------------------------
 BSD 3-Clause "New" or "Revised" License
 
+Used by: encoding_rs 0.8.42
+--------------------------------------------------------------------------
+
+// Copyright © WHATWG (Apple, Google, Mozilla, Microsoft).
+//
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
+//
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
+//
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+/// The PUA code points special-cased in the GB18030 encoder.
+pub(crate) static GB18030_2022_OVERRIDE_PUA: [u16; 18] = [
+    0xE78D, 0xE78E, 0xE78F, 0xE790, 0xE791, 0xE792, 0xE793, 0xE794, 0xE795, 0xE796, 0xE81E, 0xE826,
+    0xE82B, 0xE82C, 0xE832, 0xE843, 0xE854, 0xE864,
+];
+
+/// The bytes corresponding to the PUA code points special-cased in the GB18030 encoder.
+pub(crate) static GB18030_2022_OVERRIDE_BYTES: [[u8; 2]; 18] = [
+    [0xA6, 0xD9],
+    [0xA6, 0xDA],
+    [0xA6, 0xDB],
+    [0xA6, 0xDC],
+    [0xA6, 0xDD],
+    [0xA6, 0xDE],
+    [0xA6, 0xDF],
+    [0xA6, 0xEC],
+    [0xA6, 0xED],
+    [0xA6, 0xF3],
+    [0xFE, 0x59],
+    [0xFE, 0x61],
+    [0xFE, 0x66],
+    [0xFE, 0x67],
+    [0xFE, 0x6D],
+    [0xFE, 0x7E],
+    [0xFE, 0x90],
+    [0xFE, 0xA0],
+];
+
+
+--------------------------------------------------------------------------
+BSD 3-Clause "New" or "Revised" License
+
 Used by: tiny-skia-path 0.11.4, tiny-skia 0.11.4
 --------------------------------------------------------------------------
 
@@ -6080,6 +6142,40 @@ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
 DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
 THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
+--------------------------------------------------------------------------
+BSD 3-Clause "New" or "Revised" License
+
+Used by: encoding_rs 0.8.42
+--------------------------------------------------------------------------
+
+Copyright © WHATWG (Apple, Google, Mozilla, Microsoft).
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from
+   this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
@@ -6696,6 +6792,33 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 --------------------------------------------------------------------------
 MIT License
 
+Used by: extended 0.1.0
+--------------------------------------------------------------------------
+
+Copyright 2022 Dietrich Epp
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+--------------------------------------------------------------------------
+MIT License
+
 Used by: libspa-sys 0.10.1, libspa 0.10.1, pipewire-sys 0.10.1, pipewire 0.10.1
 --------------------------------------------------------------------------
 
@@ -7285,7 +7408,7 @@ THE SOFTWARE.
 --------------------------------------------------------------------------
 Mozilla Public License 2.0
 
-Used by: option-ext 0.2.0
+Used by: option-ext 0.2.0, symphonia-bundle-flac 0.5.5, symphonia-codec-pcm 0.5.5, symphonia-codec-vorbis 0.5.5, symphonia-core 0.5.5, symphonia-format-ogg 0.5.5, symphonia-format-riff 0.5.5, symphonia-metadata 0.5.5, symphonia-utils-xiph 0.5.5, symphonia 0.5.5
 --------------------------------------------------------------------------
 
 Mozilla Public License Version 2.0

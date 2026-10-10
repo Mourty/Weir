@@ -131,11 +131,12 @@ On the right:
 
 * **+ Strip** and **+ Bus** add one.
 * **Apps** lists the applications playing, and holds the rules.
-* **Scenes** and **Setups** save and bring back how things are.
+* **Scenes** keep how things sound, and **Setups** which strips and buses
+  there are (see [Scenes and setups](#scenes-and-setups)).
 * **Hotkeys** lists the keys that do things in the mixer from anywhere
   (see [Hotkeys](#hotkeys)).
-* **…** has undo and redo, **Recent changes**, **Preferences**, **About**
-  and **Quit window**.
+* **…** has undo and redo, **Recent changes**, **Export settings…** and
+  **Import settings…**, **Preferences**, **About** and **Quit window**.
 
 Under it, **Faders show** chooses what the strip faders set: their own
 level, or their level in one bus's mix (see [Who hears what](#who-hears-what)).
@@ -166,7 +167,7 @@ From top to bottom:
   the strip's settings window. See [Effects](#effects).
 * **M** (mute), **S** (solo) and **…**, a menu with the settings window,
   the channel layout, moving and coloring the strip, resetting the fader
-  and pan, and removing it.
+  and pan, its [hotkeys](#hotkeys), and removing it.
 
 ### A bus
 
@@ -182,7 +183,9 @@ From top to bottom:
 * **The meter and the fader**, as on a strip.
 * **CLIP**, the level, and **LIM**, which lights while the limiter is
   holding the bus down.
-* **EQ** and **⚙**, and **M** (mute), **mono** and **…**.
+* **EQ** and **⚙**, and **M** (mute), **mono** and **…**, a menu like a
+  strip's that also holds the safety limiter and the
+  [delay](#bus-delay).
 
 ## Who hears what
 
@@ -387,11 +390,13 @@ behind: put the delay on the faster bus until the two line up.
 Open the bus's settings window and unfold **Delay**: drag the slider, click
 the number to type an exact value, or use the **-1 ms** and **+1 ms**
 buttons to nudge it while you listen. The bus's **…** menu has a quick
-Delay field too, which you drag. Changing the delay while music plays
-blends from the old one to the new one, so there is no click. The signal
-chain at the top of the window shows a **Delay** stage when it is on.
-Everything on that bus is delayed, so a video's sound plays that much after
-its picture.
+Delay field too: drag it, or click it to type. Changing the delay while
+music plays blends from the old one to the new one, so there is no click.
+The signal chain at the top of the window shows a **Delay** stage when it
+is on. Everything on that bus is delayed, so a video's sound plays that
+much after its picture.
+
+![A bus's delay in its settings window](images/bus-delay.png)
 
 ### External effects
 
@@ -431,9 +436,9 @@ With Weir's own wires, the blocks make a line: Weir's engine, **Weir
 Engine**, into "Music to effects", through the reverb, into "Music from
 effects", and on into **Weir effects return**, where the sound comes back
 into Weir. Weir draws the wires to and from its own blocks itself, and
-draws them again if one is removed, so there is nothing else to connect. To keep the wiring
-for next time, save a project in Carla (**File › Save**) and open it again
-later.
+draws them again if one is removed, so there is nothing else to connect.
+To keep the wiring for next time, save a project in Carla (**File ›
+Save**) and open it again later.
 
 **Where they go.** **Ext FX** sits in the signal chain along the top of
 the settings window. Drag it to another gap to move it, or choose under
@@ -554,6 +559,8 @@ says so in yellow ("1 missing", the names when you point at it). It still
 loads, and does what it can with the strips that are there. The Scenes
 menu says the same against the mixer you have now.
 
+![The Setups menu, with the scenes beside a setup](images/setups-menu.png)
+
 Weir 1.2.0 told the two apart. Before, a setup kept the whole mixer, but
 loading one kept the levels you had, so most of what it held about the
 sound was never used. The first time 1.2.0 starts, each saved setup keeps
@@ -587,14 +594,16 @@ reach Weir on your desktop (see
 * the **switch** turns its keys on or off. Off, it can still be pressed by
   name.
 * its **keys**, one set to a line, and what it does. **while held**,
-  **repeats** and **cycles** say how it behaves.
+  **repeats** and **cycles** say how it behaves, and **sounds** that it
+  plays some: point at it to see which.
 * **Try** does what pressing and letting go of its keys would.
 * **Edit** changes it, and **×** removes it, after asking.
 
 With no hotkeys yet, **Add a few examples** adds push to talk, muting the
 microphone, music up and down, dipping the music to talk over it, and
 bringing up the window, all switched off: switch on the ones you want, and
-change their keys if you like.
+change their keys if you like. Push to talk beeps up as you press it and
+down as you let go, so you hear when you are live.
 
 Hotkeys find strips and buses by their names, and one list serves every
 [setup](#scenes-and-setups): a hotkey for "Music" works on the strip
@@ -663,6 +672,27 @@ to change one. Each strip's and bus's **…** menu has them too, under
 Each press is one step in [Undo](#undo): **Ctrl+Z** after a push to talk
 takes back the whole of it.
 
+### Sounds and popup
+
+A hotkey can tell you it worked, so you need not look at the mixer, even
+in a full-screen game.
+
+* **Sounds**: pick one for **When pressed**, **When let go**, and, for a
+  hotkey that repeats while held, **Each time it repeats**. Weir has four
+  of its own: a click, a beep up, a beep down and a tick. **Play** beside a
+  list lets you hear it. **Add a sound…** at the bottom of a list adds a
+  `.wav`, `.ogg` or `.flac` file of your own, up to 10 seconds, under the
+  file's name, and picks it.
+* **Show what it did when pressed**: after each press, Weir shows what the
+  hotkey left behind, such as "Mic muted", or a bar for a volume as it
+  goes up or down. Untick it for a hotkey you would rather keep quiet.
+
+Where and how loud the sounds play, and how the popup shows, are set once
+for all hotkeys in [Preferences](#preferences). Sounds go straight to that
+device, past every bus, so your stream and recordings never hear them.
+
+![Hotkeys in Preferences](images/hotkey-preferences.png)
+
 ### More options
 
 **More options…** shows every step, since a hotkey can do several things
@@ -717,17 +747,19 @@ of them, use **Export settings…** and **Import settings…** in the **…**
 menu at the top right.
 
 **Export settings…** lists everything you can take, in sections: scenes,
-setups, hotkeys, equalizer presets of your own, the app rules, and four
-parts of the preferences: the window's look, how the mixer behaves, audio
-timing (the sample rate and latency), and whether Weir starts when you log
-in. Everything starts ticked. Untick what you want to leave out, or click
+setups, hotkeys, sounds and equalizer presets of your own, the app rules,
+and five parts of the preferences: the window's look, how the mixer
+behaves, hotkey popups and sounds, audio timing (the sample rate and
+latency), and whether Weir starts when you log in. Everything starts ticked. Untick what you want to leave out, or click
 a section's box to tick or untick all of it. **Export…** asks where to save
-the file, a `.zip`.
+the file, a `.zip`. A hotkey takes the sounds of your own it plays with it,
+even if you untick them under Sounds.
 
 To share one thing on its own, use **export** beside a scene or setup in
 the Scenes and Setups menus, or beside one of your presets in the
 equalizer's Preset menu, or **Export…** in a hotkey's editor. It is saved
-as a `.json` file.
+as a `.json` file, or, for a hotkey that plays a sound of your own, as a
+`.zip` with the sound.
 
 ![Importing settings](images/import.png)
 
@@ -750,7 +782,11 @@ shows what it holds, everything ticked:
 * A **damaged file**, or one from a newer Weir, is shown in red with why,
   and cannot be ticked. The rest can still come in.
 * **Audio timing** suits the sound hardware of the computer it came from,
-  and **Start at login** switches that on or off on this one.
+  and **Start at login** switches that on or off on this one. In **Hotkey
+  popups and sounds**, a device for sounds that is not plugged in here is
+  kept, and used if it ever is; until then sounds play on the first bus's
+  device.
+* A hotkey whose sound you leave out comes in playing nothing there.
 
 **Import** brings in what is ticked, then says what came in, and what was
 left out and why. Scenes and setups are added to your lists, never loaded.
@@ -804,6 +840,20 @@ or its own volume, is not part of it. It lasts until Weir stops.
   * The hold ends as soon as Weir stops.
 * **Solo**: silence every strip that is not soloed, in every mix; or
   **Cue** on one bus, so soloing only changes what you hear there.
+* **Hotkeys**:
+  * What a hotkey shows when pressed: **The desktop's popup**, the small
+    one your volume keys show, over everything, even a full-screen game
+    (KDE Plasma has one; elsewhere Weir shows a notification instead), **A
+    notification**, which goes away by itself and does not stay in your
+    list of notifications, or **Nothing**.
+  * **Sounds play on**: the device hotkeys' sounds play on.
+    **Automatic** is the device of your first bus, usually your
+    headphones; pick another, such as speakers, if you like. If the one you
+    pick is unplugged, sounds play on the first bus's device until it is
+    back.
+  * **Sound volume**, with **Test** to hear a click.
+  * **Your sounds**: the sounds you added, to **Play** or **Remove**
+    (it says which hotkeys play one first), and **Add a sound…**.
 * **Buses**: how much of the list of strips feeding each bus to show:
   hidden, as many as fit, or the full list, scrolling.
 * **Applications**: whether each application under a strip gets a volume
@@ -814,8 +864,8 @@ or its own volume, is not part of it. It lasts until Weir stops.
 * **Tray icon**: in color, or in one color that matches the panel like the
   desktop's own tray icons.
 
-Audio, solo, startup and the tray icon are kept by the Weir service, so
-they apply however Weir starts, including at login. The rest belongs to the
+Audio, solo, hotkeys, startup and the tray icon are kept by the Weir
+service, so they apply however Weir starts, including at login. The rest belongs to the
 window.
 
 ## Weir in the background
@@ -867,6 +917,7 @@ next time Weir starts.
 | Equalizer curve | double-click | add a band |
 | Selected band | Delete | remove it |
 | Signal chain step | click | go to its settings |
+| Setup in the Setups menu | click / rest on it | load it alone / pick a scene to load with it |
 | Anywhere | Ctrl+Z | undo |
 | | Ctrl+Shift+Z or Ctrl+Y | redo |
 
@@ -876,13 +927,14 @@ Your settings, which are kept when Weir is uninstalled:
 
 | Where | What |
 |---|---|
-| `~/.config/weir/config.toml` | Your strips, buses, devices and levels. Saved as you go. |
+| `~/.config/weir/config.toml` | Your strips, buses, devices and levels, the app rules, and the preferences the service keeps. Saved as you go. |
 | `~/.config/weir/scenes/` | Your scenes, one file each. |
 | `~/.config/weir/setups/` | Your setups, one file each. |
 | `~/.config/weir/eq-presets.toml` | Your equalizer presets. |
 | `~/.config/weir/hotkeys.json` | Your hotkeys. |
+| `~/.config/weir/sounds/` | Sounds you added for hotkeys, one file each, named after the sound. |
 | `~/.config/weir/gui.toml` | The window's own preferences, and the names of your devices, for showing them while they are unplugged. |
-| `~/.config/weir/backups/` | Copies of `config.toml` from the last ten times Weir started with a changed one. To go back to one, quit Weir and copy it over `config.toml`. Also, in `import-` folders, copies of what each import replaced. |
+| `~/.config/weir/backups/` | Copies of `config.toml` from the last ten times Weir started with a changed one. To go back to one, quit Weir and copy it over `config.toml`. Also, in `import-` folders, copies of what each import replaced, and in `setups-before-scenes`, your setups as they were before Weir 1.2.0. |
 | `~/.local/state/weir/daemon.log` | What the service said, when the window started it. |
 
 To start over completely, quit Weir and delete `~/.config/weir`.

@@ -396,6 +396,8 @@ The signal chain at the top of the window shows a **Delay** stage when it
 is on. Everything on that bus is delayed, so a video's sound plays that
 much after its picture.
 
+![A bus's delay in its settings window](images/bus-delay.png)
+
 ### External effects
 
 Weir's own effects are the ones voices need most. For anything else, such
@@ -556,6 +558,8 @@ in one go. A scene with a mix for strips or buses the setup does not have
 says so in yellow ("1 missing", the names when you point at it). It still
 loads, and does what it can with the strips that are there. The Scenes
 menu says the same against the mixer you have now.
+
+![The Setups menu, with the scenes beside a setup](images/setups-menu.png)
 
 Weir 1.2.0 told the two apart. Before, a setup kept the whole mixer, but
 loading one kept the levels you had, so most of what it held about the

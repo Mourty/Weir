@@ -69,12 +69,13 @@
   </provides>
 
   <releases>
-    <release version="1.2.0" date="2026-10-10">
+    <release version="1.2.0" date="2026-10-11">
       <description>
         <p>Hotkeys, settings you can take to another computer, and setups and scenes that each do one thing.</p>
         <ul>
           <li>Hotkeys: keyboard shortcuts for anything the mixer does, such as push to talk, muting a strip or loading a scene. They work with the window closed and in full-screen games, can be put in order and in groups, and show in Plasma's System Settings.</li>
-          <li>Export your scenes, setups, hotkeys, equalizer presets, app rules and preferences to a file, and import all of them or just a few, on this computer or another.</li>
+          <li>Hotkeys can tell you they worked: a beep, a click or a sound of your own, played on a device you choose and never heard by your stream, and the desktop's own volume popup, such as "Mic muted".</li>
+          <li>Export your scenes, setups, hotkeys and their sounds, equalizer presets, app rules and preferences to a file, and import all of them or just a few, on this computer or another.</li>
           <li>A setup is now which strips and buses there are, and a scene how they sound. Load a setup alone, or with any scene from the Setups menu. Each old setup's mix becomes a scene of the same name.</li>
           <li>Each bus can be delayed by up to half a second, to line up outputs that lag, such as a Bluetooth speaker. Contributed by SemmyEM.</li>
           <li>The fields in the strip and bus menus can be clicked and typed into.</li>

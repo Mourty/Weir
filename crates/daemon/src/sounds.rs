@@ -67,7 +67,7 @@ pub fn own_files(dir: &Path) -> Vec<(String, PathBuf)> {
 /// `SOUND_SECONDS_MAX` seconds, one or two channels kept (the first two of
 /// more). Says what is wrong in words for the person who picked the file.
 pub fn decode(path: &Path) -> Result<SoundData> {
-    let ext = sound_extension(path).context("Weir plays .wav, .ogg and .flac files")?;
+    let ext = sound_extension(path).context("Weir plays .wav, .mp3, .ogg and .flac files")?;
     let size = std::fs::metadata(path)
         .with_context(|| format!("could not read {}", path.display()))?
         .len();
@@ -88,13 +88,15 @@ pub fn decode_bytes(bytes: Vec<u8>, ext: &str) -> Result<SoundData> {
     let source = MediaSourceStream::new(Box::new(std::io::Cursor::new(bytes)), Default::default());
     let mut hint = Hint::new();
     hint.with_extension(ext);
+    // An MP3 starts with a few hundredths of a second of silence its
+    // encoder adds, and says how much; left in, a sound meant for a key
+    // going down would come late.
+    let options = FormatOptions {
+        enable_gapless: true,
+        ..Default::default()
+    };
     let probed = symphonia::default::get_probe()
-        .format(
-            &hint,
-            source,
-            &FormatOptions::default(),
-            &MetadataOptions::default(),
-        )
+        .format(&hint, source, &options, &MetadataOptions::default())
         .with_context(unreadable)?;
     let mut format = probed.format;
     let track = format
@@ -260,6 +262,23 @@ pub mod tests {
     }
 
     #[test]
+    fn an_mp3_decodes_without_its_encoders_silence() {
+        // 0.1 s of a 440 Hz tone at half level, 48 kHz, made with LAME,
+        // which notes the silence it adds in the file.
+        let bytes = include_bytes!("../testdata/beep.mp3").to_vec();
+        let s = decode_bytes(bytes, "mp3").unwrap();
+        assert_eq!((s.rate, s.channels.len()), (48_000, 1));
+        assert_eq!(s.frames(), 4800, "the added silence is trimmed");
+        let peak = s.channels[0].iter().fold(0f32, |m, x| m.max(x.abs()));
+        assert!((0.4..0.6).contains(&peak), "{peak}");
+        // The tone starts straight away.
+        let start = s.channels[0][..240]
+            .iter()
+            .fold(0f32, |m, x| m.max(x.abs()));
+        assert!(start > 0.3, "{start}");
+    }
+
+    #[test]
     fn too_long_or_not_a_sound_is_refused_in_words() {
         let long = vec![0i16; 8000 * 11];
         let e = decode_bytes(wav(8000, 1, &long), "wav").unwrap_err();
@@ -269,8 +288,11 @@ pub mod tests {
             format!("{e:#}").contains("could not read this ogg file"),
             "{e:#}"
         );
-        let e = decode(Path::new("/tmp/x.mp3")).unwrap_err();
-        assert!(format!("{e:#}").contains(".wav, .ogg and .flac"), "{e:#}");
+        let e = decode(Path::new("/tmp/x.m4a")).unwrap_err();
+        assert!(
+            format!("{e:#}").contains(".wav, .mp3, .ogg and .flac"),
+            "{e:#}"
+        );
     }
 
     #[test]

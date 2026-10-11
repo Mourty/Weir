@@ -141,8 +141,9 @@ impl Controller {
                 "give the sound file as a whole path, starting with /",
             ));
         }
-        let ext = sound_extension(from)
-            .ok_or_else(|| RpcError::invalid_params("Weir plays .wav, .ogg and .flac files"))?;
+        let ext = sound_extension(from).ok_or_else(|| {
+            RpcError::invalid_params("Weir plays .wav, .mp3, .ogg and .flac files")
+        })?;
         decode(from).map_err(|e| RpcError::application(format!("{e:#}")))?;
         let dir = &self.paths.sounds_dir;
         let to = dir.join(format!("{name}.{ext}"));

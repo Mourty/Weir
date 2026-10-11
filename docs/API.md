@@ -1591,7 +1591,7 @@ deleted afterwards, and the copy goes along when settings are
 | Parameter | Type | |
 |---|---|---|
 | `name` | string | Its name: letters, digits, spaces and `_ - .`, 64 characters at most, and not one a sound has already, Weir's own included, ignoring case. |
-| `path` | string | The sound file, a whole path: a `.wav`, `.ogg` or `.flac`, 10 seconds and 10 MB at most. One or two channels are kept (the first two of more), at any sample rate. |
+| `path` | string | The sound file, a whole path: a `.wav`, `.mp3`, `.ogg` or `.flac`, 10 seconds and 10 MB at most. One or two channels are kept (the first two of more), at any sample rate. |
 
 Returns the [SoundInfo](#soundinfo). A file Weir cannot read, or one too
 long, is an error that says so.
@@ -1724,7 +1724,7 @@ set, `device`, `color` and `insert`), `hotkey`
 (`hotkey`: a [Hotkey](#hotkey) without its id, and the name of its
 `group`), `hotkey_list` (`groups`: names and `enabled`; `order`:
 `{"hotkey": name}` and `{"group": name}`), `sound` (`name`, `extension`:
-`wav`, `ogg` or `flac`, and `data`: the sound file as it was added, in
+`wav`, `mp3`, `ogg` or `flac`, and `data`: the sound file as it was added, in
 base64), `eq_preset` (`name`, `bands`), `app_rules` (`rules`: `{"app":
 name, "strip": name}`), `preferences` (`window_look`, `mixer`,
 `hotkey_feedback`, `audio_timing` and `start_at_login`, each there only if

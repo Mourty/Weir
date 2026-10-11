@@ -16,7 +16,7 @@ pub const SOUND_SECONDS_MAX: f32 = 10.0;
 /// The largest sound file Weir takes, in bytes.
 pub const SOUND_FILE_MAX: u64 = 10 * 1024 * 1024;
 /// The kinds of sound file Weir reads, by extension.
-pub const SOUND_EXTENSIONS: [&str; 3] = ["wav", "ogg", "flac"];
+pub const SOUND_EXTENSIONS: [&str; 4] = ["wav", "mp3", "ogg", "flac"];
 /// The quietest and loudest hotkey sounds play, in dB.
 pub const SOUNDS_VOLUME_DB: (f32, f32) = (-40.0, 0.0);
 /// How loud hotkey sounds play unless set otherwise, in dB.
@@ -130,7 +130,7 @@ pub struct AddSoundParams {
     /// Its name: letters, digits, spaces and `_ - .`, 64 characters at
     /// most, and none of Weir's own sounds' names.
     pub name: String,
-    /// The sound file, as a whole path: `.wav`, `.ogg` or `.flac`, 10
+    /// The sound file, as a whole path: `.wav`, `.mp3`, `.ogg` or `.flac`, 10
     /// seconds and 10 MB at most. Weir keeps a copy, so the file can be
     /// moved or deleted afterwards.
     pub path: String,

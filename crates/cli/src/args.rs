@@ -718,7 +718,7 @@ pub struct HotkeyOpts {
 
 #[derive(Subcommand, Debug)]
 pub enum SoundCmd {
-    /// Add a sound of your own from a .wav, .ogg or .flac file, 10
+    /// Add a sound of your own from a .wav, .mp3, .ogg or .flac file, 10
     /// seconds at most. Weir keeps a copy.
     Add {
         /// Its name.

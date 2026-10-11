@@ -1306,7 +1306,7 @@ fn sounds_of_your_own_are_checked_kept_and_taken_out_of_hotkeys() {
         ("Click", path, RpcError::INVALID_PARAMS),
         ("a/b", path, RpcError::INVALID_PARAMS),
         ("Horn", "horn.wav", RpcError::INVALID_PARAMS),
-        ("Horn", "/tmp/horn.mp3", RpcError::INVALID_PARAMS),
+        ("Horn", "/tmp/horn.m4a", RpcError::INVALID_PARAMS),
         ("Horn", path, RpcError::APPLICATION),
     ] {
         assert_eq!(

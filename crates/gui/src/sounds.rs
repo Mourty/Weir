@@ -27,7 +27,7 @@ impl SoundSlot {
 }
 
 /// The file kinds Weir plays, for the file dialog.
-pub const FILTERS: &[(&str, &[&str])] = &[("Sounds", &["*.wav", "*.ogg", "*.flac"])];
+pub const FILTERS: &[(&str, &[&str])] = &[("Sounds", &["*.wav", "*.mp3", "*.ogg", "*.flac"])];
 
 /// A name for a sound from the file at `path`: its name without the
 /// extension, kept to what sound names allow, and numbered if `taken`.
@@ -126,7 +126,7 @@ pub fn picker(
             ui.separator();
             if ui
                 .selectable_label(false, "Add a sound…")
-                .on_hover_text("A .wav, .ogg or .flac file of your own, 10 seconds at most")
+                .on_hover_text("A .wav, .mp3, .ogg or .flac file of your own, 10 seconds at most")
                 .clicked()
             {
                 asked = Picked::Add;

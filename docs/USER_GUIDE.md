@@ -681,7 +681,7 @@ in a full-screen game.
   hotkey that repeats while held, **Each time it repeats**. Weir has four
   of its own: a click, a beep up, a beep down and a tick. **Play** beside a
   list lets you hear it. **Add a sound…** at the bottom of a list adds a
-  `.wav`, `.ogg` or `.flac` file of your own, up to 10 seconds, under the
+  `.wav`, `.mp3`, `.ogg` or `.flac` file of your own, up to 10 seconds, under the
   file's name, and picks it. The **×** beside a sound of your own in the
   list removes it from Weir, after saying which hotkeys play it; they
   play nothing there afterwards.

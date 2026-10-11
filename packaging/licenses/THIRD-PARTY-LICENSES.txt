@@ -8,7 +8,7 @@ license is in LICENSE.
 Apache License 2.0: 202 libraries
 MIT License: 76 libraries
 Unicode License v3: 19 libraries
-Mozilla Public License 2.0: 10 libraries
+Mozilla Public License 2.0: 11 libraries
 BSD 3-Clause "New" or "Revised" License: 5 libraries
 zlib License: 2 libraries
 BSD Zero Clause License: 1 library
@@ -7408,7 +7408,7 @@ THE SOFTWARE.
 --------------------------------------------------------------------------
 Mozilla Public License 2.0
 
-Used by: option-ext 0.2.0, symphonia-bundle-flac 0.5.5, symphonia-codec-pcm 0.5.5, symphonia-codec-vorbis 0.5.5, symphonia-core 0.5.5, symphonia-format-ogg 0.5.5, symphonia-format-riff 0.5.5, symphonia-metadata 0.5.5, symphonia-utils-xiph 0.5.5, symphonia 0.5.5
+Used by: option-ext 0.2.0, symphonia-bundle-flac 0.5.5, symphonia-bundle-mp3 0.5.5, symphonia-codec-pcm 0.5.5, symphonia-codec-vorbis 0.5.5, symphonia-core 0.5.5, symphonia-format-ogg 0.5.5, symphonia-format-riff 0.5.5, symphonia-metadata 0.5.5, symphonia-utils-xiph 0.5.5, symphonia 0.5.5
 --------------------------------------------------------------------------
 
 Mozilla Public License Version 2.0

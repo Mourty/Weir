@@ -385,7 +385,7 @@ names, or the first bus's.
 | Command | |
 |---|---|
 | `weirctl sounds` | List the sounds, and where and how loud they play. |
-| `weirctl sound add NAME FILE` | Add a sound of your own from a `.wav`, `.ogg` or `.flac` file, 10 seconds at most. Weir keeps a copy, and exports it with your settings. |
+| `weirctl sound add NAME FILE` | Add a sound of your own from a `.wav`, `.mp3`, `.ogg` or `.flac` file, 10 seconds at most. Weir keeps a copy, and exports it with your settings. |
 | `weirctl sound remove NAME` | Remove a sound of your own. Hotkeys that played it play nothing there any more. |
 | `weirctl sound play NAME` | Play a sound where hotkeys' sounds play, to hear it. |
 

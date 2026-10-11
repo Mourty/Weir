@@ -411,8 +411,8 @@ impl App {
         if own.is_empty() {
             explain(
                 ui,
-                "Add .wav, .ogg or .flac files of your own, 10 seconds at most, for hotkeys to \
-                 play. Weir keeps a copy, and exports them with your settings.",
+                "Add .wav, .mp3, .ogg or .flac files of your own, 10 seconds at most, for \
+                 hotkeys to play. Weir keeps a copy, and exports them with your settings.",
             );
         }
         for sound in own {
@@ -455,7 +455,7 @@ impl App {
         }
         if ui
             .button("Add a sound…")
-            .on_hover_text("A .wav, .ogg or .flac file, 10 seconds at most")
+            .on_hover_text("A .wav, .mp3, .ogg or .flac file, 10 seconds at most")
             .clicked()
         {
             self.open_add_sound(ui.ctx(), None);

@@ -121,7 +121,9 @@ pub fn export(c: &mut Client, a: ExportArgs, json: bool) -> Result<()> {
     match &result.files[..] {
         [one] if result.path.ends_with(one.as_str()) => println!("Saved {}", result.path),
         files => {
-            println!("Saved {} files in {}:", files.len(), result.path);
+            let n = files.len();
+            let s = if n == 1 { "" } else { "s" };
+            println!("Saved {n} file{s} in {}:", result.path);
             for f in files {
                 println!("  {f}");
             }

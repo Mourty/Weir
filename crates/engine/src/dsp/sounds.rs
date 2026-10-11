@@ -268,8 +268,9 @@ pub fn builtin_sound(name: &str) -> Option<SoundData> {
     let samples = match name {
         "Click" => knock(1800.0, 2.5, 0.7),
         "Tick" => knock(1200.0, 1.5, 0.35),
-        "Beep up" => tones(&[(660.0, 70.0), (880.0, 90.0)], 0.35),
-        "Beep down" => tones(&[(880.0, 70.0), (660.0, 90.0)], 0.35),
+        // A fourth apart, from A4; a fifth higher sounded shrill.
+        "Beep up" => tones(&[(440.0, 70.0), (587.0, 90.0)], 0.35),
+        "Beep down" => tones(&[(587.0, 70.0), (440.0, 90.0)], 0.35),
         _ => return None,
     };
     Some(SoundData {

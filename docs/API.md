@@ -1067,7 +1067,7 @@ loaded alone is the same as one loaded with a scene that mentions nothing,
 so everything starts at its default; give `load_setup` a scene to load
 with it. A scene with a mix for strips or buses the mixer does not have
 still loads; those parts are passed over. The [Library](#library) lists
-who each scene and setup has, to tell beforehand.
+which strips and buses each scene and setup has, to tell beforehand.
 
 Names are up to 64 letters, digits, spaces, `_`, `-` and `.`, and cannot
 start with a dot. Saving under a name that is taken replaces it. Scenes are
@@ -2245,10 +2245,10 @@ Volume controls show them on a cubic scale: percent is
 ```
 
 The saved scenes and setups, and the one of each last loaded or saved, if
-any. `scene_members` says who each scene has a mix for, and
-`setup_members` the strips and buses of each setup, by name: a scene's
-strips and buses that a setup lacks are passed over when the two load
-together (Podcast, above).
+any. `scene_members` says which strips and buses each scene has a mix
+for, and `setup_members` the strips and buses of each setup, by name: a
+scene's strips and buses that a setup lacks are passed over when the two
+load together (Podcast, above).
 
 ### Hotkey
 

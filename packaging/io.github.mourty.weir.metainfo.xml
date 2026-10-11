@@ -30,7 +30,10 @@
       <li>Noise suppression, a noise gate, a compressor and a 16-band equalizer for voices</li>
       <li>Ducking, which turns the music down while you talk, and a safety limiter on every output</li>
       <li>Surround sound up to 7.1</li>
+      <li>External effects: send a strip or bus through another program, such as Carla, and back</li>
+      <li>Hotkeys for anything the mixer does, such as push to talk</li>
       <li>Scenes, setups, rules for where applications go, and undo</li>
+      <li>Export your settings to a file, to keep or to move to another computer</li>
       <li>A command line and a documented protocol, for scripts and stream decks</li>
     </ul>
   </description>
@@ -66,6 +69,19 @@
   </provides>
 
   <releases>
+    <release version="1.2.0" date="2026-10-10">
+      <description>
+        <p>Hotkeys, settings you can take to another computer, and setups and scenes that each do one thing.</p>
+        <ul>
+          <li>Hotkeys: keyboard shortcuts for anything the mixer does, such as push to talk, muting a strip or loading a scene. They work with the window closed and in full-screen games, can be put in order and in groups, and show in Plasma's System Settings.</li>
+          <li>Export your scenes, setups, hotkeys, equalizer presets, app rules and preferences to a file, and import all of them or just a few, on this computer or another.</li>
+          <li>A setup is now which strips and buses there are, and a scene how they sound. Load a setup alone, or with any scene from the Setups menu. Each old setup's mix becomes a scene of the same name.</li>
+          <li>Each bus can be delayed by up to half a second, to line up outputs that lag, such as a Bluetooth speaker. Contributed by SemmyEM.</li>
+          <li>The fields in the strip and bus menus can be clicked and typed into.</li>
+          <li>App rules keep their strip by name, so a rule waits for a setup that has its strip.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.1.0" date="2026-10-01">
       <description>
         <p>External effects: a strip or bus can send its sound to another program, such as Carla or EasyEffects, for effects Weir does not have, and take it back to carry on through the mix.</p>

@@ -55,6 +55,9 @@ pub struct Editor {
     pub export: bool,
     /// Asked to add a sound from a file, for one of its sounds.
     pub wants_sound: Option<SoundSlot>,
+    /// A sound of the person's own they asked to remove from Weir, while
+    /// they say whether to.
+    removing: Option<String>,
 }
 
 impl Editor {
@@ -84,6 +87,7 @@ impl Editor {
             closed: false,
             export: false,
             wants_sound: None,
+            removing: None,
         }
     }
 
@@ -115,6 +119,7 @@ impl Editor {
             closed: false,
             export: false,
             wants_sound: None,
+            removing: None,
         }
     }
 
@@ -358,13 +363,36 @@ impl Editor {
                         let current = slot.of(&mut self.sounds);
                         let asked =
                             sounds::picker(ui, &salt, current, &state.hotkeys.sounds, actions);
-                        if let sounds::Picked::Add = asked {
-                            self.wants_sound = Some(slot);
+                        match asked {
+                            sounds::Picked::Add => self.wants_sound = Some(slot),
+                            sounds::Picked::Remove(name) => self.removing = Some(name),
+                            sounds::Picked::Nothing => {}
                         }
                     });
                     ui.end_row();
                 }
             });
+        if let Some(name) = self.removing.clone() {
+            let users = sounds::played_by(&state.hotkeys.hotkeys, &name);
+            let question = format!("Remove {name} from Weir?");
+            let answer = ui
+                .horizontal_wrapped(|ui| sounds::ask_remove(ui, &question, &users))
+                .inner;
+            match answer {
+                Some(true) => {
+                    actions.push(Request::RemoveSound(NameParams { name: name.clone() }));
+                    // This hotkey stops playing it too, saved or not.
+                    for s in self.sounds.names_mut() {
+                        if s.as_deref().is_some_and(|s| s.eq_ignore_ascii_case(&name)) {
+                            *s = None;
+                        }
+                    }
+                    self.removing = None;
+                }
+                Some(false) => self.removing = None,
+                None => {}
+            }
+        }
         if !repeats && self.sounds.repeat.is_some() {
             // Kept, but it only plays when the hotkey repeats.
             ui.label(

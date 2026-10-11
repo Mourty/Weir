@@ -429,33 +429,29 @@ impl App {
                         name: sound.name.clone(),
                     }));
                 }
-                let users: Vec<&str> = state
-                    .hotkeys
-                    .hotkeys
-                    .iter()
-                    .filter(|h| h.sounds.named().any(|(_, s)| s == sound.name))
-                    .map(|h| h.name.as_str())
-                    .collect();
-                if self.sound_remove.as_deref() == Some(sound.name.as_str()) {
-                    let what = match users.len() {
-                        0 => "Remove it?".to_string(),
-                        1 => format!("Remove it? '{}' plays it.", users[0]),
-                        n => format!("Remove it? {n} hotkeys play it."),
-                    };
-                    ui.label(RichText::new(what).color(theme::p().warning));
-                    if ui.small_button("Remove").clicked() {
+                if ui.small_button("Remove…").clicked() {
+                    self.sound_remove = Some(sound.name.clone());
+                }
+            });
+            // Asked on a line of its own, wrapped, so a long hotkey name
+            // never widens the window.
+            if self.sound_remove.as_deref() == Some(sound.name.as_str()) {
+                let users = crate::sounds::played_by(&state.hotkeys.hotkeys, &sound.name);
+                let question = format!("Remove {} from Weir?", sound.name);
+                let answer = ui
+                    .horizontal_wrapped(|ui| crate::sounds::ask_remove(ui, &question, &users))
+                    .inner;
+                match answer {
+                    Some(true) => {
                         self.actions.push(Request::RemoveSound(NameParams {
                             name: sound.name.clone(),
                         }));
                         self.sound_remove = None;
                     }
-                    if ui.small_button("Keep").clicked() {
-                        self.sound_remove = None;
-                    }
-                } else if ui.small_button("Remove…").clicked() {
-                    self.sound_remove = Some(sound.name.clone());
+                    Some(false) => self.sound_remove = None,
+                    None => {}
                 }
-            });
+            }
         }
         if ui
             .button("Add a sound…")

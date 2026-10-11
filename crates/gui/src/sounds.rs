@@ -3,7 +3,7 @@
 //! to hear one and to add another from a file.
 
 use crate::theme;
-use egui::{RichText, Ui};
+use egui::{vec2, Align, Atom, Layout, RichText, Ui};
 use std::path::Path;
 use weir_protocol::*;
 
@@ -66,6 +66,8 @@ pub enum Picked {
     Nothing,
     /// Asked to add a sound from a file.
     Add,
+    /// Asked to remove the sound of their own by this name from Weir.
+    Remove(String),
 }
 
 /// A list to pick one of the sounds in `sounds`, or none, with a button to
@@ -93,8 +95,33 @@ pub fn picker(
             ui.selectable_value(current, None, "None");
             let (own, weirs): (Vec<&SoundInfo>, Vec<&SoundInfo>) =
                 sounds.iter().partition(|s| !s.builtin);
-            for s in weirs.into_iter().chain(own) {
+            for s in weirs {
                 ui.selectable_value(current, Some(s.name.clone()), &s.name);
+            }
+            // Removed where they were added: a sound of your own gets a ×
+            // at the end of its row, which asks first.
+            for s in own {
+                ui.horizontal(|ui| {
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        if ui
+                            .small_button("×")
+                            .on_hover_text(format!("Remove {} from Weir…", s.name))
+                            .clicked()
+                        {
+                            asked = Picked::Remove(s.name.clone());
+                        }
+                        // The rest of the row, its name at the left like the
+                        // rows above.
+                        let picked = current.as_deref() == Some(s.name.as_str());
+                        let size = vec2(ui.available_width(), ui.spacing().interact_size.y);
+                        let row = egui::Button::selectable(picked, (s.name.as_str(), Atom::grow()))
+                            .truncate()
+                            .min_size(size);
+                        if ui.add(row).clicked() {
+                            *current = Some(s.name.clone());
+                        }
+                    });
+                });
             }
             ui.separator();
             if ui
@@ -115,6 +142,36 @@ pub fn picker(
         }
     }
     asked
+}
+
+/// The names of the hotkeys in `hotkeys` that play the sound called
+/// `name`.
+pub fn played_by<'a>(hotkeys: &'a [Hotkey], name: &str) -> Vec<&'a str> {
+    hotkeys
+        .iter()
+        .filter(|h| h.sounds.named().any(|(_, s)| s.eq_ignore_ascii_case(name)))
+        .map(|h| h.name.as_str())
+        .collect()
+}
+
+/// Ask whether to remove a sound from Weir: `question`, then which of the
+/// hotkeys `users` play it, and Remove and Keep. `Some(true)` once Remove
+/// is clicked, `Some(false)` once Keep is, `None` until then.
+pub fn ask_remove(ui: &mut Ui, question: &str, users: &[&str]) -> Option<bool> {
+    let who = match users {
+        [] => String::new(),
+        [one] => format!(" '{one}' plays it."),
+        more => format!(" {} hotkeys play it.", more.len()),
+    };
+    ui.label(RichText::new(format!("{question}{who}")).color(theme::p().warning))
+        .on_hover_text("Hotkeys that play it play nothing there afterwards.");
+    if ui.small_button("Remove").clicked() {
+        return Some(true);
+    }
+    if ui.small_button("Keep").clicked() {
+        return Some(false);
+    }
+    None
 }
 
 #[cfg(test)]

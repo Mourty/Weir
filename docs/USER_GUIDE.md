@@ -682,7 +682,9 @@ in a full-screen game.
   of its own: a click, a beep up, a beep down and a tick. **Play** beside a
   list lets you hear it. **Add a sound…** at the bottom of a list adds a
   `.wav`, `.ogg` or `.flac` file of your own, up to 10 seconds, under the
-  file's name, and picks it.
+  file's name, and picks it. The **×** beside a sound of your own in the
+  list removes it from Weir, after saying which hotkeys play it; they
+  play nothing there afterwards.
 * **Show what it did when pressed**: after each press, Weir shows what the
   hotkey left behind, such as "Mic muted", or a bar for a volume as it
   goes up or down. Untick it for a hotkey you would rather keep quiet.
@@ -852,7 +854,7 @@ or its own volume, is not part of it. It lasts until Weir stops.
     pick is unplugged, sounds play on the first bus's device until it is
     back.
   * **Sound volume**, with **Test** to hear a click.
-  * **Your sounds**: the sounds you added, to **Play** or **Remove**
+  * **Your sounds**: the sounds you added, to **Play** or **Remove…**
     (it says which hotkeys play one first), and **Add a sound…**.
 * **Buses**: how much of the list of strips feeding each bus to show:
   hidden, as many as fit, or the full list, scrolling.

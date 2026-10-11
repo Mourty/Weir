@@ -14,7 +14,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::io::{Cursor, Read, Write};
 use std::path::Path;
-use weir_protocol::{EqBand, ExportKind, Hotkey, Scene, Setup, Startup, TrayIcon, EXPORT_FORMAT};
+use weir_protocol::{
+    EqBand, ExportKind, Hotkey, HotkeyPopup, Scene, Setup, Startup, TrayIcon, EXPORT_FORMAT,
+};
 
 /// The manifest's name in a `.zip`: what is in it, and who wrote it.
 pub const MANIFEST: &str = "weir-export.json";
@@ -39,6 +41,7 @@ pub fn folder(kind: ExportKind) -> &'static str {
         ExportKind::Scene => "scenes",
         ExportKind::Setup => "setups",
         ExportKind::Hotkey => "hotkeys",
+        ExportKind::Sound => "sounds",
         ExportKind::EqPreset => "eq-presets",
         ExportKind::AppRules => "app-rules",
         ExportKind::Preferences => "preferences",
@@ -100,6 +103,15 @@ pub enum PlaceFile {
     Group(String),
 }
 
+/// A sound of the user's own: its file as it came, in base64, and the kind
+/// of file it is, by its extension.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SoundFile {
+    pub name: String,
+    pub extension: String,
+    pub data: String,
+}
+
 /// An equalizer preset.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EqPresetFile {
@@ -132,6 +144,18 @@ pub struct PreferencesFile {
     pub audio_timing: Option<AudioTiming>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub start_at_login: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hotkey_feedback: Option<FeedbackPrefs>,
+}
+
+/// What hotkeys show, and where and how loud their sounds play: the
+/// device by `node.name`, left out for the first bus's.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FeedbackPrefs {
+    pub popup: HotkeyPopup,
+    pub sounds_volume_db: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sounds_device: Option<String>,
 }
 
 /// How the mixer behaves.
@@ -176,6 +200,7 @@ pub enum Body {
     Setup(SetupFile),
     Hotkey(HotkeyFile),
     HotkeyList(HotkeyListFile),
+    Sound(SoundFile),
     EqPreset(EqPresetFile),
     AppRules(AppRulesFile),
     Preferences(PreferencesFile),
@@ -220,6 +245,7 @@ pub fn write_file(body: &Body, stamp: &Stamp) -> String {
         Body::Setup(b) => out("setup", b, stamp),
         Body::Hotkey(b) => out("hotkey", b, stamp),
         Body::HotkeyList(b) => out("hotkey_list", b, stamp),
+        Body::Sound(b) => out("sound", b, stamp),
         Body::EqPreset(b) => out("eq_preset", b, stamp),
         Body::AppRules(b) => out("app_rules", b, stamp),
         Body::Preferences(b) => out("preferences", b, stamp),
@@ -295,6 +321,7 @@ pub fn read_file(path: &str, text: &str) -> ReadFile {
         "setup" => parse(value).map(Body::Setup),
         "hotkey" => parse(value).map(Body::Hotkey),
         "hotkey_list" => parse(value).map(Body::HotkeyList),
+        "sound" => parse(value).map(Body::Sound),
         "eq_preset" => parse(value).map(Body::EqPreset),
         "app_rules" => parse(value).map(Body::AppRules),
         "preferences" => parse(value).map(Body::Preferences),

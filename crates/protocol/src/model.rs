@@ -1193,6 +1193,16 @@ pub struct Settings {
     /// more CPU.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quantum: Option<u32>,
+    /// What pressing a hotkey shows, unless the hotkey says no popup.
+    pub hotkey_popup: crate::sounds::HotkeyPopup,
+    /// The device hotkeys' sounds play on, by `node.name`, or `None` for
+    /// the device of the first bus that plays to one. While the device is
+    /// not plugged in, sounds play there too. Weir plays them straight to
+    /// the device, past every bus, so nothing recording a bus hears them.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sounds_device: Option<String>,
+    /// How loud hotkeys' sounds play, from -40 to 0 dB.
+    pub sounds_volume_db: f32,
 }
 
 impl Default for Settings {
@@ -1206,6 +1216,9 @@ impl Default for Settings {
             solo: SoloMode::default(),
             sample_rate: None,
             quantum: None,
+            hotkey_popup: crate::sounds::HotkeyPopup::default(),
+            sounds_device: None,
+            sounds_volume_db: crate::sounds::SOUNDS_VOLUME_DEFAULT_DB,
         }
     }
 }

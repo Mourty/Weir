@@ -39,13 +39,15 @@ lets the rest flow on.*
 * **Hotkeys** for anything the mixer does: push to talk, mute, turn the
   music down, load a scene. They work with the window closed and in
   full-screen games, and on KDE Plasma they sit in System Settings beside
-  your other shortcuts.
+  your other shortcuts. A beep or a sound of your own, and the desktop's
+  own volume popup, tell you a key worked, and your stream never hears
+  the beep.
 * **Setups and scenes.** A setup keeps which strips and buses you have,
   a scene how they sound, and any setup loads with any scene. **Rules**
   put applications on the right strip as they start, and every change
   can be **undone**.
-* **Export and import** your scenes, setups, hotkeys and preferences, to
-  keep them safe or take them to another computer.
+* **Export and import** your scenes, setups, hotkeys and their sounds, and
+  preferences, to keep them safe or take them to another computer.
 * **Scriptable.** `weirctl` does everything the window does from a
   terminal or a script, and a documented protocol lets any program, such
   as a Stream Deck plugin, do the same.

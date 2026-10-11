@@ -7,11 +7,13 @@
 //!   the virtual devices, the registry mirror and the link manager.
 //!
 //! The daemon sees only [`Engine`], which starts the PipeWire thread, and
-//! the [`EngineHandle`] it returns.
+//! the [`EngineHandle`] it returns, and hands it sounds to play as
+//! [`SoundBank`]s, Weir's own made by [`builtin_sound`].
 
 #![warn(missing_docs)]
 
 mod dsp;
 mod pw;
 
+pub use dsp::sounds::{builtin_sound, SoundBank, SoundData};
 pub use pw::{Engine, EngineError, EngineEvent, EngineHandle, EngineOptions};

@@ -404,6 +404,8 @@ impl Simple {
             on_release: OnRelease::Nothing,
             release_steps: Vec::new(),
             repeat_ms: None,
+            sounds: HotkeySounds::default(),
+            popup: true,
         };
         self.apply(&mut h);
         h

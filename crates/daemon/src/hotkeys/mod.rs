@@ -6,8 +6,10 @@
 //!   undo step per press.
 //! * [`keys`]: getting key presses from the desktop or X11.
 //! * [`restore`]: finding and setting back only what a hotkey changed.
+//! * [`popup`]: showing what a press did.
 
 pub mod keys;
+pub mod popup;
 mod restore;
 mod runner;
 
@@ -19,6 +21,7 @@ use tokio::sync::mpsc::UnboundedSender;
 
 /// Start the runner and the keys, for as long as the daemon runs.
 pub fn start(controller: &Arc<Controller>) {
+    controller.set_popups(popup::Popups::start());
     let tx = start_runner(controller);
     tokio::spawn(keys::run(controller.clone(), tx));
 }

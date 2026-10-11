@@ -60,6 +60,8 @@ fn allowed_in_hotkey(req: &Request) -> bool {
             | Request::ExportSettings(_)
             | Request::InspectImport(_)
             | Request::ImportSettings(_)
+            | Request::AddSound(_)
+            | Request::RemoveSound(_)
     )
 }
 
@@ -152,12 +154,17 @@ impl Controller {
             }
         }
         problems.extend(target_problems(&hotkeys, &inner.mixer));
+        let keys = inner.keys_status.clone();
+        let sounds = inner.sounds.infos();
+        drop(inner);
+        problems.extend(self.sound_problems(&hotkeys));
         HotkeysInfo {
             hotkeys,
             groups,
             order,
-            keys: inner.keys_status.clone(),
+            keys,
             problems,
+            sounds,
         }
     }
 
@@ -233,15 +240,17 @@ impl Controller {
     /// the other hotkeys: its name trimmed, its keys parsed and written one
     /// way, its steps checked, with their strips and buses by name.
     pub(super) fn checked_hotkey(&self, h: Hotkey) -> Result<Hotkey, RpcError> {
-        self.checked_hotkey_with(h, Vec::new())
+        self.checked_hotkey_with(h, Vec::new(), &[])
     }
 
     /// [`Self::checked_hotkey`], finding strips and buses in the setups
-    /// `extra` too: setups in a file being imported.
+    /// `extra` too, and sounds among `sounds`: setups and sounds in a file
+    /// being imported.
     pub(super) fn checked_hotkey_with(
         &self,
         mut h: Hotkey,
         extra: Vec<MixerState>,
+        sounds: &[String],
     ) -> Result<Hotkey, RpcError> {
         let mixers = Mixers::new(self.mixer(), &self.paths.setups_dir, extra);
         h.name = h.name.trim().to_string();
@@ -290,6 +299,7 @@ impl Controller {
                 )));
             }
         }
+        self.check_sounds(&mut h, sounds)?;
         Ok(h)
     }
 

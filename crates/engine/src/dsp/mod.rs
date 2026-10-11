@@ -15,6 +15,7 @@
 //! * [`handoff`]: what comes back from external effects, on its way to
 //!   the engine.
 //! * [`process`]: one cycle of mixing.
+//! * [`sounds`]: the clicks and beeps hotkeys play.
 //! * [`analyzer`]: the equalizer's spectrum, computed off the real-time
 //!   thread.
 
@@ -24,6 +25,7 @@ pub mod handoff;
 pub mod mapping;
 pub mod params;
 pub mod process;
+pub mod sounds;
 
 pub use params::{build_rt_params, PortPtr, PortResolver, RtParams};
 pub use process::Processor;

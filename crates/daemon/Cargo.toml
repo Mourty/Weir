@@ -31,3 +31,5 @@ x11rb.workspace = true
 futures-util.workspace = true
 x11rb-protocol.workspace = true
 zip.workspace = true
+symphonia.workspace = true
+base64.workspace = true

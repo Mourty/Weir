@@ -90,7 +90,7 @@ pub fn export(c: &mut Client, a: ExportArgs, json: bool) -> Result<()> {
             choice(
                 p,
                 "a part of the preferences",
-                "window-look, mixer, audio-timing and start-at-login",
+                "window-look, mixer, hotkey-feedback, audio-timing and start-at-login",
             )
         })
         .collect::<Result<_>>()?;
@@ -108,6 +108,7 @@ pub fn export(c: &mut Client, a: ExportArgs, json: bool) -> Result<()> {
                 Err(_) => HotkeyKey::Name(h.clone()),
             })
             .collect(),
+        sounds: a.sounds,
         eq_presets: a.eq_presets,
         app_rules: a.app_rules,
         preferences,
@@ -120,7 +121,9 @@ pub fn export(c: &mut Client, a: ExportArgs, json: bool) -> Result<()> {
     match &result.files[..] {
         [one] if result.path.ends_with(one.as_str()) => println!("Saved {}", result.path),
         files => {
-            println!("Saved {} files in {}:", files.len(), result.path);
+            let n = files.len();
+            let s = if n == 1 { "" } else { "s" };
+            println!("Saved {n} file{s} in {}:", result.path);
             for f in files {
                 println!("  {f}");
             }

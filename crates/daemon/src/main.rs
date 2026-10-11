@@ -19,6 +19,7 @@ mod history;
 mod hotkeys;
 mod login;
 mod server;
+mod sounds;
 mod transfer;
 mod tray;
 
@@ -122,6 +123,7 @@ async fn main() -> Result<()> {
     ));
     controller.restore_current(loaded.scene, loaded.setup);
     controller.apply_engine_options();
+    controller.push_sounds();
     controller.refresh_start_at_login();
     if first_run {
         controller.save_if_dirty();

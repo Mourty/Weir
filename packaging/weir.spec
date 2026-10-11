@@ -95,13 +95,17 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/io.github.mour
 %doc %{_datadir}/doc/%{name}/docs/
 
 %changelog
-* Sat Oct 10 2026 Mourty <Mourt2@proton.me> - 1.2.0-1
+* Sun Oct 11 2026 Mourty <Mourt2@proton.me> - 1.2.0-1
 - Add hotkeys: keyboard shortcuts for anything the mixer does, such as
   push to talk, muting or loading a scene, that work with the window
   closed and in full-screen games, in order and in groups, and listed in
   Plasma's System Settings.
+- Let hotkeys tell you they worked: a beep, a click or a sound of your
+  own, played on a device you choose and never heard by your stream,
+  and the desktop's own volume popup, such as "Mic muted".
 - Export settings to a file and import them, all or a few at a time:
-  scenes, setups, hotkeys, equalizer presets, app rules and preferences.
+  scenes, setups, hotkeys and their sounds, equalizer presets, app rules
+  and preferences.
 - Part setups from scenes: a setup is which strips and buses there are,
   a scene is how they sound. A setup loads alone or with any scene, and
   each old setup's mix becomes a scene of the same name.

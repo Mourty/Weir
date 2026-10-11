@@ -9,12 +9,14 @@
 //!    after the fader.
 //! 3. Each bus folds to mono if asked, runs its equalizer, applies its
 //!    fader, then its limiter and its delay, and meters what comes out.
+//! 4. Sounds hotkeys play go to the engine's own `hotkey_sounds` output.
 //!
 //! External effects go out and come back wherever they sit in a strip's or
 //! bus's chain.
 
 use super::fx::{self, FxScratch, StripFx};
 use super::params::{RtBus, RtInsert, RtParams, RtSend, RtStrip, MAX_QUANTUM};
+use super::sounds::Voices;
 use nnnoiseless::DenoiseState;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -52,6 +54,8 @@ pub struct Processor {
     /// kept, never freed there. See [`fx::warm_up_denoise`].
     warm_up: Box<DenoiseState<'static>>,
     warmed_up: bool,
+    /// The sounds playing.
+    voices: Voices,
 }
 
 impl Default for Processor {
@@ -79,6 +83,7 @@ impl Processor {
             fx_scratch: FxScratch::new(),
             warm_up: fx::new_warm_up_state(),
             warmed_up: false,
+            voices: Voices::default(),
         }
     }
 
@@ -127,6 +132,8 @@ impl Processor {
         }
         let ramp = ramp_samples.max(1);
 
+        self.voices.take_requests(&p.sounds, &p.sound_queue);
+
         for (bi, bus) in p.buses.iter().enumerate() {
             for c in 0..bus.ports.len() {
                 let out = output(bi, c);
@@ -147,6 +154,15 @@ impl Processor {
         }
         for (bi, bus) in p.buses.iter().enumerate() {
             self.finish_bus(bus, n, &|c| output(bi, c), ramp, rate);
+        }
+        let [left, right] = [p.sound_bufs[0].get(), p.sound_bufs[1].get()];
+        for out in [left, right] {
+            if !out.is_null() {
+                std::ptr::write_bytes(out, 0, n);
+            }
+        }
+        if self.voices.playing() {
+            self.voices.mix_into(&p.sounds, n, rate, left, right);
         }
     }
 
@@ -1188,6 +1204,47 @@ mod tests {
             .iter()
             .enumerate()
             .all(|(i, v)| i == at || close(*v, 0.0)));
+    }
+
+    #[test]
+    fn hotkey_sounds_play_on_their_own_output_and_no_bus() {
+        use crate::dsp::sounds::{PlayRequest, SoundBank, SoundData};
+        let st = mic_only();
+        let mut params = build_rt_params(&st, SoloMode::Exclusive, &NoPorts, None);
+        Arc::get_mut(&mut params).unwrap().sounds = Arc::new(SoundBank {
+            sounds: vec![SoundData {
+                rate: 48_000,
+                channels: vec![vec![1.0; 100]],
+            }],
+        });
+        let mut rig = Rig::new(&st, 480);
+        rig.settle(&params);
+        // PipeWire's buffers hold whatever was in them last.
+        let mut left = vec![9.0f32; 480];
+        let mut right = vec![9.0f32; 480];
+        unsafe {
+            params.sound_bufs[0].set(left.as_mut_ptr());
+            params.sound_bufs[1].set(right.as_mut_ptr());
+        }
+        assert!(params.sound_queue.push(PlayRequest {
+            sound: 0,
+            gain: 0.25,
+        }));
+        rig.run(&params, 8);
+        for side in [&left, &right] {
+            assert!(
+                side[..100].iter().all(|&v| close(v, 0.25)),
+                "{:?}",
+                &side[..4]
+            );
+            assert!(side[100..].iter().all(|&v| v == 0.0), "silence after it");
+        }
+        assert!(
+            rig.outputs[0][0].iter().all(|&v| close(v, 0.0)),
+            "not in the bus"
+        );
+        rig.run(&params, 8);
+        assert!(left.iter().all(|&v| v == 0.0), "over, and cleared");
     }
 
     #[test]

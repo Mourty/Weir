@@ -210,6 +210,9 @@ unsafe extern "C" fn on_process(data: *mut c_void, position: *mut spa_sys::spa_i
         }
         resolve_insert(&bus.insert);
     }
+    for (cell, &port) in params.sound_bufs.iter().zip(&params.sound_ports) {
+        cell.set(buffer(port));
+    }
 
     let input = |si: usize, c: usize| -> *const f32 { params.strips[si].in_bufs[c].get() };
     let output = |bi: usize, c: usize| -> *mut f32 { params.buses[bi].out_bufs[c].get() };

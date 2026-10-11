@@ -13,8 +13,11 @@ presets, change settings and add hotkeys:
 
     WEIR_HOTKEYS=none weir-daemon --config /tmp/weir-test/config.toml ...
 
-Each example starts with one hotkey, "Mute mic", with no keys, and one empty
-group of hotkeys, "Streaming".
+Each example starts with one hotkey, "Mute mic", with no keys, one empty
+group of hotkeys, "Streaming", and one sound of the user's own, "Airhorn".
+Examples run in a folder holding airhorn.wav and applause.wav, and hotkeys'
+sounds play on the first playback device, so there must be one: a null sink
+will do.
 
 The application examples need an application called Firefox to be playing,
 and use 87 for its id; the check puts in its real one. For instance:
@@ -34,12 +37,15 @@ with anything: an example passes when it runs without an error.
 
 import argparse
 import json
+import math
 import os
 import re
 import signal
+import struct
 import subprocess
 import sys
 import tempfile
+import wave
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -51,6 +57,7 @@ import weir  # noqa: E402
 BASELINE = "docs-check-baseline"
 BASELINE_HOTKEY = {"name": "Mute mic", "steps": [
     {"method": "set_strip", "params": {"id": "Mic", "mute": "toggle"}}]}
+BASELINE_SOUND = "Airhorn"
 FOREVER_SECONDS = 2
 TIMEOUT_SECONDS = 20
 
@@ -80,20 +87,42 @@ def blocks(markdown):
         i += 1
 
 
-def reset(mixer):
-    """Put the mixer, the settings, the rules and the hotkeys back as they
-    were."""
+def write_sound(path, hz, seconds):
+    """A short tone as a .wav, for the examples that add sounds."""
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(48000)
+        frames = int(48000 * seconds)
+        w.writeframes(b"".join(
+            struct.pack("<h", int(8000 * math.sin(2 * math.pi * hz * i / 48000)))
+            for i in range(frames)))
+
+
+def reset(mixer, sounds_device, workdir):
+    """Put the mixer, the settings, the rules, the hotkeys and the sounds back
+    as they were."""
     mixer.batch(
         ("load_setup", {"name": BASELINE}),
         ("load_scene", {"name": BASELINE}),
         ("set_app_rules", {"rules": []}),
         ("set_settings", {"solo": "exclusive", "sample_rate": 0, "quantum": 0,
                           "meter_rate_hz": 30, "startup": "window",
-                          "tray_icon": "color"}),
+                          "tray_icon": "color", "hotkey_popup": "popup",
+                          "sounds_device": sounds_device, "sounds_volume_db": -12}),
     )
     clear_hotkeys(mixer)
+    clear_sounds(mixer)
+    mixer.call("add_sound", name=BASELINE_SOUND, path=str(workdir / "airhorn.wav"))
     mixer.call("set_hotkey", **BASELINE_HOTKEY)
     mixer.call("add_hotkey_group", name="Streaming")
+
+
+def clear_sounds(mixer):
+    """Remove every sound of the user's own."""
+    for sound in mixer.call("list_hotkeys").get("sounds", []):
+        if not sound.get("builtin"):
+            mixer.call("remove_sound", name=sound["name"])
 
 
 def clear_hotkeys(mixer):
@@ -188,6 +217,11 @@ def main():
     firefox = weir.find(mixer.call("list_apps"), "Firefox")
     if firefox is None:
         sys.exit("Play something as Firefox first; see the top of this file.")
+    sink = next((d for d in mixer.call("list_devices") if d["kind"] == "sink"), None)
+    if sink is None:
+        sys.exit("Make a playback device for hotkeys' sounds first; see the top of this file.")
+    write_sound(runtime / "airhorn.wav", 440, 0.5)
+    write_sound(runtime / "applause.wav", 330, 0.8)
     mixer.call("save_setup", name=BASELINE)
     mixer.call("save_scene", name=BASELINE)
 
@@ -197,16 +231,18 @@ def main():
             if language not in ("sh", "python", "js", "json"):
                 continue
             count += 1
-            reset(mixer)
+            reset(mixer, sink["name"], runtime)
             problem = check(language, marker, code, firefox["id"], env, runtime)
             if problem:
                 failures += 1
                 print(f"FAIL {doc}:{line} ({heading}, {language})\n{code}\n--> {problem}\n")
 
-    reset(mixer)
+    reset(mixer, sink["name"], runtime)
     for kind in ("setup", "scene"):
         mixer.call(f"delete_{kind}", name=BASELINE)
     clear_hotkeys(mixer)
+    clear_sounds(mixer)
+    mixer.call("set_settings", sounds_device=None)
     print(f"{count - failures} of {count} examples passed")
     sys.exit(1 if failures else 0)
 

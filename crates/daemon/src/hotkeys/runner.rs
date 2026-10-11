@@ -10,6 +10,9 @@
 //! from the mixer before the keys went down to the mixer once they are
 //! back up and its fades have finished. A push to talk that puts
 //! everything back leaves nothing to undo at all.
+//!
+//! Each press, repeat and letting go plays the hotkey's sound for it, if
+//! it has one, and shows what it did (see [`super::popup`]).
 
 use super::restore;
 use crate::controller::Controller;
@@ -77,6 +80,9 @@ struct Press {
     whole: bool,
     /// When the keys went down.
     at: Instant,
+    /// The steps pressing did, with their strips and buses by id, to show
+    /// what putting them back did.
+    done: Vec<HotkeyStep>,
 }
 
 /// A hotkey whose keys are down.
@@ -175,10 +181,10 @@ impl Runner {
     pub fn handle(&mut self, command: Command) {
         match command {
             Command::Press(id) => self.press(id),
-            Command::Release(id) => self.release(id),
+            Command::Release(id) => self.release(id, false),
             Command::Run(id) => {
                 self.press(id);
-                self.release(id);
+                self.release(id, true);
             }
             Command::Changed => self.changed(),
             Command::Repeat(id, press) => self.repeat(id, press),
@@ -229,10 +235,16 @@ impl Runner {
                 record,
                 whole,
                 at: Instant::now(),
+                done: Vec::new(),
             },
         );
         let steps = self.pick_steps(&h);
-        self.do_steps(n, &steps);
+        let done = self.do_steps(n, &steps);
+        self.controller.hotkey_sound(h.sounds.press.as_deref());
+        self.controller.hotkey_popup(&h, &done);
+        if let Some(p) = self.presses.get_mut(&n) {
+            p.done = done;
+        }
         if h.acts_on_release() {
             let repeat = h.repeat_ms.map(|ms| {
                 let every = Duration::from_millis(ms.into());
@@ -256,7 +268,9 @@ impl Runner {
         self.maybe_finish(n);
     }
 
-    fn release(&mut self, id: HotkeyId) {
+    /// The keys of hotkey `id` came up; `tap` when they went down at the
+    /// same moment, as when a hotkey is run by name.
+    fn release(&mut self, id: HotkeyId, tap: bool) {
         let Some(held) = self.held.remove(&id) else {
             return;
         };
@@ -267,13 +281,31 @@ impl Runner {
         // Gone meanwhile: the press just ends.
         if let Some(h) = self.controller.hotkey(id) {
             debug!("hotkey '{}' let go", h.name);
-            match h.on_release {
-                OnRelease::Nothing => {}
-                OnRelease::Restore => self.put_back(n),
+            let shown = match h.on_release {
+                OnRelease::Nothing => Vec::new(),
+                OnRelease::Restore => {
+                    self.put_back(n);
+                    // What it put back, as it is now, fades and all.
+                    let mut done = self
+                        .presses
+                        .get(&n)
+                        .map(|p| p.done.clone())
+                        .unwrap_or_default();
+                    done.iter_mut().for_each(|s| s.over_ms = None);
+                    done
+                }
                 OnRelease::Steps => {
                     let steps = h.release_steps.clone();
-                    self.do_steps(n, &steps);
+                    self.do_steps(n, &steps)
                 }
+            };
+            // A tap's two sounds would play as one: it plays the press
+            // sound, or the release sound when it has no other.
+            if !tap || h.sounds.press.is_none() {
+                self.controller.hotkey_sound(h.sounds.release.as_deref());
+            }
+            if !shown.is_empty() {
+                self.controller.hotkey_popup(&h, &shown);
             }
         }
         if let Some(p) = self.presses.get_mut(&n) {
@@ -290,7 +322,9 @@ impl Runner {
             return;
         };
         let steps = self.pick_steps(&h);
-        self.do_steps(n, &steps);
+        let done = self.do_steps(n, &steps);
+        self.controller.hotkey_sound(h.sounds.repeat.as_deref());
+        self.controller.hotkey_popup(&h, &done);
     }
 
     /// The hotkeys changed: forget where removed ones had got to, and let
@@ -305,14 +339,16 @@ impl Runner {
             .copied()
             .collect();
         for id in gone {
-            self.release(id);
+            self.release(id, false);
         }
     }
 
     /// Do `steps` for press `n`, starting fades for those that fade. Each
     /// step's strips and buses are looked up by name just before it runs,
-    /// after the steps before it, which may have loaded a setup.
-    fn do_steps(&mut self, n: u64, steps: &[HotkeyStep]) {
+    /// after the steps before it, which may have loaded a setup. Returns
+    /// the steps done, with their strips and buses by id.
+    fn do_steps(&mut self, n: u64, steps: &[HotkeyStep]) -> Vec<HotkeyStep> {
+        let mut done = Vec::new();
         for step in steps {
             let step = match self.controller.step_by_id(step) {
                 Ok(step) => step,
@@ -325,12 +361,15 @@ impl Runner {
                 self.start_fade(n, &step);
             } else if let Err(e) = self.controller.run_step(&step) {
                 warn!("a hotkey's step {} failed: {}", step.method, e.message);
+                continue;
             }
+            done.push(step);
         }
         let now = self.controller.mixer();
         if let Some(p) = self.presses.get_mut(&n) {
             p.own_after = now;
         }
+        done
     }
 
     /// The places press `n` changed so far, and the mixer from before it.
@@ -633,6 +672,41 @@ mod tests {
         .unwrap();
         assert!(r.strip(1).mute, "still muted");
         assert_eq!(r.strip(2).gain_db, 0.0, "the fader is back");
+    }
+
+    #[tokio::test]
+    async fn presses_play_their_sounds_and_show_what_they_did() {
+        use crate::hotkeys::popup::{Popup, Popups};
+        let r = Rig::new("feedback");
+        let (tx, mut shown) = tokio::sync::mpsc::unbounded_channel();
+        r.c.set_popups(Popups::to(tx));
+        let id = r.add(json!({
+            "name": "Push to talk",
+            "steps": [{"method": "set_strip", "params": {"id": "Mic", "mute": false}}],
+            "on_release": "restore",
+            "sounds": {"press": "Beep up", "release": "Beep down"}
+        }));
+        let text = |p: Option<(Popup, HotkeyPopup)>| match p {
+            Some((Popup::Text { text, .. }, HotkeyPopup::Popup)) => text,
+            other => panic!("{other:?}"),
+        };
+        r.send(Command::Press(id)).await;
+        assert_eq!(text(shown.try_recv().ok()), "Mic unmuted");
+        r.send(Command::Release(id)).await;
+        assert_eq!(text(shown.try_recv().ok()), "Mic muted", "put back");
+        assert_eq!(*r.c.played.lock().unwrap(), ["Beep up", "Beep down"]);
+        // Run by name, it is a tap: one sound.
+        r.c.played.lock().unwrap().clear();
+        r.send(Command::Run(id)).await;
+        assert_eq!(*r.c.played.lock().unwrap(), ["Beep up"]);
+        // A hotkey can keep quiet.
+        let quiet = r.add(json!({
+            "name": "Quiet", "popup": false,
+            "steps": [{"method": "set_strip", "params": {"id": 2, "mute": "toggle"}}]
+        }));
+        while shown.try_recv().is_ok() {}
+        r.send(Command::Run(quiet)).await;
+        assert!(shown.try_recv().is_err());
     }
 
     #[tokio::test]

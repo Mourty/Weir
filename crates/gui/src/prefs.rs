@@ -208,6 +208,8 @@ impl Prefs {
         let mixer = &state.mixer;
         let in_use = mixer.strips.iter().map(|s| &s.device);
         let in_use = in_use.chain(mixer.buses.iter().map(|b| &b.device));
+        // And the device hotkeys' sounds play on.
+        let in_use = in_use.chain(std::iter::once(&state.settings.sounds_device));
         let mut changed = false;
         for name in in_use.flatten() {
             let Some(d) = state.devices.iter().find(|d| &d.name == name) else {

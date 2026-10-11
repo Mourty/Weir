@@ -3,9 +3,9 @@
 
 use anyhow::{anyhow, bail, Context, Result};
 use weir_protocol::{
-    format_color, parse_color, BusId, BusKind, ChannelLayout, DownmixMethod, EachPress, Flag,
-    HotkeyStep, InsertFallback, InsertPoint, MixerState, OnRelease, Startup, StripId, StripKind,
-    TrayIcon, Upmix, COLOR_PRESETS,
+    format_color, parse_color, BusId, BusKind, ChannelLayout, DeviceInfo, DeviceKind,
+    DownmixMethod, EachPress, Flag, HotkeyPopup, HotkeyStep, InsertFallback, InsertPoint,
+    MixerState, OnRelease, Startup, StripId, StripKind, TrayIcon, Upmix, COLOR_PRESETS,
 };
 
 /// on or off, and the usual ways of saying them.
@@ -163,6 +163,27 @@ pub fn parse_startup(s: &str) -> Result<Startup> {
         "tray-only" | "tray_only" => Ok(Startup::TrayOnly),
         _ => bail!("--startup takes window, minimized or tray-only, got '{s}'"),
     }
+}
+
+/// What pressing a hotkey shows.
+pub fn parse_popup(s: &str) -> Result<HotkeyPopup> {
+    match s {
+        "popup" => Ok(HotkeyPopup::Popup),
+        "notification" => Ok(HotkeyPopup::Notification),
+        "nothing" | "none" => Ok(HotkeyPopup::Nothing),
+        _ => bail!("--popup takes popup, notification or nothing, got '{s}'"),
+    }
+}
+
+/// The `node.name` of the playback device called `s`, by name or by
+/// description, ignoring case.
+pub fn find_sink(devices: &[DeviceInfo], s: &str) -> Result<String> {
+    let sinks = || devices.iter().filter(|d| d.kind == DeviceKind::Sink);
+    sinks()
+        .find(|d| d.name == s)
+        .or_else(|| sinks().find(|d| d.description.eq_ignore_ascii_case(s)))
+        .map(|d| d.name.clone())
+        .with_context(|| format!("no playback device called '{s}' (see weirctl devices)"))
 }
 
 /// How the tray icon is drawn.

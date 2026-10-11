@@ -22,6 +22,7 @@ use super::graph::Graph;
 use super::volume::AppVolume;
 use super::{ENGINE_NODE_NAME, RETURN_NODE_NAME};
 use crate::dsp::handoff::Handoff;
+use crate::dsp::sounds::SoundBank;
 use crate::dsp::{build_rt_params, PortPtr, PortResolver, RtParams};
 use devices::{DeviceKey, PendingMove, VirtualNode};
 use effects::{PendingRelink, Returns};
@@ -62,6 +63,8 @@ enum PortKey {
     Bus(BusId, usize),
     ToEffects(Owner, usize),
     FromEffects(Owner, usize),
+    /// The hotkey sounds' output: 0 left, 1 right.
+    Sounds(usize),
 }
 
 /// A strip or a bus, as the owner of ports and virtual devices.
@@ -183,6 +186,9 @@ impl PortResolver for PortMap<'_> {
             .iter()
             .any(|i| i.target == target && i.connected)
     }
+    fn sound_port(&self, channel: usize) -> PortPtr {
+        self.get(PortKey::Sounds(channel))
+    }
 }
 
 /// Everything the PipeWire thread keeps.
@@ -226,6 +232,10 @@ struct Runner {
     /// Recently replaced snapshots, kept alive so the real-time thread never
     /// frees one.
     old_params: VecDeque<Arc<RtParams>>,
+    /// The sounds hotkeys play, for every snapshot from now on.
+    sounds: Arc<SoundBank>,
+    /// The device they play on, by `node.name`.
+    sounds_device: Option<String>,
     /// What was last reported to the daemon, to report only changes.
     last_devices: Vec<DeviceInfo>,
     last_apps: Vec<AppStream>,
@@ -305,6 +315,8 @@ pub(super) fn run(
         on_event,
         params_dirty: true,
         old_params: VecDeque::new(),
+        sounds: Arc::default(),
+        sounds_device: None,
         last_devices: Vec::new(),
         last_apps: Vec::new(),
         last_status: None,
@@ -451,6 +463,21 @@ impl Runner {
                     self.reconcile();
                 }
             }
+            EngineCommand::SetSounds(bank) => {
+                self.sounds = bank;
+                self.publish_params();
+            }
+            EngineCommand::SetSoundsDevice(device) => {
+                if self.sounds_device != device {
+                    info!(
+                        "hotkey sounds play on {}",
+                        device.as_deref().unwrap_or("nothing")
+                    );
+                    self.sounds_device = device;
+                    self.params_dirty = true;
+                    self.reconcile();
+                }
+            }
             EngineCommand::MoveApp { app, strip } => self.move_app(app, strip),
             EngineCommand::SetAppVolume {
                 app,
@@ -555,6 +582,20 @@ impl Runner {
                 ));
             }
         }
+        // Hotkey sounds, while they have somewhere to play.
+        if self.sounds_device.is_some() {
+            for (c, pos) in [ChannelPosition::FL, ChannelPosition::FR]
+                .into_iter()
+                .enumerate()
+            {
+                wanted.push((
+                    PortKey::Sounds(c),
+                    Direction::Output,
+                    format!("hotkey_sounds_{pos}"),
+                    pos,
+                ));
+            }
+        }
         for (key, dir, name, pos) in wanted {
             let needs_new = match self.ports.get(&key) {
                 Some(existing) => existing.name != name || existing.position != pos,
@@ -585,6 +626,7 @@ impl Runner {
         }
         // Ports whose strip/bus (or channel) vanished, or whose external
         // effects were switched off.
+        let sounds = self.sounds_device.is_some();
         let keep = |key: &PortKey, state: &MixerState| match *key {
             PortKey::Strip(id, c) => state
                 .strip(id)
@@ -605,6 +647,7 @@ impl Runner {
                 };
                 insert.enabled && c < channels
             }
+            PortKey::Sounds(_) => sounds,
         };
         let stale: Vec<PortKey> = self
             .ports
@@ -640,7 +683,12 @@ impl Runner {
                 handoffs: &self.handoffs,
                 inserts: &self.inserts,
             };
-            build_rt_params(&self.state, self.options.solo, &ports, Some(&current))
+            let mut params =
+                build_rt_params(&self.state, self.options.solo, &ports, Some(&current));
+            if let Some(p) = Arc::get_mut(&mut params) {
+                p.sounds = self.sounds.clone();
+            }
+            params
         };
         let old = shared.params.swap(params);
         self.old_params.push_back(old);

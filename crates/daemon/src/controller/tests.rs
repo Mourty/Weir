@@ -1562,3 +1562,44 @@ fn sounds_go_with_their_hotkeys_to_another_computer() {
     assert_eq!(s.sounds_volume_db, -20.0);
     assert_eq!(s.sounds_device.as_deref(), Some("usb-speakers"));
 }
+
+#[test]
+fn update_checks_are_kept_and_told() {
+    let mut r = Rig::new("updates");
+    let s = r.ok(
+        "set_settings",
+        json!({"update_check": true, "skipped_version": "v1.9.0"}),
+    );
+    assert_eq!(
+        (s["update_check"].clone(), s["skipped_version"].clone()),
+        (json!(true), json!("1.9.0"))
+    );
+    assert_eq!(r.ok("check_for_update", json!({}))["checking"], json!(true));
+
+    let release = Release {
+        version: "99.0.0".into(),
+        name: "Weir 99.0.0".into(),
+        notes: "Everything".into(),
+        url: "https://github.com/Mourty/Weir/releases/tag/v99.0.0".into(),
+        published_at: "2026-10-20T18:04:11Z".into(),
+    };
+    assert!(r.c.update_checked(Ok(Some(release))));
+    let update = r.ok("get_state", json!({}))["update"].clone();
+    assert_eq!(
+        (update["newer"].clone(), update["checking"].clone()),
+        (json!(true), json!(false))
+    );
+    assert!(!update["how_to_update"].as_str().unwrap().is_empty());
+    // A check that fails keeps what the last one found.
+    assert!(!r.c.update_checked(Err("could not reach GitHub".into())));
+    let update = r.ok("get_state", json!({}))["update"].clone();
+    assert_eq!(update["latest"]["version"], json!("99.0.0"));
+    assert_eq!(update["error"], json!("could not reach GitHub"));
+
+    let s = r.ok(
+        "set_settings",
+        json!({"update_check": "toggle", "skipped_version": null}),
+    );
+    assert_eq!(s["update_check"], json!(false));
+    assert_eq!(s.get("skipped_version"), None);
+}

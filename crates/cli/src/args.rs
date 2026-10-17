@@ -167,6 +167,21 @@ pub enum Cmd {
         /// How loud hotkeys' sounds play, from -40 to 0 dB.
         #[arg(long, allow_hyphen_values = true)]
         sounds_volume: Option<f32>,
+        /// Ask GitHub for Weir's newest release each time Weir starts, to
+        /// tell when a new version is out: on, off or toggle.
+        #[arg(long)]
+        update_check: Option<String>,
+        /// A version not to be told about, or "none" to be told about
+        /// every newer one again.
+        #[arg(long)]
+        skip_version: Option<String>,
+    },
+    /// Whether a newer Weir is out, as the last check found.
+    Update {
+        /// Ask GitHub now and wait for the answer, whether or not Weir
+        /// checks by itself.
+        #[arg(long)]
+        check: bool,
     },
     /// Setups: the strips and buses, with their devices, names and layouts.
     Setup {

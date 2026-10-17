@@ -21,6 +21,7 @@ mod rules;
 mod sounds;
 mod transfer;
 mod undo_labels;
+mod updates;
 
 #[cfg(test)]
 mod tests;
@@ -99,6 +100,8 @@ struct Inner {
     /// The device they play on, as the engine was last told; `None` before
     /// it has been told.
     sounds_device: Option<Option<String>>,
+    /// What is known about Weir's newest release.
+    update: UpdateStatus,
 }
 
 /// The daemon's state and its request handlers, shared by every
@@ -130,6 +133,9 @@ pub struct Controller {
     shortcut_settings: tokio::sync::Notify,
     /// Shows what hotkeys did, once started.
     popups: Mutex<Option<crate::hotkeys::popup::Popups>>,
+    /// Asks for a check for Weir's newest release; the update task
+    /// listens.
+    update_wanted: tokio::sync::Notify,
     /// The sounds asked to play, by name, for tests to check.
     #[cfg(test)]
     pub(crate) played: Mutex<Vec<String>>,
@@ -187,6 +193,7 @@ impl Controller {
                 target_problems: Vec::new(),
                 sounds: crate::sounds::Library::load(&paths.sounds_dir),
                 sounds_device: None,
+                update: UpdateStatus::default(),
             }),
             engine,
             notify,
@@ -199,6 +206,7 @@ impl Controller {
             hotkey_runner: Mutex::new(None),
             shortcut_settings: tokio::sync::Notify::new(),
             popups: Mutex::new(None),
+            update_wanted: tokio::sync::Notify::new(),
             #[cfg(test)]
             played: Mutex::new(Vec::new()),
         }

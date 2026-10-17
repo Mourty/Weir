@@ -4,7 +4,7 @@
 //! logged.
 
 use std::collections::VecDeque;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -72,7 +72,7 @@ impl Visit for Message {
 pub fn gather(server: Option<String>) -> Diagnostics {
     Diagnostics {
         version: env!("CARGO_PKG_VERSION").into(),
-        installed: installed(),
+        installed: Install::here().describe(),
         system: system(),
         pipewire_library: weir_engine::library_version(),
         pipewire_server: server,
@@ -85,43 +85,107 @@ pub fn gather(server: Option<String>) -> Diagnostics {
     }
 }
 
-/// How Weir was installed. Asking the package manager takes a moment, so
-/// it is asked once.
-fn installed() -> String {
-    static INSTALLED: OnceLock<String> = OnceLock::new();
-    INSTALLED
-        .get_or_init(|| match std::env::current_exe() {
-            Ok(exe) => describe_install(&exe, dirs::home_dir().as_deref(), package),
-            Err(_) => "unknown".into(),
-        })
-        .clone()
+/// Who installed a package.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Manager {
+    Rpm,
+    Dpkg,
+    Pacman,
 }
 
-/// How a daemon at `exe` was installed, in words. `package` names the
-/// package that installed Weir, if any.
-fn describe_install(
-    exe: &Path,
-    home: Option<&Path>,
-    package: impl Fn() -> Option<String>,
-) -> String {
-    if exe.starts_with("/usr") {
-        match package() {
-            Some(p) => format!("package {p}"),
-            None => format!("{}, in no package", exe.display()),
+/// How Weir was installed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Install {
+    /// By a package: who installed it, and the package's name and version
+    /// (with who built it, for an RPM).
+    Package(Manager, String),
+    /// Under /usr, in no package.
+    Unpackaged(PathBuf),
+    /// By `make install`, in the home folder.
+    Make(PathBuf),
+    /// Run from where it was built.
+    BuildFolder(PathBuf),
+    /// Somewhere else, or nobody knows.
+    Elsewhere(Option<PathBuf>),
+}
+
+impl Install {
+    /// How this daemon was installed. Asking the package manager takes a
+    /// moment, so it is asked once.
+    pub fn here() -> Install {
+        static HERE: OnceLock<Install> = OnceLock::new();
+        HERE.get_or_init(|| match std::env::current_exe() {
+            Ok(exe) => Install::of(&exe, dirs::home_dir().as_deref(), package),
+            Err(_) => Install::Elsewhere(None),
+        })
+        .clone()
+    }
+
+    /// How a daemon at `exe` was installed. `package` names the package
+    /// that installed Weir, if any.
+    fn of(
+        exe: &Path,
+        home: Option<&Path>,
+        package: impl Fn() -> Option<(Manager, String)>,
+    ) -> Install {
+        if exe.starts_with("/usr") {
+            match package() {
+                Some((manager, p)) => Install::Package(manager, p),
+                None => Install::Unpackaged(exe.into()),
+            }
+        } else if home.is_some_and(|h| exe.starts_with(h.join(".local"))) {
+            Install::Make(exe.into())
+        } else if exe.components().any(|c| c.as_os_str() == "target") {
+            Install::BuildFolder(exe.into())
+        } else {
+            Install::Elsewhere(Some(exe.into()))
         }
-    } else if home.is_some_and(|h| exe.starts_with(h.join(".local"))) {
-        format!("make install, {}", exe.display())
-    } else if exe.components().any(|c| c.as_os_str() == "target") {
-        format!("a build folder, {}", exe.display())
-    } else {
-        exe.display().to_string()
+    }
+
+    /// In words, for a bug report.
+    pub fn describe(&self) -> String {
+        match self {
+            Install::Package(_, p) => format!("package {p}"),
+            Install::Unpackaged(exe) => format!("{}, in no package", exe.display()),
+            Install::Make(exe) => format!("make install, {}", exe.display()),
+            Install::BuildFolder(exe) => format!("a build folder, {}", exe.display()),
+            Install::Elsewhere(Some(exe)) => exe.display().to_string(),
+            Install::Elsewhere(None) => "unknown".into(),
+        }
+    }
+
+    /// How to update it, for people who are told a new version is out.
+    pub fn how_to_update(&self) -> String {
+        match self {
+            Install::Package(Manager::Rpm, p) if p.contains("Copr") => {
+                "Weir came from COPR: Discover offers the update, or run \
+                 sudo dnf upgrade --refresh weir"
+                    .into()
+            }
+            Install::Package(Manager::Rpm, _) => "Download the new .rpm from the release page \
+                 and install it with sudo dnf install ./weir-*.rpm"
+                .into(),
+            Install::Package(Manager::Dpkg, _) => "Download the new .deb from the release page \
+                 and install it with sudo apt install ./weir_*.deb"
+                .into(),
+            Install::Package(Manager::Pacman, _) => "Update it the way you installed it: with \
+                 your AUR helper, such as paru -Syu, or with the package from the release page"
+                .into(),
+            Install::Make(_) => "Get the new source (git pull in your copy, or the \
+                 release's source download) and run make install again"
+                .into(),
+            Install::BuildFolder(_) => "Get the new source and build it again".into(),
+            Install::Unpackaged(_) | Install::Elsewhere(_) => {
+                "Download it from the release page".into()
+            }
+        }
     }
 }
 
 /// The installed package called weir, with its version and, for an RPM,
 /// who built it: COPR names itself there.
-fn package() -> Option<String> {
-    output(
+fn package() -> Option<(Manager, String)> {
+    let rpm = output(
         "rpm",
         &[
             "-q",
@@ -130,9 +194,12 @@ fn package() -> Option<String> {
             "weir",
         ],
     )
-    .map(|p| p.replace(" ((none))", ""))
-    .or_else(|| output("dpkg-query", &["-W", "-f", "${Package} ${Version}", "weir"]))
-    .or_else(|| output("pacman", &["-Q", "weir"]))
+    .map(|p| (Manager::Rpm, p.replace(" ((none))", "")));
+    rpm.or_else(|| {
+        output("dpkg-query", &["-W", "-f", "${Package} ${Version}", "weir"])
+            .map(|p| (Manager::Dpkg, p))
+    })
+    .or_else(|| output("pacman", &["-Q", "weir"]).map(|p| (Manager::Pacman, p)))
 }
 
 /// What `program` prints, trimmed, when it runs and succeeds.
@@ -234,29 +301,37 @@ mod tests {
     #[test]
     fn the_install_is_told_by_where_the_daemon_is() {
         let home = Path::new("/home/sam");
-        let rpm = || Some("weir-1.3.0-1.fc44 (Fedora Copr - user mourt)".to_string());
+        let copr = || {
+            Some((
+                Manager::Rpm,
+                "weir-1.3.0-1.fc44 (Fedora Copr - user mourt)".to_string(),
+            ))
+        };
+        let at = |exe: &str, package: &dyn Fn() -> Option<(Manager, String)>| {
+            Install::of(Path::new(exe), Some(home), package)
+        };
+        let rpm = at("/usr/bin/weir-daemon", &copr);
         assert_eq!(
-            describe_install(Path::new("/usr/bin/weir-daemon"), Some(home), rpm),
+            rpm.describe(),
             "package weir-1.3.0-1.fc44 (Fedora Copr - user mourt)"
         );
+        assert!(rpm.how_to_update().contains("dnf upgrade --refresh weir"));
+        let deb = at("/usr/bin/weir-daemon", &|| {
+            Some((Manager::Dpkg, "weir 1.3.0".into()))
+        });
+        assert!(deb.how_to_update().contains("apt install"));
         assert_eq!(
-            describe_install(Path::new("/usr/local/bin/weir-daemon"), Some(home), || None),
+            at("/usr/local/bin/weir-daemon", &|| None).describe(),
             "/usr/local/bin/weir-daemon, in no package"
         );
+        let make = at("/home/sam/.local/bin/weir-daemon", &copr);
         assert_eq!(
-            describe_install(
-                Path::new("/home/sam/.local/bin/weir-daemon"),
-                Some(home),
-                rpm
-            ),
+            make.describe(),
             "make install, /home/sam/.local/bin/weir-daemon"
         );
+        assert!(make.how_to_update().contains("make install again"));
         assert_eq!(
-            describe_install(
-                Path::new("/home/sam/src/Weir/target/release/weir-daemon"),
-                Some(home),
-                rpm
-            ),
+            at("/home/sam/src/Weir/target/release/weir-daemon", &copr).describe(),
             "a build folder, /home/sam/src/Weir/target/release/weir-daemon"
         );
     }

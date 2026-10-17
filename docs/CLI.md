@@ -27,7 +27,7 @@ weirctl scene load Streaming           # everything as saved for streaming
 * [Hotkeys](#hotkeys): `hotkeys`, `hotkey`
 * [Hotkeys' sounds](#hotkeys-sounds): `sounds`, `sound`
 * [Export and import](#export-and-import): `export`, `import`
-* [Settings and the window](#settings-and-the-window): `settings`, `show`
+* [Settings and the window](#settings-and-the-window): `settings`, `update`, `show`
 * [Watching and anything else](#watching-and-anything-else): `watch`, `report`, `raw`
 * [A mute key for any desktop](#a-mute-key-for-any-desktop)
 
@@ -461,6 +461,8 @@ Without options, shows the daemon's settings. With them, changes them.
 | `--popup popup\|notification\|nothing` | What pressing a hotkey shows: the desktop's own popup, the one its volume keys show (KDE Plasma; a notification elsewhere), a notification, or nothing. |
 | `--sounds-device DEVICE\|auto` | The device hotkeys' sounds play on, by its name or description from `weirctl devices`, or `auto` for the first bus's device. |
 | `--sounds-volume DB` | How loud hotkeys' sounds play, from -40 to 0 dB. |
+| `--update-check on\|off\|toggle` | Ask GitHub for Weir's newest release each time Weir starts, to tell you when a new version is out. Switching it on checks at once. |
+| `--skip-version VERSION\|none` | A version not to be told about, or `none` to be told about every newer one again. |
 
 ```sh
 weirctl settings
@@ -474,6 +476,23 @@ weirctl settings --sounds-device auto
 <!-- not tested: changes how the computer running the check starts up -->
 ```sh
 weirctl settings --start-at-login on
+```
+
+### `weirctl update [--check]`
+
+Says whether a newer Weir is out, as the last check found, and how to
+update the way Weir was installed here. With `--check` it asks GitHub
+first and waits for the answer, whether or not Weir checks by itself.
+Weir never installs anything.
+
+```sh
+weirctl update
+```
+
+<!-- not tested: asks GitHub -->
+```sh
+weirctl update --check
+weirctl settings --update-check on
 ```
 
 ### `weirctl show`

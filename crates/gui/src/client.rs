@@ -301,6 +301,7 @@ fn read_loop(
                 Notification::AppsChanged(a) => sh.state.apps = a,
                 Notification::EngineChanged(e) => sh.state.engine = e,
                 Notification::SettingsChanged(s) => sh.state.settings = s,
+                Notification::UpdateChanged(u) => sh.state.update = u,
                 Notification::EqPresetsChanged(p) => sh.state.eq_presets = p,
                 Notification::Spectrum(s) => {
                     // A spectrum can still be in flight after its window

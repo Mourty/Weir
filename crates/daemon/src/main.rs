@@ -23,6 +23,7 @@ mod server;
 mod sounds;
 mod transfer;
 mod tray;
+mod updates;
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -306,6 +307,8 @@ fn spawn_background_tasks(
             c.tick();
         }
     });
+
+    tokio::spawn(updates::run(controller.clone()));
 
     let c = controller.clone();
     tokio::spawn(async move {

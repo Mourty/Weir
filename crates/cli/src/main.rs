@@ -95,6 +95,8 @@ fn run() -> Result<()> {
             popup,
             sounds_device,
             sounds_volume,
+            update_check,
+            skip_version,
         } => {
             let a = SettingsArgs {
                 solo,
@@ -108,9 +110,12 @@ fn run() -> Result<()> {
                 popup,
                 sounds_device,
                 sounds_volume,
+                update_check,
+                skip_version,
             };
             commands::settings(c, a, json)
         }
+        Cmd::Update { check } => commands::update(c, check, json),
         Cmd::Setup { action } => commands::library(c, action, false, json),
         Cmd::Scene { action } => commands::library(c, action, true, json),
         Cmd::Eq { action } => commands::eq(c, action, json),

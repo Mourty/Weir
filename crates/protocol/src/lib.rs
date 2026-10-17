@@ -16,6 +16,7 @@
 //! * [`targets`]: where requests name strips and buses, and finding them.
 //! * [`transfer`]: exporting settings to files, and importing them.
 //! * [`report`]: what a bug report says, worded alike by every client.
+//! * [`updates`]: whether a newer Weir is out.
 //! * [`rpc`]: every request, response and notification.
 //!
 //! The doc comments here are also the protocol's documentation: the
@@ -34,6 +35,7 @@ pub mod rpc;
 pub mod sounds;
 pub mod targets;
 pub mod transfer;
+pub mod updates;
 
 pub use fx::*;
 pub use hotkeys::*;
@@ -45,6 +47,7 @@ pub use rpc::*;
 pub use sounds::*;
 pub use targets::*;
 pub use transfer::*;
+pub use updates::*;
 
 /// Version of the control protocol. Bumped on breaking changes.
 pub const PROTOCOL_VERSION: u32 = 1;

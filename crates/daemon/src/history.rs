@@ -72,8 +72,8 @@ pub struct History {
     redo: Vec<Entry>,
 }
 
-/// Milliseconds since the Unix epoch, for the history's time stamps.
-fn now_ms() -> u64 {
+/// Milliseconds since the Unix epoch, for time stamps.
+pub fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_millis() as u64)

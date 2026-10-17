@@ -508,10 +508,58 @@ pub fn settings(settings: &Settings, st: &FullState) {
         settings.sounds_volume_db,
         sounds_where(settings, st)
     );
+    let updates = match (settings.update_check, &settings.skipped_version) {
+        (Some(true), Some(v)) => format!("checked at start, {v} skipped"),
+        (Some(true), None) => "checked at start".into(),
+        (Some(false), _) => "not checked".into(),
+        (None, _) => "not checked (not asked yet)".into(),
+    };
+    println!("updates:      {updates}");
     println!(
         "running at:   {} Hz, {} frames",
         st.engine.sample_rate, st.engine.quantum
     );
+}
+
+/// Whether a newer Weir is out, and how to get it.
+pub fn update(u: &UpdateStatus, settings: &Settings) {
+    let checks = match settings.update_check {
+        Some(true) => "on: Weir asks GitHub each time it starts",
+        Some(false) => "off",
+        None => "off (not asked yet)",
+    };
+    println!("this Weir:    {}", env!("CARGO_PKG_VERSION"));
+    println!("checks:       {checks}");
+    if u.checking {
+        println!("checking now…");
+    }
+    match u.checked_at_ms {
+        Some(at) => println!("last checked: {}", utc_time(at)),
+        None => println!("last checked: not since Weir started"),
+    }
+    if let Some(e) = &u.error {
+        println!("problem:      {e}");
+    }
+    let Some(latest) = &u.latest else {
+        return;
+    };
+    let skipped = settings.skipped_version.as_deref() == Some(latest.version.as_str());
+    let state = match (u.newer, skipped) {
+        (true, true) => "newer, but you chose to skip it",
+        (true, false) => "newer",
+        (false, _) => "you have it",
+    };
+    println!("newest:       {} ({state})", latest.version);
+    println!("              {}", latest.url);
+    if u.newer {
+        println!("to update:    {}", u.how_to_update);
+        if !latest.notes.trim().is_empty() {
+            println!();
+            for line in latest.notes.trim().lines() {
+                println!("  {line}");
+            }
+        }
+    }
 }
 
 /// What can be undone and redone, the next undo marked.

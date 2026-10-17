@@ -202,8 +202,9 @@ pub fn bug_report(
     }
 }
 
-/// `at_ms` as `2026-10-17 21:02:13 UTC`.
-fn utc_time(at_ms: u64) -> String {
+/// `at_ms`, milliseconds since the Unix epoch, as `2026-10-17 21:02:13
+/// UTC`.
+pub fn utc_time(at_ms: u64) -> String {
     // `2026-10-17T21-02-13Z`, made easier to read.
     let stamp = crate::transfer::utc_stamp(at_ms / 1000);
     let (date, time) = stamp.split_at(10);

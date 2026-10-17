@@ -26,6 +26,7 @@
 //! * `dialogs`: adding and removing strips and buses.
 //! * `settings`: the Preferences window.
 //! * `about`: the About window, and help with reporting a problem.
+//! * `updates`: saying when a new version of Weir is out.
 //! * `history`: undo, redo, and the messages that report them.
 //! * `status`: what shows while there is no daemon to talk to.
 
@@ -45,6 +46,7 @@ mod status;
 mod strip;
 mod top_bar;
 mod transfer;
+mod updates;
 
 pub(crate) use history::{history_shortcut, HistoryKey};
 
@@ -143,6 +145,8 @@ pub struct App {
     confirm_rename: Option<dialogs::RenameConfirm>,
     /// The About window.
     about: about::About,
+    /// What the person said about a new version, for this run.
+    updates: updates::Updates,
     show_prefs: bool,
     /// Asked to bring Preferences forward, and the page it shows.
     raise_prefs: bool,
@@ -234,6 +238,7 @@ impl App {
             confirm_remove: None,
             confirm_rename: None,
             about: about::About::default(),
+            updates: updates::Updates::default(),
             show_prefs: false,
             raise_prefs: false,
             prefs_page: settings::PrefsPage::default(),
@@ -578,6 +583,7 @@ impl eframe::App for App {
 
         self.top_bar(ctx, connected, &state, last_error.as_deref());
         if connected {
+            self.update_question(ctx, &state);
             self.mix_bar(ctx, &state);
         }
         egui::CentralPanel::default()
@@ -599,6 +605,7 @@ impl eframe::App for App {
         self.toast_view(ctx);
         self.show_fx_windows(ctx, &state, &spectra);
         if connected {
+            self.update_window(ctx, &state);
             self.show_hotkeys(ctx, &state, error_at.as_ref());
             self.poll_sounds(&state);
             self.show_transfer(ctx, &state, transfers);

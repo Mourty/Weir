@@ -9,6 +9,9 @@ accepted = [
     "BSD-3-Clause",
     "BlueOak-1.0.0",
     "CC0-1.0",
+    # Mozilla's list of trusted certificate authorities (webpki-roots),
+    # which comes with the HTTPS library the update check uses.
+    "CDLA-Permissive-2.0",
     "ISC",
     "MIT",
     "MPL-2.0",

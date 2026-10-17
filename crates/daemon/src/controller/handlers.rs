@@ -50,6 +50,7 @@ const CAPABILITIES: &[&str] = &[
     "batch",
     "describe",
     "diagnostics",
+    "updates",
 ];
 
 impl Controller {
@@ -139,6 +140,7 @@ impl Controller {
             Request::Redo(p) => self.step_history(p.steps, false),
             Request::History => Ok(to_json(&self.inner.lock().unwrap().history.info())),
             Request::Describe => Ok(weir_protocol::describe()),
+            Request::CheckForUpdate => self.check_for_update(),
             Request::Diagnostics => Ok(to_json(&crate::diagnostics::gather(
                 self.engine().and_then(|e| e.server_version()),
             ))),
@@ -152,6 +154,7 @@ impl Controller {
         let eq_presets = self.eq_presets();
         let library = self.library();
         let hotkeys = self.hotkeys_info();
+        let update = self.update_status();
         let inner = self.inner.lock().unwrap();
         FullState {
             mixer: inner.mixer.clone(),
@@ -165,6 +168,7 @@ impl Controller {
             system_volumes: inner.system_volumes.clone(),
             inserts: inner.inserts.clone(),
             hotkeys,
+            update,
         }
     }
 
@@ -311,9 +315,23 @@ impl Controller {
             .start_at_login
             .map(|flag| self.set_start_at_login(flag))
             .transpose()?;
+        let mut check_now = false;
         let settings = {
             let mut inner = self.inner.lock().unwrap();
             let s = &mut inner.settings;
+            if let Some(flag) = p.update_check {
+                let was = s.update_check == Some(true);
+                let now = flag.apply(was);
+                // Switching checks on is when people want to know.
+                check_now = now && !was;
+                s.update_check = Some(now);
+            }
+            if let Some(v) = &p.skipped_version {
+                s.skipped_version = v
+                    .as_deref()
+                    .map(|v| v.trim().trim_start_matches('v').to_string())
+                    .filter(|v| !v.is_empty());
+            }
             if let Some(v) = p.meter_rate_hz {
                 s.meter_rate_hz = v.clamp(1, 120);
             }
@@ -353,6 +371,9 @@ impl Controller {
         self.update_sounds_device();
         self.dirty.store(true, Ordering::Release);
         self.announce(Notification::SettingsChanged(settings.clone()));
+        if check_now {
+            self.update_wanted.notify_one();
+        }
         Ok(to_json(&settings))
     }
 

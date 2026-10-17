@@ -67,8 +67,12 @@ help:
 	@echo "make icons      redraw the window icon (needs rsvg-convert)"
 	@echo "make licenses   gather the libraries' license notices (needs cargo-about)"
 
+# DESTDIR is left out of the build's environment: libopus builds with
+# CMake, whose install step honors it, so `make install DESTDIR=...` run
+# before a build (as `make deb` does) would put the library in the
+# staging folder, where the build cannot find it.
 build:
-	$(CARGO) build $(CARGO_FLAGS)
+	env -u DESTDIR $(CARGO) build $(CARGO_FLAGS)
 
 test:
 	$(CARGO) test --workspace

@@ -4,8 +4,8 @@
 //! set, and something for people otherwise.
 
 use crate::args::{
-    BusArgs, EqCmd, EqTarget, HotkeyCmd, HotkeyGroupCmd, HotkeyOpts, LibraryCmd, SoundCmd,
-    StripArgs,
+    BusArgs, EqCmd, EqTarget, HotkeyCmd, HotkeyGroupCmd, HotkeyOpts, LibraryCmd, MeterColorsCmd,
+    SoundCmd, StripArgs,
 };
 use crate::client::Client;
 use crate::parse::*;
@@ -590,6 +590,28 @@ pub fn update(c: &mut Client, check: bool, json: bool) -> Result<()> {
     }
     show::update(&st.update, &st.settings);
     Ok(())
+}
+
+/// List the ways of coloring meters, or save or delete one of your own.
+pub fn meter_colors(c: &mut Client, action: Option<MeterColorsCmd>, json: bool) -> Result<()> {
+    let req = match action.unwrap_or(MeterColorsCmd::List) {
+        MeterColorsCmd::List => Request::ListMeterColors,
+        MeterColorsCmd::Save {
+            name,
+            colors,
+            lines,
+        } => Request::SaveMeterColors(MeterColors {
+            name,
+            colors,
+            breaks_db: lines,
+            builtin: false,
+        }),
+        MeterColorsCmd::Delete { name } => Request::DeleteMeterColors(NameParams { name }),
+    };
+    call(c, &req, json, |list: Vec<MeterColors>| {
+        show::meter_colors(&list);
+        Ok(())
+    })
 }
 
 /// List, save, load or delete a scene (`scene`) or setup.

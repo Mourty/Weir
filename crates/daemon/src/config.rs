@@ -4,7 +4,7 @@ use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use weir_protocol::{
-    hotkey_order, EqBand, EqPreset, Hotkey, HotkeyGroup, HotkeyListItem, MixerState,
+    hotkey_order, EqBand, EqPreset, Hotkey, HotkeyGroup, HotkeyListItem, MeterColors, MixerState,
 };
 
 /// Daemon settings live in the protocol crate so clients can read and change
@@ -210,6 +210,8 @@ pub struct Paths {
     pub sounds_dir: PathBuf,
     /// Applications heard lately, as JSON.
     pub seen_apps_file: PathBuf,
+    /// Ways of coloring meters of the user's own, as JSON.
+    pub meter_colors_file: PathBuf,
 }
 
 impl Paths {
@@ -234,6 +236,7 @@ impl Paths {
             hotkeys_file: base.join("hotkeys.json"),
             sounds_dir: base.join("sounds"),
             seen_apps_file: base.join("seen-apps.json"),
+            meter_colors_file: base.join("meter-colors.json"),
         }
     }
 }
@@ -630,6 +633,52 @@ pub fn save_eq_presets(path: &Path, presets: &[EqPreset]) -> Result<()> {
         path,
         &format!("# Weir equalizer presets. Edited by weir-daemon.\n{text}"),
     )
+}
+
+/// The meter colors file: `{"version": 1, "schemes": [...]}`.
+#[derive(Debug, Serialize, Deserialize)]
+struct MeterColorsFile {
+    version: u32,
+    #[serde(default)]
+    schemes: Vec<MeterColors>,
+}
+
+/// The meter colors file's layout.
+const METER_COLORS_VERSION: u32 = 1;
+
+/// The user's ways of coloring meters; none when there is no file.
+pub fn load_meter_colors(path: &Path) -> Result<Vec<MeterColors>> {
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let text =
+        std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+    let file: MeterColorsFile =
+        serde_json::from_str(&text).with_context(|| format!("parsing {}", path.display()))?;
+    if file.version > METER_COLORS_VERSION {
+        anyhow::bail!(
+            "{} was written by a newer Weir (version {})",
+            path.display(),
+            file.version
+        );
+    }
+    Ok(file
+        .schemes
+        .into_iter()
+        .map(|c| MeterColors {
+            builtin: false,
+            ..c
+        })
+        .collect())
+}
+
+pub fn save_meter_colors(path: &Path, schemes: &[MeterColors]) -> Result<()> {
+    let file = MeterColorsFile {
+        version: METER_COLORS_VERSION,
+        schemes: schemes.iter().filter(|c| !c.builtin).cloned().collect(),
+    };
+    let text = serde_json::to_string_pretty(&file).context("serializing meter colors")?;
+    write_atomic(path, &text)
 }
 
 #[cfg(test)]

@@ -682,6 +682,10 @@ impl Shown {
                 .sounds
                 .iter()
                 .any(|s| s.builtin && s.name.eq_ignore_ascii_case(&item.name)),
+            ExportKind::MeterColors => state
+                .meter_colors
+                .iter()
+                .any(|c| c.builtin && c.name.eq_ignore_ascii_case(&item.name)),
             _ => false,
         };
         ui.horizontal(|ui| {
@@ -762,6 +766,10 @@ fn name_problem(kind: ExportKind, name: &str, state: &FullState) -> Option<Strin
             .sounds
             .iter()
             .any(|s| s.name.eq_ignore_ascii_case(name)),
+        ExportKind::MeterColors => state
+            .meter_colors
+            .iter()
+            .any(|c| c.name.eq_ignore_ascii_case(name)),
         _ => false,
     };
     taken.then(|| format!("You have a {} called that too.", kind.word()))

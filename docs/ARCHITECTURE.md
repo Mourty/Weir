@@ -458,6 +458,16 @@ egui viewport), so it can sit on another screen. Colors come from two
 palettes, dark and light, and the window follows the desktop's preference
 through the XDG desktop portal.
 
+Meter colors are kept by the daemon like equalizer presets, so they can be
+exported and shared, but which ones a window draws with is the window's own
+preference, like its theme. While they are edited in Preferences, the
+window draws every meter from its copy at once and sends it to the daemon
+at most four times a second; it keeps its copy over the daemon's until a
+second after the last send, so the daemon's answer to an older send cannot
+pull a line back under the pointer. Weir's own colors, Default, are drawn
+in each theme's shades of green, yellow and red rather than the fixed
+colors the daemon lists.
+
 The Hotkeys window and the hotkey editor (`hotkeys/`) are viewports too.
 Most hotkeys are made in a simple form (`hotkeys/simple.rs`): one action
 on one strip or bus, turned into steps, and read back from them, so a

@@ -110,6 +110,7 @@ pub fn export(c: &mut Client, a: ExportArgs, json: bool) -> Result<()> {
             .collect(),
         sounds: a.sounds,
         eq_presets: a.eq_presets,
+        meter_colors: a.meter_colors,
         app_rules: a.app_rules,
         preferences,
         window_look: wants_look.then(window_look).flatten(),

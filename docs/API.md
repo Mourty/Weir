@@ -31,6 +31,7 @@ Python and Node.js are in [`examples/`](../examples/).
   * [Routing](#routing): `set_route`
   * [Devices and applications](#devices-and-applications): `list_devices`, `list_apps`, `move_app`, `set_app_volume`, `set_app_rules`, `list_seen_apps`, `forget_seen_app`, `clear_seen_apps`
   * [Equalizer presets and the analyzer](#equalizer-presets-and-the-analyzer): `list_eq_presets`, `apply_eq_preset`, `save_eq_preset`, `delete_eq_preset`, `watch_spectrum`
+  * [Meter colors](#meter-colors): `list_meter_colors`, `save_meter_colors`, `delete_meter_colors`
   * [Scenes and setups](#scenes-and-setups): `save_scene`, `load_scene`, `list_scenes`, `delete_scene` and the same for setups
   * [Undo](#undo): `undo`, `redo`, `history`
   * [Hotkeys](#hotkeys): `list_hotkeys`, `set_hotkey`, `remove_hotkey`, `switch_hotkey`, `move_hotkey`, `run_hotkey`, `press_hotkey`, `release_hotkey`, `add_hotkey_group`, `set_hotkey_group`, `remove_hotkey_group`, `move_hotkey_group`, `open_shortcut_settings`, `add_sound`, `remove_sound`, `play_sound`
@@ -286,7 +287,7 @@ Returns `{"protocol_version", "daemon_version", "capabilities"}`:
                    "limiter", "bus_delay", "sends", "upmix", "downmix", "spectrum", "history",
                    "scenes", "setups", "app_rules", "seen_apps", "system_volumes",
                    "external_effects", "hotkeys", "toggle", "deltas", "names",
-                   "batch", "describe", "diagnostics", "updates"]
+                   "batch", "describe", "diagnostics", "updates", "meter_colors"]
 }
 ```
 
@@ -360,7 +361,7 @@ stop when the connection closes.
 
 | Topic | Notifications |
 |---|---|
-| `state` | `state_changed`, `eq_presets_changed`, `history_changed`, `app_rules_changed`, `library_changed` |
+| `state` | `state_changed`, `eq_presets_changed`, `meter_colors_changed`, `history_changed`, `app_rules_changed`, `library_changed` |
 | `meters` | `meters`, up to 30 times a second |
 | `devices` | `devices_changed`, `system_volumes_changed`, `inserts_changed` |
 | `apps` | `apps_changed`, `seen_apps_changed` |
@@ -1142,6 +1143,89 @@ mixer.on("spectrum", (s) => console.log(Math.max(...s.output_db)));
 await mixer.call("watch_spectrum", { targets: [{ bus: "A1" }] });
 ```
 
+### Meter colors
+
+Meters are drawn in bands of color from the bottom up: Weir's own way,
+`Default`, is green, yellow from -12 dB and red from 0 dB. Users can make
+their own, with up to 12 colors, and keep them by name. The daemon only
+keeps them; which one a window draws with is the window's own choice
+(`meter_colors` in its `gui.toml`).
+
+#### `list_meter_colors`
+
+Takes no parameters. Returns a list of [MeterColors](#metercolors),
+`Default` first.
+
+```sh
+weirctl raw list_meter_colors
+```
+
+```python
+names = [c["name"] for c in mixer.call("list_meter_colors")]
+```
+
+```js
+const mine = (await mixer.call("list_meter_colors")).filter((c) => !c.builtin);
+```
+
+#### `save_meter_colors`
+
+Save a way of coloring meters, replacing one of yours with the same name.
+They are kept in `~/.config/weir/meter-colors.json`.
+
+| Parameter | Type | |
+|---|---|---|
+| `name` | string | 1 to 40 characters. `Default` is taken. |
+| `colors` | list of strings | The colors from the bottom of the meter up, as `#RRGGBB`. 1 to 12 of them. |
+| `breaks_db` | list of numbers | Where each color gives way to the next, in dB: one fewer than the colors, rising, at least 1 dB apart, between -60 and +12. A level on a line takes the color above it. |
+
+Returns every set of meter colors, as `list_meter_colors` does.
+
+```sh
+weirctl raw save_meter_colors '{"name": "Sunset", "colors": ["#3060C0", "#40B0A0", "#F0A030", "#E03030"], "breaks_db": [-24, -6, 0]}'
+```
+
+```python
+# Weir's own, with yellow starting later.
+mine = dict(mixer.call("list_meter_colors")[0], name="Late yellow", breaks_db=[-6, 0])
+del mine["builtin"]
+mixer.call("save_meter_colors", **mine)
+```
+
+```js
+await mixer.call("save_meter_colors", {
+  name: "Two tone",
+  colors: ["#5090E0", "#E04040"],
+  breaks_db: [-3],
+});
+```
+
+#### `delete_meter_colors`
+
+Delete a set of meter colors of your own. `Default` cannot be deleted. A
+window drawing with the ones deleted goes back to `Default`.
+
+| Parameter | Type | |
+|---|---|---|
+| `name` | string | Their name, ignoring case. |
+
+Returns every set of meter colors that is left.
+
+```sh
+weirctl raw save_meter_colors '{"name": "Plain", "colors": ["#808080"], "breaks_db": []}'
+weirctl raw delete_meter_colors '{"name": "Plain"}'
+```
+
+```python
+mixer.call("save_meter_colors", name="Plain", colors=["#808080"], breaks_db=[])
+mixer.call("delete_meter_colors", name="Plain")
+```
+
+```js
+await mixer.call("save_meter_colors", { name: "Plain", colors: ["#808080"], breaks_db: [] });
+await mixer.call("delete_meter_colors", { name: "Plain" });
+```
+
 ### Scenes and setups
 
 Both save how things are, under a name, to come back to later.
@@ -1791,7 +1875,7 @@ window is open.
 
 A `.zip` holds a manifest, `weir-export.json`, and a folder for each kind:
 `scenes/`, `setups/`, `hotkeys/` (with `groups.json`, the groups and the
-order of the list), `sounds/`, `eq-presets/`, `app-rules/` and
+order of the list), `sounds/`, `eq-presets/`, `meter-colors/`, `app-rules/` and
 `preferences/`, one JSON file for each thing. Every file starts by saying what it holds, the
 format it is in and the Weir that wrote it, so that one can be imported on
 its own, and edited by hand:
@@ -1819,7 +1903,8 @@ set, `device`, `color` and `insert`), `hotkey`
 `group`), `hotkey_list` (`groups`: names and `enabled`; `order`:
 `{"hotkey": name}` and `{"group": name}`), `sound` (`name`, `extension`:
 `wav`, `mp3`, `ogg` or `flac`, and `data`: the sound file as it was added, in
-base64), `eq_preset` (`name`, `bands`), `app_rules` (`rules`: `{"app":
+base64), `eq_preset` (`name`, `bands`), `meter_colors` (`name`,
+`colors`, `breaks_db`), `app_rules` (`rules`: `{"app":
 name, "strip": name}`), `preferences` (`window_look`, `mixer`,
 `hotkey_feedback`, `audio_timing` and `start_at_login`, each there only if
 exported) or `export`, the manifest (`files`). A file in a later
@@ -1832,15 +1917,16 @@ Write settings to a file. Name each thing, or give `all`.
 | Parameter | Type | |
 |---|---|---|
 | `path` | string | The file to write, a whole path: a `.zip`, or a `.json` for one thing alone. A file already there is replaced. |
-| `all` | boolean, *optional* | Everything: every scene, setup, hotkey, sound and preset of your own, the app rules and every part of the preferences. |
+| `all` | boolean, *optional* | Everything: every scene, setup, hotkey, sound, preset and set of meter colors of your own, the app rules and every part of the preferences. |
 | `scenes` | list of strings, *optional* | Scenes, by name. |
 | `setups` | list of strings, *optional* | Setups, by name. |
 | `hotkeys` | list of numbers or strings, *optional* | Hotkeys, by id or name. Their groups and order go with them, and so do the sounds of your own they play; so a hotkey that plays one goes to a `.zip`, not a bare `.json`. |
 | `sounds` | list of strings, *optional* | Sounds of your own, by name. |
 | `eq_presets` | list of strings, *optional* | Presets of your own, by name. |
+| `meter_colors` | list of strings, *optional* | Meter colors of your own, by name. |
 | `app_rules` | boolean, *optional* | The app rules. |
-| `preferences` | list of strings, *optional* | Parts of the preferences: `window_look` (light or dark, accent and font, what buses list, app volume sliders, the spectrum), `mixer` (solo, meter speed, the tray icon, what opens at start), `hotkey_feedback` (what hotkeys show, and the device and volume of their sounds), `audio_timing` (sample rate and latency) and `start_at_login`. |
-| `window_look` | object, *optional* | The window's look, which only the window knows: its settings named `appearance`, `system_accent`, `system_font`, `bus_sources`, `show_app_volume`, `spectrum`, `meter_scale`, `meter_peak` and `meter_number`, as in its `gui.toml`. Without it, `window_look` is not exported. |
+| `preferences` | list of strings, *optional* | Parts of the preferences: `window_look` (light or dark, accent and font, what buses list, app volume sliders, the spectrum, what meters show and which colors they use), `mixer` (solo, meter speed, the tray icon, what opens at start), `hotkey_feedback` (what hotkeys show, and the device and volume of their sounds), `audio_timing` (sample rate and latency) and `start_at_login`. |
+| `window_look` | object, *optional* | The window's look, which only the window knows: its settings named `appearance`, `system_accent`, `system_font`, `bus_sources`, `show_app_volume`, `spectrum`, `meter_scale`, `meter_peak`, `meter_number` and `meter_colors` (the name of the meter colors it draws with), as in its `gui.toml`. Without it, `window_look` is not exported. |
 
 Returns `{"path": file, "files": [...]}`, the files in it.
 
@@ -2051,6 +2137,7 @@ replace its copy.
 |---|---|---|---|
 | `state_changed` | `state` | [MixerState](#mixerstate) | Anything about the strips and buses changed. |
 | `eq_presets_changed` | `state` | list of [EqPreset](#eqpreset) | A preset was saved or deleted. |
+| `meter_colors_changed` | `state` | list of [MeterColors](#metercolors) | Meter colors were saved or deleted. |
 | `history_changed` | `state` | [HistoryInfo](#historyinfo) | A change was made, undone or redone. |
 | `app_rules_changed` | `state` | list of [AppRule](#apprule) | The application rules changed. |
 | `library_changed` | `state` | [Library](#library) | A scene or setup was saved, loaded or deleted. |
@@ -2067,7 +2154,7 @@ replace its copy.
 | `spectrum` | see [`watch_spectrum`](#watch_spectrum) | [Spectrum](#spectrum) | 30 times a second for each strip or bus watched. |
 | `show_window` | `window` | none | The mixer window should come to the front. |
 | `quit` | `window` | none | The daemon is stopping, or another window is already open; the window should close. |
-| `window_look` | `window` | object | A window look was imported: the window takes these settings (`appearance`, `system_accent`, `system_font`, `bus_sources`, `show_app_volume`, `spectrum`, `meter_scale`, `meter_peak`, `meter_number`) and saves them. |
+| `window_look` | `window` | object | A window look was imported: the window takes these settings (`appearance`, `system_accent`, `system_font`, `bus_sources`, `show_app_volume`, `spectrum`, `meter_scale`, `meter_peak`, `meter_number`, `meter_colors`) and saves them. |
 
 For example, after someone mutes the Mic strip:
 
@@ -2099,6 +2186,7 @@ What [`get_state`](#get_state) returns.
 | `engine` | [EngineStatus](#enginestatus) | How the audio engine is doing. |
 | `settings` | [Settings](#settings) | The daemon's settings. |
 | `eq_presets` | list of [EqPreset](#eqpreset) | Every equalizer preset, built-in first. |
+| `meter_colors` | list of [MeterColors](#metercolors) | Every way of coloring meters, `Default` first. |
 | `app_rules` | list of [AppRule](#apprule) | Where applications go when they start. |
 | `library` | [Library](#library) | The saved scenes and setups. |
 | `system_volumes` | [SystemVolumes](#systemvolumes) | The system's volume on Weir's devices. |
@@ -2276,6 +2364,15 @@ exactly the curve the engine applies, for drawing it.
 
 `{"name": "Voice: clarity", "bands": [EqBand, ...], "builtin": true}`.
 Built-in presets cannot be changed or deleted.
+
+### MeterColors
+
+`{"name": "Default", "colors": ["#46C864", "#EBC846", "#EB4B41"],
+"breaks_db": [-12, 0], "builtin": true}`: the colors of a meter from the
+bottom up, and the levels in dB where each gives way to the next, one
+fewer than the colors. `builtin` is there only for `Default`, Weir's own,
+which cannot be changed or deleted; the window draws it in its light or
+dark theme's shades of the same colors.
 
 ### Limiter
 

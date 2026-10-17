@@ -155,6 +155,8 @@ pub struct Prefs {
     pub meter_peak: bool,
     /// What that number says.
     pub meter_number: MeterNumber,
+    /// The name of the meter colors meters are drawn in.
+    pub meter_colors: String,
     /// The live spectrum behind the equalizer curve.
     pub spectrum: SpectrumView,
     /// Size of a strip's settings window, as last left.
@@ -182,6 +184,7 @@ impl Default for Prefs {
             meter_scale: true,
             meter_peak: true,
             meter_number: MeterNumber::default(),
+            meter_colors: weir_protocol::METER_COLORS_DEFAULT.into(),
             spectrum: SpectrumView::default(),
             strip_fx_size: None,
             bus_settings_size: None,

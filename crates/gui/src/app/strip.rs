@@ -156,7 +156,8 @@ impl App {
                 widgets::meter_scale(ui, lay.fader_h);
                 ui.add_space(theme::SCALE_GAP);
             }
-            meter_rect = Some(widgets::meter(ui, &lv, &pk, lay.fader_h).rect);
+            let paint = self.meter_paint(state);
+            meter_rect = Some(widgets::meter(ui, &lv, &pk, lay.fader_h, &paint).rect);
             ui.add_space(theme::METER_GAP);
             match view {
                 None => {

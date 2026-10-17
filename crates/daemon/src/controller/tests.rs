@@ -1667,3 +1667,43 @@ fn update_checks_are_kept_and_told() {
     assert_eq!(s["update_check"], json!(false));
     assert_eq!(s.get("skipped_version"), None);
 }
+
+#[test]
+fn meter_colors_are_kept_shared_and_default_stays() {
+    let mut a = Rig::new("meter-colors-a");
+    let mut b = Rig::new("meter-colors-b");
+    let warm = json!({"name": "Warm", "colors": ["#3c7fd6", "#46C864", "#EB4B41"],
+                      "breaks_db": [-30, -3]});
+    let list = a.ok("save_meter_colors", warm);
+    assert_eq!(list[0]["name"], "Default");
+    assert_eq!(list[0]["builtin"], true);
+    assert_eq!(list[1]["colors"][0], "#3C7FD6", "colors are written alike");
+
+    // Default is Weir's own, and nothing broken is kept.
+    let default = json!({"name": "default", "colors": ["#000000"]});
+    assert_eq!(a.code("save_meter_colors", default), RpcError::APPLICATION);
+    let unsorted = json!({"name": "Odd", "colors": ["#000000", "#FFFFFF"], "breaks_db": [40]});
+    assert_eq!(
+        a.code("save_meter_colors", unsorted),
+        RpcError::INVALID_PARAMS
+    );
+    assert_eq!(
+        a.code("delete_meter_colors", json!({"name": "Default"})),
+        RpcError::APPLICATION
+    );
+
+    // To another computer and back.
+    let file = a.dir.join("warm.json");
+    a.ok(
+        "export_settings",
+        json!({"path": file, "meter_colors": ["warm"]}),
+    );
+    let seen = b.ok("inspect_import", json!({"path": file}));
+    assert_eq!(seen["items"][0]["kind"], "meter_colors");
+    b.ok("import_settings", json!({"path": file}));
+    let state = b.ok("get_state", json!({}));
+    assert_eq!(state["meter_colors"][1]["breaks_db"], json!([-30.0, -3.0]));
+
+    let list = a.ok("delete_meter_colors", json!({"name": "WARM"}));
+    assert_eq!(list.as_array().unwrap().len(), 1);
+}

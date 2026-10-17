@@ -43,6 +43,7 @@ pub fn folder(kind: ExportKind) -> &'static str {
         ExportKind::Hotkey => "hotkeys",
         ExportKind::Sound => "sounds",
         ExportKind::EqPreset => "eq-presets",
+        ExportKind::MeterColors => "meter-colors",
         ExportKind::AppRules => "app-rules",
         ExportKind::Preferences => "preferences",
     }
@@ -117,6 +118,15 @@ pub struct SoundFile {
 pub struct EqPresetFile {
     pub name: String,
     pub bands: Vec<EqBand>,
+}
+
+/// A way of coloring meters.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MeterColorsFile {
+    pub name: String,
+    pub colors: Vec<String>,
+    #[serde(default)]
+    pub breaks_db: Vec<f32>,
 }
 
 /// The app rules, their strips by name.
@@ -202,6 +212,7 @@ pub enum Body {
     HotkeyList(HotkeyListFile),
     Sound(SoundFile),
     EqPreset(EqPresetFile),
+    MeterColors(MeterColorsFile),
     AppRules(AppRulesFile),
     Preferences(PreferencesFile),
 }
@@ -247,6 +258,7 @@ pub fn write_file(body: &Body, stamp: &Stamp) -> String {
         Body::HotkeyList(b) => out("hotkey_list", b, stamp),
         Body::Sound(b) => out("sound", b, stamp),
         Body::EqPreset(b) => out("eq_preset", b, stamp),
+        Body::MeterColors(b) => out("meter_colors", b, stamp),
         Body::AppRules(b) => out("app_rules", b, stamp),
         Body::Preferences(b) => out("preferences", b, stamp),
     }
@@ -323,6 +335,7 @@ pub fn read_file(path: &str, text: &str) -> ReadFile {
         "hotkey_list" => parse(value).map(Body::HotkeyList),
         "sound" => parse(value).map(Body::Sound),
         "eq_preset" => parse(value).map(Body::EqPreset),
+        "meter_colors" => parse(value).map(Body::MeterColors),
         "app_rules" => parse(value).map(Body::AppRules),
         "preferences" => parse(value).map(Body::Preferences),
         other => Err(format!(

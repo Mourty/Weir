@@ -17,6 +17,7 @@
 
 mod handlers;
 pub mod hotkeys;
+mod meter_colors;
 mod names;
 mod rules;
 mod sounds;
@@ -69,6 +70,8 @@ struct Inner {
     /// could not be read, in which case it is left alone rather than
     /// overwritten.
     user_eq_presets: Result<Vec<EqPreset>, String>,
+    /// The user's own ways of coloring meters; `Err` as for presets.
+    user_meter_colors: Result<Vec<MeterColors>, String>,
     /// What can be undone and redone.
     history: History,
     app_rules: Vec<AppRule>,
@@ -180,6 +183,12 @@ impl Controller {
                     warn!("{e:#}");
                     format!("{e:#}")
                 }),
+                user_meter_colors: config::load_meter_colors(&paths.meter_colors_file).map_err(
+                    |e| {
+                        warn!("{e:#}");
+                        format!("{e:#}")
+                    },
+                ),
                 history: History::default(),
                 app_rules,
                 rules_done: HashSet::new(),

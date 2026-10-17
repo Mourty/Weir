@@ -32,6 +32,7 @@ pub const WINDOW_LOOK_KEYS: &[&str] = &[
     "meter_scale",
     "meter_peak",
     "meter_number",
+    "meter_colors",
 ];
 
 fn is_false(b: &bool) -> bool {
@@ -64,6 +65,8 @@ pub enum ExportKind {
     Sound,
     /// An equalizer preset of the user's own.
     EqPreset,
+    /// A way of coloring meters of the user's own.
+    MeterColors,
     /// The app rules, all together.
     AppRules,
     /// One part of the preferences.
@@ -72,12 +75,13 @@ pub enum ExportKind {
 
 impl ExportKind {
     /// Every kind, in the order lists show them.
-    pub const ALL: [ExportKind; 7] = [
+    pub const ALL: [ExportKind; 8] = [
         ExportKind::Scene,
         ExportKind::Setup,
         ExportKind::Hotkey,
         ExportKind::Sound,
         ExportKind::EqPreset,
+        ExportKind::MeterColors,
         ExportKind::AppRules,
         ExportKind::Preferences,
     ];
@@ -90,6 +94,7 @@ impl ExportKind {
             ExportKind::Hotkey => "hotkey",
             ExportKind::Sound => "sound",
             ExportKind::EqPreset => "equalizer preset",
+            ExportKind::MeterColors => "set of meter colors",
             ExportKind::AppRules => "app rules",
             ExportKind::Preferences => "preferences",
         }
@@ -103,6 +108,7 @@ impl ExportKind {
             ExportKind::Hotkey => "Hotkeys",
             ExportKind::Sound => "Sounds",
             ExportKind::EqPreset => "Equalizer presets",
+            ExportKind::MeterColors => "Meter colors",
             ExportKind::AppRules => "App rules",
             ExportKind::Preferences => "Preferences",
         }
@@ -126,7 +132,8 @@ impl ExportKind {
 #[serde(rename_all = "snake_case")]
 pub enum PreferencePart {
     /// The window's look: light or dark, the desktop's accent and font,
-    /// what each bus lists, app volume sliders and the spectrum.
+    /// what each bus lists, app volume sliders, the spectrum, and what
+    /// meters show and in which colors.
     WindowLook,
     /// How the mixer behaves: solo, meter speed, the tray icon, and what
     /// opens when Weir starts.
@@ -166,7 +173,8 @@ impl PreferencePart {
     pub fn summary(self) -> &'static str {
         match self {
             PreferencePart::WindowLook => {
-                "Light or dark, accent and font, what buses list, app volume sliders, spectrum"
+                "Light or dark, accent and font, what buses list, app volume sliders, spectrum, \
+                 what meters show and their colors"
             }
             PreferencePart::Mixer => "Solo, meter speed, tray icon, what opens when Weir starts",
             PreferencePart::AudioTiming => "Sample rate and latency",
@@ -217,6 +225,9 @@ pub struct ExportParams {
     /// Equalizer presets of your own, by name.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub eq_presets: Vec<String>,
+    /// Ways of coloring meters of your own, by name.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub meter_colors: Vec<String>,
     /// The app rules.
     #[serde(default, skip_serializing_if = "is_false")]
     pub app_rules: bool,

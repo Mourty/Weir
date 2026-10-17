@@ -43,6 +43,9 @@ fn allowed_in_hotkey(req: &Request) -> bool {
             | Request::ListSetups
             | Request::ListScenes
             | Request::ListEqPresets
+            | Request::ListMeterColors
+            | Request::SaveMeterColors(_)
+            | Request::DeleteMeterColors(_)
             | Request::History
             | Request::Subscribe(_)
             | Request::Unsubscribe(_)

@@ -169,10 +169,13 @@ From top to bottom:
 * **Pan**, from left to right. Double-click it to center it.
 * **The meter and the fader.** The meter shows the level after the strip's
   effects and fader, one bar per channel, with a mark that holds each peak
-  for a moment, and a scale in dB beside it. Above it, a number says how
-  loud it is now, in dB, red at 0 dB and over; Preferences can make it
-  the highest peak instead, which holds until you click it. Drag the fader, scroll over it for 1 dB steps, or double-click it
-  for 0 dB; hold Shift while dragging for fine control.
+  for a moment, and a scale in dB beside it. It is green, yellow from
+  -12 dB and red from 0 dB, unless you pick other colors (see
+  [Preferences](#preferences)). Above it, a number says how loud it is
+  now, in dB, red at 0 dB and over; Preferences can make it the highest
+  peak instead, which holds until you click it. Drag the fader, scroll
+  over it for 1 dB steps, or double-click it for 0 dB; hold Shift while
+  dragging for fine control.
 * **Routing buttons**, one per bus, beside the fader: lit when the strip is
   sent to that bus. See [Who hears what](#who-hears-what).
 * **CLIP** and the level. The level can be typed into. CLIP lights up, and
@@ -764,7 +767,8 @@ of them, use **Export settings…** and **Import settings…** in the **…**
 menu at the top right.
 
 **Export settings…** lists everything you can take, in sections: scenes,
-setups, hotkeys, sounds and equalizer presets of your own, the app rules,
+setups, hotkeys, sounds, equalizer presets and meter colors of your own,
+the app rules,
 and five parts of the preferences: the window's look, how the mixer
 behaves, hotkey popups and sounds, audio timing (the sample rate and
 latency), and whether Weir starts when you log in. Everything starts ticked. Untick what you want to leave out, or click
@@ -774,7 +778,8 @@ even if you untick them under Sounds.
 
 To share one thing on its own, use **export** beside a scene or setup in
 the Scenes and Setups menus, or beside one of your presets in the
-equalizer's Preset menu, or **Export…** in a hotkey's editor. It is saved
+equalizer's Preset menu, or **Export…** in a hotkey's editor or beside
+your meter colors in Preferences. It is saved
 as a `.json` file, or, for a hotkey that plays a sound of your own, as a
 `.zip` with the sound.
 
@@ -886,6 +891,23 @@ of its own, with its pages down the left side.
     digits can be read. Red at 0 dB and over.
   * **The highest peak**: the loudest it has been since you last clicked
     the number, red once it reached 0 dB. Click it to start again.
+* **Meter colors**: the colors meters are drawn in, as bands from the
+  bottom up. **Default** is Weir's own: green, yellow from -12 dB, red from
+  0 dB. It cannot be changed, so to make your own, pick the colors to start
+  from and click **Save as…**, then change the copy on the tall meter
+  below:
+  * **Drag a line**, by the tab beside it, to move where one color gives way
+    to the next. The tab says the level.
+  * **Click the meter** to add a line there. The band it splits gets a
+    second copy of its color, ready to change.
+  * **Right-click a tab**, or drag it off sideways, to remove the line. The
+    band below it grows to fill the space.
+  * **Click the pencil** in a band to change its color.
+
+  Every meter changes as you go, and the small meters beside the editor
+  show quiet, middling and too-loud sound. **Rename…**, **Export…** and
+  **Delete…** work on your own colors; deleting the ones in use puts meters
+  back to Default. Up to 12 colors.
 
 **Hotkeys and sounds**
 
@@ -994,6 +1016,7 @@ Your settings, which are kept when Weir is uninstalled:
 | `~/.config/weir/scenes/` | Your scenes, one file each. |
 | `~/.config/weir/setups/` | Your setups, one file each. |
 | `~/.config/weir/eq-presets.toml` | Your equalizer presets. |
+| `~/.config/weir/meter-colors.json` | Your meter colors. Which ones the window uses is in `gui.toml`. |
 | `~/.config/weir/hotkeys.json` | Your hotkeys. |
 | `~/.config/weir/sounds/` | Sounds you added for hotkeys, one file each, named after the sound. |
 | `~/.config/weir/seen-apps.json` | The applications heard playing in the last 90 days, for the App rules window. |

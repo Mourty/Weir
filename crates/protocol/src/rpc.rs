@@ -242,10 +242,11 @@ impl RpcError {
 )]
 #[serde(rename_all = "snake_case")]
 pub enum Topic {
-    /// `state_changed`, `eq_presets_changed`, `history_changed`,
-    /// `app_rules_changed` and `library_changed`: the mixer, the equalizer
-    /// presets, what can be undone, the application rules, or the saved
-    /// scenes and setups changed.
+    /// `state_changed`, `eq_presets_changed`, `meter_colors_changed`,
+    /// `history_changed`, `app_rules_changed` and `library_changed`: the
+    /// mixer, the equalizer presets, the ways of coloring meters, what can
+    /// be undone, the application rules, or the saved scenes and setups
+    /// changed.
     State,
     /// `meters`: periodic peak levels.
     Meters,
@@ -1177,6 +1178,15 @@ pub enum Request {
     DeleteEqPreset(NameParams),
     /// Returns the updated [`Strip`] or [`Bus`].
     ApplyEqPreset(ApplyEqPresetParams),
+    /// Returns `Vec<MeterColors>`: the ways of coloring meters, Weir's own
+    /// first.
+    ListMeterColors,
+    /// Saves, or replaces, a way of coloring meters of your own. Returns
+    /// `Vec<MeterColors>`.
+    SaveMeterColors(crate::meter_colors::MeterColors),
+    /// Deletes a way of coloring meters of your own. Returns
+    /// `Vec<MeterColors>`.
+    DeleteMeterColors(NameParams),
     /// Returns [`HotkeysInfo`]: every hotkey, and how keys reach Weir.
     ListHotkeys,
     /// Adds a hotkey, or replaces the one with the same `id`. Returns the
@@ -1347,6 +1357,8 @@ pub enum Notification {
     UpdateChanged(crate::updates::UpdateStatus),
     /// The list of equalizer presets changed.
     EqPresetsChanged(Vec<EqPreset>),
+    /// The ways of coloring meters changed.
+    MeterColorsChanged(Vec<crate::meter_colors::MeterColors>),
     /// A strip's or bus's equalizer input and output, for an analyzer.
     Spectrum(Spectrum),
     /// Come to the front. Sent when the tray's "Show the mixer" is used and a
@@ -1379,6 +1391,7 @@ impl Notification {
         match self {
             Self::StateChanged(_)
             | Self::EqPresetsChanged(_)
+            | Self::MeterColorsChanged(_)
             | Self::HistoryChanged(_)
             | Self::AppRulesChanged(_)
             | Self::LibraryChanged(_) => Topic::State,

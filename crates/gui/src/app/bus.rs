@@ -161,7 +161,8 @@ impl App {
             }
             widgets::field_context_menu(&handle, |ui| self.limiter_menu(ui, b));
             ui.add_space(theme::CEILING_GAP);
-            let meter = widgets::meter(ui, &lv, &pk, lay.fader_h);
+            let paint = self.meter_paint(state);
+            let meter = widgets::meter(ui, &lv, &pk, lay.fader_h, &paint);
             if b.limiter.enabled {
                 widgets::ceiling_line(ui, meter.rect, ceiling);
             }

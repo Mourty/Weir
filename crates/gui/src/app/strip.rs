@@ -25,7 +25,7 @@ impl App {
         s: &Strip,
         lay: &Metrics,
     ) -> egui::Response {
-        let inner_w = lay.strip_w - 12.0;
+        let inner_w = lay.strip_w(s.layout.channel_count()) - 12.0;
         let bg = if s.kind == StripKind::Hardware {
             theme::p().strip_bg_hw
         } else {
@@ -132,14 +132,7 @@ impl App {
         inner_w: f32,
     ) {
         let n_ch = s.layout.channel_count();
-        let meter_w = widgets::meter_width(n_ch);
-        let routes_w = lay.route_cols as f32 * (theme::ROUTE_BTN_W + theme::ROUTE_GAP);
-        let scale_w = if lay.scale {
-            theme::METER_SCALE_W + 2.0
-        } else {
-            0.0
-        };
-        let row_w = scale_w + meter_w + 4.0 + theme::FADER_W + 4.0 + routes_w;
+        let row_w = lay.strip_row_w(n_ch);
         let target = StripOrBus::Strip(s.id);
         let view = self.mix_view.and_then(|id| state.mixer.bus(id));
         let in_view = view.is_none_or(|b| s.routes.contains(&b.id));
@@ -147,6 +140,8 @@ impl App {
         let peak_area = lay.peak.then(|| self.peak_area(ui, inner_w));
         let mut meter_rect = None;
         ui.horizontal(|ui| {
+            // The gaps are the row's own, as the strip's width counts them.
+            ui.spacing_mut().item_spacing.x = 0.0;
             ui.add_space(((inner_w - row_w) / 2.0).max(0.0));
             let (lv, pk) = self.meters.entry(target).or_default().shown(n_ch);
             let (lv, pk) = if in_view {
@@ -159,11 +154,11 @@ impl App {
             };
             if lay.scale {
                 widgets::meter_scale(ui, lay.fader_h);
-                ui.add_space(2.0);
+                ui.add_space(theme::SCALE_GAP);
             }
             let paint = self.meter_paint(state);
             meter_rect = Some(widgets::meter(ui, &lv, &pk, lay.fader_h, &paint).rect);
-            ui.add_space(4.0);
+            ui.add_space(theme::METER_GAP);
             match view {
                 None => {
                     let key = Key::Gain(StripOrBus::Strip(s.id));
@@ -203,7 +198,7 @@ impl App {
                     });
                 }
             }
-            ui.add_space(4.0);
+            ui.add_space(theme::METER_GAP);
             self.route_buttons(ui, state, s, lay);
         });
         if let (Some(area), Some(meter)) = (peak_area, meter_rect) {
@@ -433,7 +428,10 @@ impl App {
     /// The routing buttons for one strip, stacked vertically beside the fader
     /// and wrapping into more columns when the window is too short.
     fn route_buttons(&mut self, ui: &mut Ui, state: &FullState, s: &Strip, lay: &Metrics) {
-        for column in state.mixer.buses.chunks(lay.per_col.max(1)) {
+        for (k, column) in state.mixer.buses.chunks(lay.per_col.max(1)).enumerate() {
+            if k > 0 {
+                ui.add_space(theme::ROUTE_GAP);
+            }
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = theme::ROUTE_GAP;
                 for b in column {

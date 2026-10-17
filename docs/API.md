@@ -1840,7 +1840,7 @@ Write settings to a file. Name each thing, or give `all`.
 | `eq_presets` | list of strings, *optional* | Presets of your own, by name. |
 | `app_rules` | boolean, *optional* | The app rules. |
 | `preferences` | list of strings, *optional* | Parts of the preferences: `window_look` (light or dark, accent and font, what buses list, app volume sliders, the spectrum), `mixer` (solo, meter speed, the tray icon, what opens at start), `hotkey_feedback` (what hotkeys show, and the device and volume of their sounds), `audio_timing` (sample rate and latency) and `start_at_login`. |
-| `window_look` | object, *optional* | The window's look, which only the window knows: its settings named `appearance`, `system_accent`, `system_font`, `bus_sources`, `show_app_volume` and `spectrum`, as in its `gui.toml`. Without it, `window_look` is not exported. |
+| `window_look` | object, *optional* | The window's look, which only the window knows: its settings named `appearance`, `system_accent`, `system_font`, `bus_sources`, `show_app_volume`, `spectrum`, `meter_scale` and `meter_peak`, as in its `gui.toml`. Without it, `window_look` is not exported. |
 
 Returns `{"path": file, "files": [...]}`, the files in it.
 
@@ -2067,7 +2067,7 @@ replace its copy.
 | `spectrum` | see [`watch_spectrum`](#watch_spectrum) | [Spectrum](#spectrum) | 30 times a second for each strip or bus watched. |
 | `show_window` | `window` | none | The mixer window should come to the front. |
 | `quit` | `window` | none | The daemon is stopping, or another window is already open; the window should close. |
-| `window_look` | `window` | object | A window look was imported: the window takes these settings (`appearance`, `system_accent`, `system_font`, `bus_sources`, `show_app_volume`, `spectrum`) and saves them. |
+| `window_look` | `window` | object | A window look was imported: the window takes these settings (`appearance`, `system_accent`, `system_font`, `bus_sources`, `show_app_volume`, `spectrum`, `meter_scale`, `meter_peak`) and saves them. |
 
 For example, after someone mutes the Mic strip:
 

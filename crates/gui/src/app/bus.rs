@@ -131,9 +131,21 @@ impl App {
         inner_w: f32,
     ) {
         let n_ch = b.layout.channel_count();
-        let row_w = theme::CEILING_W + 4.0 + widgets::meter_width(n_ch) + 8.0 + theme::FADER_W;
+        let scale_w = if lay.scale {
+            theme::METER_SCALE_W + 2.0
+        } else {
+            0.0
+        };
+        let row_w =
+            scale_w + theme::CEILING_W + 4.0 + widgets::meter_width(n_ch) + 8.0 + theme::FADER_W;
+        let peak_area = lay.peak.then(|| self.peak_area(ui, inner_w));
+        let mut meter_rect = None;
         ui.horizontal(|ui| {
             ui.add_space(((inner_w - row_w) / 2.0).max(0.0));
+            if lay.scale {
+                widgets::meter_scale(ui, lay.fader_h);
+                ui.add_space(2.0);
+            }
             let (lv, pk) = self
                 .meters
                 .entry(StripOrBus::Bus(b.id))
@@ -156,6 +168,7 @@ impl App {
             if b.limiter.enabled {
                 widgets::ceiling_line(ui, meter.rect, ceiling);
             }
+            meter_rect = Some(meter.rect);
             ui.add_space(4.0);
             let key = Key::Gain(StripOrBus::Bus(b.id));
             let mut gain = self.value(key, b.gain_db);
@@ -170,6 +183,9 @@ impl App {
                 self.hotkey_items(ui, state, start.with(Action::VolumeBy));
             });
         });
+        if let (Some(area), Some(meter)) = (peak_area, meter_rect) {
+            self.peak_number(ui, StripOrBus::Bus(b.id), area, meter, Some(0.0));
+        }
     }
 
     /// The equalizer switch of a bus and the button that opens its settings.

@@ -243,6 +243,11 @@ pub const FX_ROW_H: f32 = 22.0;
 pub const CEILING_W: f32 = 12.0;
 /// The CLIP and LIM lights either side of the level readout.
 pub const LAMP_W: f32 = 26.0;
+/// Width of the dB scale beside a meter.
+pub const METER_SCALE_W: f32 = 20.0;
+/// Height of the peak number above a meter, and the space under it.
+pub const PEAK_H: f32 = 18.0;
+pub const PEAK_GAP: f32 = 4.0;
 pub const LAMP_H: f32 = 16.0;
 
 /// Draw with `palette` from now on, in every window.

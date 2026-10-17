@@ -112,6 +112,10 @@ pub struct Prefs {
     pub bus_sources: BusSources,
     /// Show a volume slider for each application under the virtual strips.
     pub show_app_volume: bool,
+    /// A dB scale beside each meter.
+    pub meter_scale: bool,
+    /// The highest peak, as a number above each meter.
+    pub meter_peak: bool,
     /// The live spectrum behind the equalizer curve.
     pub spectrum: SpectrumView,
     /// Size of a strip's settings window, as last left.
@@ -136,6 +140,8 @@ impl Default for Prefs {
             system_font: false,
             bus_sources: BusSources::default(),
             show_app_volume: true,
+            meter_scale: true,
+            meter_peak: true,
             spectrum: SpectrumView::default(),
             strip_fx_size: None,
             bus_settings_size: None,

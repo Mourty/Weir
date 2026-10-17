@@ -19,10 +19,17 @@ pub(super) struct Metrics {
     pub route_cols: usize,
     pub strip_w: f32,
     pub bus_w: f32,
+    /// A dB scale beside each meter.
+    pub scale: bool,
+    /// The highest peak as a number above each meter.
+    pub peak: bool,
 }
 
 impl Metrics {
-    pub(super) fn compute(avail_h: f32, mixer: &MixerState) -> Self {
+    /// The sizes for a mixer area `avail_h` tall showing `mixer`, with a
+    /// dB `scale` beside each meter and the `peak` number above it, as the
+    /// preferences say.
+    pub(super) fn compute(avail_h: f32, mixer: &MixerState, scale: bool, peak: bool) -> Self {
         let strip_h = (avail_h - 8.0).max(300.0);
         // Everything in a strip except the fader row itself.
         let chrome = 14.0            // caption
@@ -32,8 +39,14 @@ impl Metrics {
             + theme::FX_ROW_H        // effect buttons
             + 26.0                   // mute and solo row
             + 6.0 * 6.0              // spacing between those
-            + 12.0; // frame margin
+            + 12.0 // frame margin
+            + if peak { theme::PEAK_H + theme::PEAK_GAP } else { 0.0 };
         let fader_h = (strip_h - chrome).max(80.0);
+        let scale_w = if scale {
+            theme::METER_SCALE_W + 2.0
+        } else {
+            0.0
+        };
         let step = theme::ROUTE_BTN_H + theme::ROUTE_GAP;
         let fit = (((fader_h + theme::ROUTE_GAP) / step).floor() as usize).max(1);
         let n_buses = mixer.buses.len();
@@ -50,11 +63,17 @@ impl Metrics {
         let strip_ch = widest(&mut mixer.strips.iter().map(|s| s.layout.channel_count()));
         let bus_ch = widest(&mut mixer.buses.iter().map(|b| b.layout.channel_count()));
         let routes_w = route_cols as f32 * (theme::ROUTE_BTN_W + theme::ROUTE_GAP);
-        let strip_w = (widgets::meter_width(strip_ch) + 8.0 + theme::FADER_W + routes_w + 12.0)
-            .max(theme::STRIP_MIN_WIDTH);
-        let bus_w =
-            (theme::CEILING_W + 4.0 + widgets::meter_width(bus_ch) + 8.0 + theme::FADER_W + 12.0)
-                .max(theme::BUS_MIN_WIDTH);
+        let strip_w =
+            (scale_w + widgets::meter_width(strip_ch) + 8.0 + theme::FADER_W + routes_w + 12.0)
+                .max(theme::STRIP_MIN_WIDTH);
+        let bus_w = (scale_w
+            + theme::CEILING_W
+            + 4.0
+            + widgets::meter_width(bus_ch)
+            + 8.0
+            + theme::FADER_W
+            + 12.0)
+            .max(theme::BUS_MIN_WIDTH);
         Self {
             strip_h,
             fader_h,
@@ -62,13 +81,20 @@ impl Metrics {
             route_cols,
             strip_w,
             bus_w,
+            scale,
+            peak,
         }
     }
 }
 
 impl App {
     pub(super) fn mixer_view(&mut self, ui: &mut Ui, state: &FullState) {
-        let lay = Metrics::compute(ui.available_height(), &state.mixer);
+        let lay = Metrics::compute(
+            ui.available_height(),
+            &state.mixer,
+            self.prefs.meter_scale,
+            self.prefs.meter_peak,
+        );
         egui::ScrollArea::horizontal()
             .auto_shrink([false, false])
             .show(ui, |ui| {
@@ -154,11 +180,18 @@ mod tests {
 
     #[test]
     fn faders_get_what_the_rest_of_a_strip_leaves() {
-        let tall = Metrics::compute(900.0, &MixerState::default());
-        let short = Metrics::compute(500.0, &MixerState::default());
+        let none = MixerState::default();
+        let tall = Metrics::compute(900.0, &none, false, false);
+        let short = Metrics::compute(500.0, &none, false, false);
         assert!(tall.fader_h > short.fader_h);
         assert_eq!(tall.route_cols, 0, "no buses, no buttons");
-        let tiny = Metrics::compute(10.0, &MixerState::default());
+        let tiny = Metrics::compute(10.0, &none, false, false);
         assert!(tiny.fader_h >= 80.0, "a fader never gets too short to use");
+        // The peak number takes its height from the fader.
+        let peaked = Metrics::compute(900.0, &none, true, true);
+        assert_eq!(
+            peaked.fader_h,
+            tall.fader_h - theme::PEAK_H - theme::PEAK_GAP
+        );
     }
 }

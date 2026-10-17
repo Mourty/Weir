@@ -134,17 +134,21 @@ impl App {
         let n_ch = s.layout.channel_count();
         let meter_w = widgets::meter_width(n_ch);
         let routes_w = lay.route_cols as f32 * (theme::ROUTE_BTN_W + theme::ROUTE_GAP);
-        let row_w = meter_w + 4.0 + theme::FADER_W + 4.0 + routes_w;
+        let scale_w = if lay.scale {
+            theme::METER_SCALE_W + 2.0
+        } else {
+            0.0
+        };
+        let row_w = scale_w + meter_w + 4.0 + theme::FADER_W + 4.0 + routes_w;
+        let target = StripOrBus::Strip(s.id);
+        let view = self.mix_view.and_then(|id| state.mixer.bus(id));
+        let in_view = view.is_none_or(|b| s.routes.contains(&b.id));
+        let shift = view.map_or(0.0, |b| s.send_db(b.id));
+        let peak_area = lay.peak.then(|| self.peak_area(ui, inner_w));
+        let mut meter_rect = None;
         ui.horizontal(|ui| {
             ui.add_space(((inner_w - row_w) / 2.0).max(0.0));
-            let (lv, pk) = self
-                .meters
-                .entry(StripOrBus::Strip(s.id))
-                .or_default()
-                .shown(n_ch);
-            let view = self.mix_view.and_then(|id| state.mixer.bus(id));
-            let in_view = view.is_none_or(|b| s.routes.contains(&b.id));
-            let shift = view.map_or(0.0, |b| s.send_db(b.id));
+            let (lv, pk) = self.meters.entry(target).or_default().shown(n_ch);
             let (lv, pk) = if in_view {
                 let add = |v: &[f32]| -> Vec<f32> {
                     v.iter().map(|x| (x + shift).max(METER_FLOOR_DB)).collect()
@@ -153,7 +157,11 @@ impl App {
             } else {
                 (vec![METER_FLOOR_DB; n_ch], vec![METER_FLOOR_DB; n_ch])
             };
-            widgets::meter(ui, &lv, &pk, lay.fader_h);
+            if lay.scale {
+                widgets::meter_scale(ui, lay.fader_h);
+                ui.add_space(2.0);
+            }
+            meter_rect = Some(widgets::meter(ui, &lv, &pk, lay.fader_h).rect);
             ui.add_space(4.0);
             match view {
                 None => {
@@ -197,6 +205,11 @@ impl App {
             ui.add_space(4.0);
             self.route_buttons(ui, state, s, lay);
         });
+        if let (Some(area), Some(meter)) = (peak_area, meter_rect) {
+            // In a bus's mix the number is the strip's level there.
+            let shift = in_view.then_some(shift);
+            self.peak_number(ui, target, area, meter, shift);
+        }
     }
 
     /// The level under the fader, to type into: the strip's own, or its

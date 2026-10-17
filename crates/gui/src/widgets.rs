@@ -343,6 +343,82 @@ pub fn lamp(ui: &mut Ui, label: &str, lit: bool, color: Color32) -> Response {
     response
 }
 
+/// Where a meter's scale has a number. Bare numbers: the unit is on the
+/// peak number above the meter.
+const SCALE_MARKS: [f32; 7] = [6.0, 0.0, -6.0, -12.0, -24.0, -36.0, -48.0];
+
+/// A meter's dB scale, `height` tall to stand beside a meter of that
+/// height, its numbers right-aligned against the meter.
+pub fn meter_scale(ui: &mut Ui, height: f32) -> Response {
+    let (rect, response) =
+        ui.allocate_exact_size(vec2(theme::METER_SCALE_W, height), Sense::hover());
+    let painter = ui.painter();
+    let color = theme::p().text_dim;
+    for db in SCALE_MARKS {
+        let y = meter_y(rect, db);
+        painter.hline(
+            (rect.right() - 3.0)..=rect.right(),
+            y,
+            Stroke::new(1.0_f32, color.linear_multiply(0.6)),
+        );
+        let text = if db > 0.0 {
+            format!("+{db:.0}")
+        } else {
+            format!("{db:.0}")
+        };
+        painter.text(
+            pos2(rect.right() - 5.0, y),
+            Align2::RIGHT_CENTER,
+            text,
+            FontId::proportional(9.0),
+            color,
+        );
+    }
+    response
+}
+
+/// A peak level in words, unit and all: "-8.4 dB", "+0.6 dB", "-inf dB".
+pub fn peak_text(db: f32) -> String {
+    if db <= GAIN_MIN_DB {
+        "-inf dB".into()
+    } else if db > 0.05 {
+        format!("+{db:.1} dB")
+    } else {
+        format!("{db:.1} dB")
+    }
+}
+
+/// The highest peak as a number in a small box at `rect`, red once it has
+/// reached full scale. It is clicked to start again. Drawn where it is
+/// put, without taking a place in the layout, so it can sit over a meter
+/// drawn after it was given room.
+pub fn peak_number(ui: &mut Ui, id: egui::Id, rect: Rect, db: f32) -> Response {
+    let response = ui.interact(rect, id, Sense::click());
+    let p = theme::p();
+    let painter = ui.painter();
+    painter.rect_filled(rect, CornerRadius::same(3), p.track);
+    let border = if response.hovered() {
+        p.handle_hover
+    } else {
+        p.button_off
+    };
+    painter.rect_stroke(
+        rect,
+        CornerRadius::same(3),
+        Stroke::new(1.0_f32, border),
+        egui::StrokeKind::Inside,
+    );
+    let color = if db >= 0.0 { p.meter_red } else { p.text };
+    painter.text(
+        rect.center(),
+        Align2::CENTER_CENTER,
+        peak_text(db),
+        FontId::monospace(10.0),
+        color,
+    );
+    response
+}
+
 /// Small horizontal pan / balance control. Double-click to center.
 pub fn pan_slider(ui: &mut Ui, value: &mut f32, width: f32) -> Response {
     let (rect, mut response) = ui.allocate_exact_size(vec2(width, 14.0), Sense::click_and_drag());

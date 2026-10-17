@@ -7,6 +7,8 @@
 
 use super::App;
 use crate::fx_window::CompView;
+use crate::{theme, widgets};
+use egui::{pos2, vec2, Rect, Sense, Ui};
 use std::time::{Duration, Instant};
 use weir_protocol::{Meters, StripOrBus, METER_FLOOR_DB};
 
@@ -28,7 +30,6 @@ const BUS_CLIP_DB: f32 = 0.01;
 const REDUCTION_RECOVERY: f32 = 20.0;
 
 /// One strip's or bus's meter, per channel, as drawn.
-#[derive(Default)]
 pub(super) struct MeterDisplay {
     /// The latest reading.
     raw: Vec<f32>,
@@ -38,6 +39,21 @@ pub(super) struct MeterDisplay {
     pub(super) peak: Vec<f32>,
     /// When each peak was reached, for the hold.
     peak_at: Vec<Option<Instant>>,
+    /// The highest reading since the peak number was last clicked, of any
+    /// channel.
+    highest: f32,
+}
+
+impl Default for MeterDisplay {
+    fn default() -> Self {
+        Self {
+            raw: Vec::new(),
+            level: Vec::new(),
+            peak: Vec::new(),
+            peak_at: Vec::new(),
+            highest: METER_FLOOR_DB,
+        }
+    }
 }
 
 impl MeterDisplay {
@@ -48,8 +64,22 @@ impl MeterDisplay {
             self.level = vec![METER_FLOOR_DB; raw.len()];
             self.peak = vec![METER_FLOOR_DB; raw.len()];
             self.peak_at = vec![None; raw.len()];
+            self.highest = METER_FLOOR_DB;
         }
         self.raw.copy_from_slice(raw);
+        for &db in raw {
+            self.highest = self.highest.max(db);
+        }
+    }
+
+    /// The highest reading since [`Self::start_again`], of any channel.
+    pub(super) fn highest(&self) -> f32 {
+        self.highest.max(METER_FLOOR_DB)
+    }
+
+    /// Forget the highest reading: the peak number starts again.
+    pub(super) fn start_again(&mut self) {
+        self.highest = METER_FLOOR_DB;
     }
 
     /// Move `dt` seconds on: levels fall towards the reading, and peaks
@@ -81,7 +111,56 @@ impl MeterDisplay {
     }
 }
 
+/// How wide the peak number above a meter is: room for "-60.0 dB".
+const PEAK_W: f32 = 54.0;
+
 impl App {
+    /// Room for the peak number above a meter, across the strip or bus.
+    pub(super) fn peak_area(&self, ui: &mut Ui, inner_w: f32) -> Rect {
+        let (rect, _) = ui.allocate_exact_size(
+            vec2(inner_w, theme::PEAK_H + theme::PEAK_GAP),
+            Sense::hover(),
+        );
+        rect
+    }
+
+    /// The highest peak of `target` as a number in `area`, over `meter`,
+    /// `shift` dB away from what the meter reads, or silence with `None`.
+    /// Clicking it starts again.
+    pub(super) fn peak_number(
+        &mut self,
+        ui: &mut Ui,
+        target: StripOrBus,
+        area: Rect,
+        meter: Rect,
+        shift: Option<f32>,
+    ) {
+        let highest = self
+            .meters
+            .get(&target)
+            .map_or(METER_FLOOR_DB, |m| m.highest());
+        let db = match shift {
+            Some(s) if highest > METER_FLOOR_DB => (highest + s).max(METER_FLOOR_DB),
+            _ => METER_FLOOR_DB,
+        };
+        // Over the meter, but inside the strip.
+        let half = PEAK_W / 2.0;
+        let x = meter
+            .center()
+            .x
+            .clamp(area.left() + half, area.right() - half);
+        let rect = Rect::from_center_size(
+            pos2(x, area.top() + theme::PEAK_H / 2.0),
+            vec2(PEAK_W, theme::PEAK_H),
+        );
+        let id = ui.id().with(("peak", target));
+        let r = widgets::peak_number(ui, id, rect, db)
+            .on_hover_text("The highest peak since you last clicked here. Click to start again.");
+        if r.clicked() {
+            self.meters.entry(target).or_default().start_again();
+        }
+    }
+
     /// Take in a new set of readings: the meters, the clip lights, and what
     /// each gate, compressor, limiter and ducking is doing.
     pub(super) fn take_meters(&mut self, m: &Meters) {
@@ -146,6 +225,7 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::widgets::peak_text;
 
     #[test]
     fn meters_fall_steadily_and_peaks_hold() {
@@ -169,5 +249,22 @@ mod tests {
     fn a_meter_shows_silence_until_its_channels_arrive() {
         let m = MeterDisplay::default();
         assert_eq!(m.shown(2).0, [METER_FLOOR_DB, METER_FLOOR_DB]);
+    }
+
+    #[test]
+    fn the_peak_number_holds_the_highest_until_started_again() {
+        let mut m = MeterDisplay::default();
+        assert_eq!(m.highest(), METER_FLOOR_DB, "silence before any reading");
+        m.feed(&[-20.0, -8.4]);
+        m.feed(&[-30.0, -25.0]);
+        assert_eq!(m.highest(), -8.4);
+        m.start_again();
+        assert_eq!(m.highest(), METER_FLOOR_DB);
+        m.feed(&[-12.5, -40.0]);
+        assert_eq!(m.highest(), -12.5);
+        assert_eq!(peak_text(-8.44), "-8.4 dB");
+        assert_eq!(peak_text(0.6), "+0.6 dB");
+        assert_eq!(peak_text(0.0), "0.0 dB");
+        assert_eq!(peak_text(METER_FLOOR_DB), "-inf dB");
     }
 }

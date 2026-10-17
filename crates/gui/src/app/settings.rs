@@ -41,17 +41,25 @@ pub(super) enum PrefsPage {
     General,
     Audio,
     Mixer,
+    Meters,
     Hotkeys,
 }
 
 impl PrefsPage {
-    const ALL: [PrefsPage; 4] = [Self::General, Self::Audio, Self::Mixer, Self::Hotkeys];
+    const ALL: [PrefsPage; 5] = [
+        Self::General,
+        Self::Audio,
+        Self::Mixer,
+        Self::Meters,
+        Self::Hotkeys,
+    ];
 
     fn label(self) -> &'static str {
         match self {
             Self::General => "General",
             Self::Audio => "Audio",
             Self::Mixer => "Mixer",
+            Self::Meters => "Meters",
             Self::Hotkeys => "Hotkeys and sounds",
         }
     }
@@ -194,6 +202,9 @@ impl App {
                         Prefs::path().display()
                     ),
                 );
+            }
+            PrefsPage::Meters => {
+                card(ui, "Beside each meter", |ui| self.meter_prefs(ui));
             }
             PrefsPage::Hotkeys => {
                 card(ui, "When a hotkey is pressed", |ui| {
@@ -608,6 +619,23 @@ impl App {
             ui.radio_value(&mut self.prefs.bus_sources, mode, mode.label())
                 .on_hover_text(mode.description());
         }
+    }
+
+    /// The dB scale and the peak number beside each meter.
+    fn meter_prefs(&mut self, ui: &mut Ui) {
+        ui.checkbox(&mut self.prefs.meter_scale, "A scale in dB");
+        explain(
+            ui,
+            "Marks from +6 down to -48 beside each meter, to read how loud it is. Strips \
+             grow a little wider for it.",
+        );
+        ui.add_space(4.0);
+        ui.checkbox(&mut self.prefs.meter_peak, "The highest peak, as a number");
+        explain(
+            ui,
+            "Above each meter: the loudest it has been since you last clicked the number, \
+             red once it reached 0 dB. Click it to start again.",
+        );
     }
 
     /// A volume slider for each application.

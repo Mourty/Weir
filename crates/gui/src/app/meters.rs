@@ -7,6 +7,7 @@
 
 use super::App;
 use crate::fx_window::CompView;
+use crate::prefs::MeterNumber;
 use crate::{theme, widgets};
 use egui::{pos2, vec2, Rect, Sense, Ui};
 use std::time::{Duration, Instant};
@@ -28,6 +29,14 @@ const BUS_CLIP_DB: f32 = 0.01;
 /// How fast the limiter's and compressor's gain reduction displays recover,
 /// in dB per second.
 const REDUCTION_RECOVERY: f32 = 20.0;
+/// How quickly the live number follows the level, in seconds to cover
+/// most of the way: quick to rise, so a loud moment shows, a little slower
+/// to fall, so the number can be read, and both far quicker than the peak
+/// mark's hold.
+const LIVE_RISE: f32 = 0.025;
+const LIVE_FALL: f32 = 0.25;
+/// How often the live number changes: more often blurs the digits.
+const LIVE_EVERY: Duration = Duration::from_millis(150);
 
 /// One strip's or bus's meter, per channel, as drawn.
 pub(super) struct MeterDisplay {
@@ -42,6 +51,11 @@ pub(super) struct MeterDisplay {
     /// The highest reading since the peak number was last clicked, of any
     /// channel.
     highest: f32,
+    /// The loudest channel, steadied for the live number.
+    live: f32,
+    /// The live number shown, and when it last changed.
+    live_shown: f32,
+    live_at: Option<Instant>,
 }
 
 impl Default for MeterDisplay {
@@ -52,6 +66,9 @@ impl Default for MeterDisplay {
             peak: Vec::new(),
             peak_at: Vec::new(),
             highest: METER_FLOOR_DB,
+            live: METER_FLOOR_DB,
+            live_shown: METER_FLOOR_DB,
+            live_at: None,
         }
     }
 }
@@ -82,6 +99,11 @@ impl MeterDisplay {
         self.highest = METER_FLOOR_DB;
     }
 
+    /// How loud the loudest channel is now, steadied for reading.
+    pub(super) fn live(&self) -> f32 {
+        self.live_shown.max(METER_FLOOR_DB)
+    }
+
     /// Move `dt` seconds on: levels fall towards the reading, and peaks
     /// fall once their hold is over.
     fn animate(&mut self, dt: f32, now: Instant) {
@@ -96,6 +118,20 @@ impl MeterDisplay {
             } else if self.peak_at[c].is_none_or(|t| now.duration_since(t) > PEAK_HOLD) {
                 self.peak[c] = (self.peak[c] - PEAK_FALL * dt).max(self.level[c]);
             }
+        }
+        let loudest = self.raw.iter().copied().fold(METER_FLOOR_DB, f32::max);
+        let time = if loudest > self.live {
+            LIVE_RISE
+        } else {
+            LIVE_FALL
+        };
+        self.live += (loudest - self.live) * (1.0 - (-dt / time).exp());
+        if self
+            .live_at
+            .is_none_or(|t| now.duration_since(t) >= LIVE_EVERY)
+        {
+            self.live_shown = self.live;
+            self.live_at = Some(now);
         }
     }
 
@@ -124,9 +160,10 @@ impl App {
         rect
     }
 
-    /// The highest peak of `target` as a number in `area`, over `meter`,
-    /// `shift` dB away from what the meter reads, or silence with `None`.
-    /// Clicking it starts again.
+    /// The number above `target`'s meter, as Preferences says: how loud it
+    /// is now, or its highest peak, which clicking starts again. In `area`,
+    /// over `meter`, `shift` dB away from what the meter reads, or silence
+    /// with `None`.
     pub(super) fn peak_number(
         &mut self,
         ui: &mut Ui,
@@ -135,12 +172,16 @@ impl App {
         meter: Rect,
         shift: Option<f32>,
     ) {
-        let highest = self
+        let mode = self.prefs.meter_number;
+        let level = self
             .meters
             .get(&target)
-            .map_or(METER_FLOOR_DB, |m| m.highest());
+            .map_or(METER_FLOOR_DB, |m| match mode {
+                MeterNumber::Live => m.live(),
+                MeterNumber::Peak => m.highest(),
+            });
         let db = match shift {
-            Some(s) if highest > METER_FLOOR_DB => (highest + s).max(METER_FLOOR_DB),
+            Some(s) if level > METER_FLOOR_DB => (level + s).max(METER_FLOOR_DB),
             _ => METER_FLOOR_DB,
         };
         // Over the meter, but inside the strip.
@@ -154,9 +195,14 @@ impl App {
             vec2(PEAK_W, theme::PEAK_H),
         );
         let id = ui.id().with(("peak", target));
-        let r = widgets::peak_number(ui, id, rect, db)
-            .on_hover_text("The highest peak since you last clicked here. Click to start again.");
-        if r.clicked() {
+        let peak = mode == MeterNumber::Peak;
+        let r = widgets::peak_number(ui, id, rect, db, peak).on_hover_text(match mode {
+            MeterNumber::Live => "How loud it is now, its loudest channel",
+            MeterNumber::Peak => {
+                "The highest peak since you last clicked here. Click to start again."
+            }
+        });
+        if peak && r.clicked() {
             self.meters.entry(target).or_default().start_again();
         }
     }
@@ -246,6 +292,33 @@ mod tests {
     }
 
     #[test]
+    fn the_live_number_follows_quickly_and_changes_readably() {
+        let start = Instant::now();
+        let mut m = MeterDisplay::default();
+        m.feed(&[-30.0, -12.0]);
+        // A tenth of a second of frames at 60 a second: up to the loudest
+        // channel in that time.
+        for i in 0..6 {
+            m.animate(1.0 / 60.0, start + Duration::from_millis(i * 17));
+        }
+        // It changed on the first frame, then waits before changing again.
+        assert!(m.live() < -50.0, "{}", m.live());
+        m.animate(1.0 / 60.0, start + LIVE_EVERY);
+        assert!(m.live() > -13.0, "{}", m.live());
+        // Quiet again: it falls within half a second, sooner than the
+        // peak mark lets go.
+        m.feed(&[METER_FLOOR_DB, METER_FLOOR_DB]);
+        for i in 1..=30 {
+            m.animate(
+                1.0 / 60.0,
+                start + LIVE_EVERY + Duration::from_millis(i * 17),
+            );
+        }
+        assert!(m.live() < -60.0, "{}", m.live());
+        assert_eq!(m.peak[1], -12.0, "the peak mark still holds");
+    }
+
+    #[test]
     fn a_meter_shows_silence_until_its_channels_arrive() {
         let m = MeterDisplay::default();
         assert_eq!(m.shown(2).0, [METER_FLOOR_DB, METER_FLOOR_DB]);
@@ -265,6 +338,7 @@ mod tests {
         assert_eq!(peak_text(-8.44), "-8.4 dB");
         assert_eq!(peak_text(0.6), "+0.6 dB");
         assert_eq!(peak_text(0.0), "0.0 dB");
+        assert_eq!(peak_text(-0.04), "0.0 dB");
         assert_eq!(peak_text(METER_FLOOR_DB), "-inf dB");
     }
 }

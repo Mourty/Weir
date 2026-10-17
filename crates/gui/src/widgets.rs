@@ -381,23 +381,31 @@ pub fn meter_scale(ui: &mut Ui, height: f32) -> Response {
 pub fn peak_text(db: f32) -> String {
     if db <= GAIN_MIN_DB {
         "-inf dB".into()
-    } else if db > 0.05 {
+    } else if db >= 0.05 {
         format!("+{db:.1} dB")
+    } else if db > -0.05 {
+        // Rounds to zero: "-0.0 dB" would read oddly.
+        "0.0 dB".into()
     } else {
         format!("{db:.1} dB")
     }
 }
 
-/// The highest peak as a number in a small box at `rect`, red once it has
-/// reached full scale. It is clicked to start again. Drawn where it is
-/// put, without taking a place in the layout, so it can sit over a meter
-/// drawn after it was given room.
-pub fn peak_number(ui: &mut Ui, id: egui::Id, rect: Rect, db: f32) -> Response {
-    let response = ui.interact(rect, id, Sense::click());
+/// A level as a number in a small box at `rect`, red at full scale and
+/// over. With `clickable`, it can be clicked, to start a peak again. Drawn
+/// where it is put, without taking a place in the layout, so it can sit
+/// over a meter drawn after it was given room.
+pub fn peak_number(ui: &mut Ui, id: egui::Id, rect: Rect, db: f32, clickable: bool) -> Response {
+    let sense = if clickable {
+        Sense::click()
+    } else {
+        Sense::hover()
+    };
+    let response = ui.interact(rect, id, sense);
     let p = theme::p();
     let painter = ui.painter();
     painter.rect_filled(rect, CornerRadius::same(3), p.track);
-    let border = if response.hovered() {
+    let border = if clickable && response.hovered() {
         p.handle_hover
     } else {
         p.button_off

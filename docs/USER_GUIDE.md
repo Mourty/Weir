@@ -169,9 +169,9 @@ From top to bottom:
 * **Pan**, from left to right. Double-click it to center it.
 * **The meter and the fader.** The meter shows the level after the strip's
   effects and fader, one bar per channel, with a mark that holds each peak
-  for a moment, and a scale in dB beside it. Above it, a number says the
-  highest peak so far, in dB, red once it reached 0 dB; click it to start
-  again. Drag the fader, scroll over it for 1 dB steps, or double-click it
+  for a moment, and a scale in dB beside it. Above it, a number says how
+  loud it is now, in dB, red at 0 dB and over; Preferences can make it
+  the highest peak instead, which holds until you click it. Drag the fader, scroll over it for 1 dB steps, or double-click it
   for 0 dB; hold Shift while dragging for fine control.
 * **Routing buttons**, one per bus, beside the fader: lit when the strip is
   sent to that bus. See [Who hears what](#who-hears-what).
@@ -881,7 +881,11 @@ of its own, with its pages down the left side.
 
 * **A scale in dB** beside each meter, from +6 down to -48. Strips grow a
   little wider for it.
-* **The highest peak, as a number** above each meter.
+* **A number above each meter**, saying either:
+  * **How loud it is now**: it follows the meter, steadied a little so the
+    digits can be read. Red at 0 dB and over.
+  * **The highest peak**: the loudest it has been since you last clicked
+    the number, red once it reached 0 dB. Click it to start again.
 
 **Hotkeys and sounds**
 

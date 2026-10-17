@@ -24,7 +24,7 @@ jobs:
       - name: Install the build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends clang pkg-config libpipewire-0.3-dev
+          sudo apt-get install -y --no-install-recommends clang cmake pkg-config libpipewire-0.3-dev
       - name: Install Rust
         run: |
           rustup toolchain install stable --profile minimal --component rustfmt,clippy
@@ -42,7 +42,7 @@ jobs:
       - name: Install the build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends clang pkg-config libpipewire-0.3-dev
+          sudo apt-get install -y --no-install-recommends clang cmake pkg-config libpipewire-0.3-dev
       # rust-version in Cargo.toml. Distributions such as Ubuntu 24.04 offer
       # this version and not much newer, so a dependency update that needs
       # more should be a decision, not an accident.

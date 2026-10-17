@@ -77,7 +77,7 @@ jobs:
       - name: Install the build tools
         run: |
           dnf install -y --setopt=install_weak_deps=False \
-            git-core make rpm-build cargo rust clang pipewire-devel \
+            git-core make rpm-build cargo rust clang cmake pipewire-devel \
             pkgconf-pkg-config desktop-file-utils libappstream-glib
       - uses: actions/checkout@v4
       # The RPM is copied out of its architecture folder: upload-artifact
@@ -109,7 +109,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            clang pkg-config libpipewire-0.3-dev dpkg-dev desktop-file-utils appstream
+            clang cmake pkg-config libpipewire-0.3-dev dpkg-dev desktop-file-utils appstream
       - name: Install Rust
         run: |
           rustup toolchain install stable --profile minimal

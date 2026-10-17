@@ -15,9 +15,10 @@ before a larger change.
 
 ## Building
 
-You need Rust 1.88 or newer, a C compiler, `make`, `pkg-config`, and
-clang with PipeWire's development files, from which the bindings are
-generated at build time. The [install steps](README.md#install) put all
+You need Rust 1.88 or newer, a C compiler, `make`, `pkg-config`, CMake
+(libopus, for recording in Opus, builds with it), and clang with
+PipeWire's development files, from which the bindings are generated at
+build time. The [install steps](README.md#install) put all
 of them in place, for each system Weir has been tested on, including how
 to get a new enough Rust where the system's own is older.
 

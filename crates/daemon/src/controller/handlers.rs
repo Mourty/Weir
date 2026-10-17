@@ -49,6 +49,7 @@ const CAPABILITIES: &[&str] = &[
     "names",
     "batch",
     "describe",
+    "diagnostics",
 ];
 
 impl Controller {
@@ -138,6 +139,9 @@ impl Controller {
             Request::Redo(p) => self.step_history(p.steps, false),
             Request::History => Ok(to_json(&self.inner.lock().unwrap().history.info())),
             Request::Describe => Ok(weir_protocol::describe()),
+            Request::Diagnostics => Ok(to_json(&crate::diagnostics::gather(
+                self.engine().and_then(|e| e.server_version()),
+            ))),
             Request::Subscribe(p) => Ok(subscribe(subs, p)),
             Request::Unsubscribe(p) => Ok(unsubscribe(subs, p)),
         }

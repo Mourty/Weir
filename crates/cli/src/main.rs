@@ -120,6 +120,7 @@ fn run() -> Result<()> {
         Cmd::Sound { action } => commands::sound(c, action, json),
         Cmd::Export(a) => transfer::export(c, a, json),
         Cmd::Import(a) => transfer::import(c, a, json),
+        Cmd::Report => commands::report(c, json),
         Cmd::Watch { meters } => commands::watch(c, meters, json),
         Cmd::Raw { method, params } => commands::raw(c, &method, params.as_deref()),
     }

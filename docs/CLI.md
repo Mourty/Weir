@@ -28,7 +28,7 @@ weirctl scene load Streaming           # everything as saved for streaming
 * [Hotkeys' sounds](#hotkeys-sounds): `sounds`, `sound`
 * [Export and import](#export-and-import): `export`, `import`
 * [Settings and the window](#settings-and-the-window): `settings`, `show`
-* [Watching and anything else](#watching-and-anything-else): `watch`, `raw`
+* [Watching and anything else](#watching-and-anything-else): `watch`, `report`, `raw`
 * [A mute key for any desktop](#a-mute-key-for-any-desktop)
 
 ## How it reads what you type
@@ -493,6 +493,17 @@ you press Ctrl+C. With `--meters` it prints the meters too.
 <!-- runs until stopped -->
 ```sh
 weirctl watch --meters
+```
+
+`weirctl report` prints what a bug report needs: Weir's version and how it
+was installed, the system, PipeWire's and WirePlumber's versions, the
+engine, what the mixer holds, the devices in use, and the latest problems
+the service logged. Your home folder's name shows as `~`. Read it over,
+then paste it into the report's Details. With `--json`, it prints what the
+service said, as it said it.
+
+```sh
+weirctl report
 ```
 
 `weirctl raw METHOD [PARAMS]` sends any request of the

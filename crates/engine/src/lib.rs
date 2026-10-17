@@ -16,4 +16,4 @@ mod dsp;
 mod pw;
 
 pub use dsp::sounds::{builtin_sound, SoundBank, SoundData};
-pub use pw::{Engine, EngineError, EngineEvent, EngineHandle, EngineOptions};
+pub use pw::{library_version, Engine, EngineError, EngineEvent, EngineHandle, EngineOptions};

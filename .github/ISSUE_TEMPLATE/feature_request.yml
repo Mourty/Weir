@@ -1,0 +1,11 @@
+name: An idea
+description: Something Weir could do, or do better.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like Weir to do?
+      description: What you are trying to get done, and how it could work.
+    validations:
+      required: true

@@ -1,0 +1,29 @@
+name: Something is not working
+description: Weir does something wrong, or stops working.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for taking the time. In Weir, **… › About › Report a problem…** fills in the details at the bottom for you; or run `weirctl report` and paste what it prints.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How can it be made to happen again?
+      description: The steps, if you know them. "It happens after a while" is useful too.
+      placeholder: |
+        1. Open …
+        2. Click …
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      description: From Weir's About window (Copy details for a bug report), or `weirctl report`.
+      render: text

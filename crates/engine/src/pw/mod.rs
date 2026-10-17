@@ -19,6 +19,15 @@ mod volume;
 
 pub use engine::{Engine, EngineError, EngineEvent, EngineHandle, EngineOptions};
 
+/// The version of the PipeWire library the engine runs with, such as
+/// `1.4.8`.
+pub fn library_version() -> String {
+    // SAFETY: PipeWire returns a static string, valid for the program's
+    // life, and needs no init for this.
+    let version = unsafe { std::ffi::CStr::from_ptr(pipewire::sys::pw_get_library_version()) };
+    version.to_string_lossy().into_owned()
+}
+
 /// `node.name` of the engine filter node.
 pub const ENGINE_NODE_NAME: &str = "Weir";
 /// `node.name` of the node external effects come back into, "Weir effects

@@ -1225,6 +1225,11 @@ pub enum Request {
     /// full state, generated from the very types the daemon uses. See
     /// [`describe`].
     Describe,
+    /// What a bug report needs from the daemon: versions, how Weir was
+    /// installed, the system, and the latest problems it logged. Returns
+    /// [`crate::report::Diagnostics`], which [`crate::report::bug_report`]
+    /// words with the state.
+    Diagnostics,
     /// Returns `"pong"`.
     Ping,
 }

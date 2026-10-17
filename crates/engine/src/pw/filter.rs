@@ -63,6 +63,8 @@ pub struct FilterShared {
     pub error: Mutex<Option<String>>,
     /// Invoked on the main-loop thread whenever the filter state changes.
     pub state_cb: Mutex<Option<Box<dyn Fn() + Send>>>,
+    /// The PipeWire server's version, once it has said.
+    pub server_version: Mutex<Option<String>>,
 }
 
 // `processor` is only touched from PipeWire's data thread, one cycle at a
@@ -87,6 +89,7 @@ impl FilterShared {
             node_id: AtomicU32::new(u32::MAX),
             error: Mutex::new(None),
             state_cb: Mutex::new(None),
+            server_version: Mutex::new(None),
         })
     }
 

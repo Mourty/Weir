@@ -1,4 +1,4 @@
-//! The Preferences window and the About window.
+//! The Preferences window.
 //!
 //! Preferences is a window of its own, its settings in pages down the
 //! side. It mixes two kinds of setting. Appearance, the bus source lists
@@ -681,62 +681,5 @@ impl App {
                 }));
             }
         }
-    }
-
-    /// Weir's name, version and icon, how it was made and where it lives,
-    /// and, small, the two details a bug report needs.
-    fn about_window(&mut self, ctx: &egui::Context) {
-        if !self.show_about {
-            return;
-        }
-        let icon = self.about_icon(ctx);
-        let mut open = true;
-        egui::Window::new("About Weir")
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(false)
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    if let Some(icon) = &icon {
-                        ui.add(egui::Image::new(icon).fit_to_exact_size(egui::vec2(64.0, 64.0)));
-                        ui.add_space(6.0);
-                    }
-                    ui.vertical(|ui| {
-                        ui.label(RichText::new("Weir").size(22.0).strong());
-                        ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
-                        ui.label("A Voicemeeter-style audio mixer for Linux, built on PipeWire.");
-                    });
-                });
-                ui.add_space(10.0);
-                ui.label("Made with Claude Code, Anthropic's AI coding tool.");
-                let repo = env!("CARGO_PKG_REPOSITORY");
-                ui.hyperlink_to(repo.trim_start_matches("https://"), repo)
-                    .on_hover_text("Weir's code, documentation and bug reports");
-                explain(ui, "Free software under the MIT license.");
-                ui.add_space(10.0);
-                explain(
-                    ui,
-                    &format!(
-                        "Daemon socket: {}\nProtocol version {PROTOCOL_VERSION}",
-                        self.socket.display()
-                    ),
-                );
-            });
-        self.show_about = open;
-    }
-
-    /// The window icon as a texture, made once. `None` if it could not be
-    /// read, which leaves the About window without it rather than failing.
-    fn about_icon(&mut self, ctx: &egui::Context) -> Option<egui::TextureHandle> {
-        if self.about_icon.is_none() {
-            let icon = crate::icon();
-            if icon.width == 0 {
-                return None;
-            }
-            let size = [icon.width as usize, icon.height as usize];
-            let image = egui::ColorImage::from_rgba_unmultiplied(size, &icon.rgba);
-            self.about_icon = Some(ctx.load_texture("about-icon", image, Default::default()));
-        }
-        self.about_icon.clone()
     }
 }

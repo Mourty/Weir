@@ -149,7 +149,7 @@ impl App {
             ui.close();
         }
         if ui.button("About").clicked() {
-            self.show_about = true;
+            self.open_about();
             ui.close();
         }
         if ui.button("Quit window").clicked() {

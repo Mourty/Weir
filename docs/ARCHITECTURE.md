@@ -395,6 +395,19 @@ look lives in the window's `gui.toml`, so the window hands it in to export
 and takes it back in a `window_look` notification; the file dialogs are the
 desktop's own, through the portal's FileChooser.
 
+**Update checks** (`updates.rs`) are Weir's only network access, and only
+when the person said yes (`update_check`, asked once by the window):
+about 20 seconds after the daemon starts, with two retries if the network
+is not up, and whenever `check_for_update` asks. A task waits on a
+`Notify` for asked checks and runs each on a blocking thread with `ureq`
+(rustls, the system's certificates through the platform verifier, the
+environment's proxy). It reads GitHub's `releases/latest`, passes over a
+release with no packages attached yet (the release workflow attaches them
+some minutes after publishing), and compares versions as numbers. A failed
+check keeps what the last one found. How to update comes from how Weir was
+installed (`diagnostics::Install`). `WEIR_UPDATE_URL` points the check
+elsewhere, for testing. Nothing is ever downloaded or installed.
+
 **Bug reports** start with `diagnostics` (`diagnostics.rs`): how Weir was
 installed, told by where the daemon's program is and, under `/usr`, by
 asking rpm, dpkg or pacman once; the system; PipeWire's library and server

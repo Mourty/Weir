@@ -263,7 +263,8 @@ pub enum Topic {
     /// to the front, or to close. Subscribing marks this connection as a
     /// window, which is how the tray knows whether one is already open.
     Window,
-    /// `settings_changed`: the daemon's own settings.
+    /// `settings_changed` and `update_changed`: the daemon's own settings,
+    /// or what it knows about Weir's newest release.
     Settings,
     /// `spectrum`: sent for the strips and buses a connection asked for with
     /// `watch_spectrum`, whatever it subscribed to.
@@ -1010,6 +1011,19 @@ pub struct SettingsPatch {
     /// See [`Settings::sounds_volume_db`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sounds_volume_db: Option<f32>,
+    /// Ask GitHub for Weir's newest release once each time the daemon
+    /// starts, or stop. Switching it on checks at once.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub update_check: Option<Flag>,
+    /// A version not to tell about, such as `1.3.1`; `null` to tell about
+    /// every newer one again.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "double_option"
+    )]
+    #[schemars(with = "Option<Option<String>>")]
+    pub skipped_version: Option<Option<String>>,
 }
 
 /// Parameters naming a scene, a setup, an equalizer preset, a sound or an
@@ -1242,6 +1256,10 @@ pub enum Request {
     /// [`crate::report::Diagnostics`], which [`crate::report::bug_report`]
     /// words with the state.
     Diagnostics,
+    /// Ask GitHub for Weir's newest release now, whether or not the daemon
+    /// checks by itself. Returns [`crate::updates::UpdateStatus`] at once,
+    /// `checking`; `update_changed` says what was found.
+    CheckForUpdate,
     /// Returns `"pong"`.
     Ping,
 }
@@ -1325,6 +1343,8 @@ pub enum Notification {
     EngineChanged(EngineStatus),
     /// The daemon's settings changed.
     SettingsChanged(Settings),
+    /// A check for Weir's newest release started or ended.
+    UpdateChanged(crate::updates::UpdateStatus),
     /// The list of equalizer presets changed.
     EqPresetsChanged(Vec<EqPreset>),
     /// A strip's or bus's equalizer input and output, for an analyzer.
@@ -1368,7 +1388,7 @@ impl Notification {
             }
             Self::AppsChanged(_) | Self::SeenAppsChanged(_) => Topic::Apps,
             Self::EngineChanged(_) => Topic::Engine,
-            Self::SettingsChanged(_) => Topic::Settings,
+            Self::SettingsChanged(_) | Self::UpdateChanged(_) => Topic::Settings,
             Self::Spectrum(_) => Topic::Spectrum,
             Self::ShowWindow | Self::Quit | Self::WindowLook(_) => Topic::Window,
             Self::HotkeysChanged(_) => Topic::Hotkeys,

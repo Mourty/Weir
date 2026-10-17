@@ -1203,6 +1203,15 @@ pub struct Settings {
     pub sounds_device: Option<String>,
     /// How loud hotkeys' sounds play, from -40 to 0 dB.
     pub sounds_volume_db: f32,
+    /// Whether the daemon asks GitHub for Weir's newest release once each
+    /// time it starts, to say when a new version is out; `None` until the
+    /// person has been asked. It never installs anything.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub update_check: Option<bool>,
+    /// A version the person chose not to hear about, such as `1.3.1`.
+    /// Later ones are told about again.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skipped_version: Option<String>,
 }
 
 impl Default for Settings {
@@ -1219,6 +1228,8 @@ impl Default for Settings {
             hotkey_popup: crate::sounds::HotkeyPopup::default(),
             sounds_device: None,
             sounds_volume_db: crate::sounds::SOUNDS_VOLUME_DEFAULT_DB,
+            update_check: None,
+            skipped_version: None,
         }
     }
 }
@@ -1422,6 +1433,9 @@ pub struct FullState {
     /// Every hotkey, and how keys reach Weir.
     #[serde(default)]
     pub hotkeys: crate::hotkeys::HotkeysInfo,
+    /// Whether a newer Weir is out, as far as the daemon knows.
+    #[serde(default)]
+    pub update: crate::updates::UpdateStatus,
     /// Applications heard playing in the last [`SEEN_APPS_DAYS`] days, the
     /// ones playing now included, most recently heard first.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

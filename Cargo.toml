@@ -52,6 +52,9 @@ base64 = "0.22"
 # Hotkeys' sounds of the user's own: .wav, .mp3, .ogg and .flac, decoded in
 # pure Rust, and nothing else.
 symphonia = { version = "0.5.5", default-features = false, features = ["wav", "pcm", "mp3", "flac", "ogg", "vorbis"] }
+# Asking GitHub for Weir's newest release, the only time Weir goes online:
+# HTTPS in pure Rust, trusting the certificates the system trusts.
+ureq = { version = "3.4", default-features = false, features = ["rustls", "platform-verifier"] }
 
 [profile.release]
 opt-level = 3

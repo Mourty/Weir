@@ -530,6 +530,8 @@ pub struct SettingsArgs {
     pub popup: Option<String>,
     pub sounds_device: Option<String>,
     pub sounds_volume: Option<f32>,
+    pub update_check: Option<String>,
+    pub skip_version: Option<String>,
 }
 
 /// Change the settings the command names, then show them all.
@@ -555,6 +557,8 @@ pub fn settings(c: &mut Client, a: SettingsArgs, json: bool) -> Result<()> {
             Some(d) => Some(Some(find_sink(&st.devices, d)?)),
         },
         sounds_volume_db: a.sounds_volume,
+        update_check: flag(a.update_check.as_deref())?,
+        skipped_version: a.skip_version.map(|v| (v != "none").then_some(v)),
     };
     let settings: Settings = if patch == SettingsPatch::default() {
         st.settings.clone()
@@ -565,6 +569,26 @@ pub fn settings(c: &mut Client, a: SettingsArgs, json: bool) -> Result<()> {
         return print_json(&settings);
     }
     show::settings(&settings, &st);
+    Ok(())
+}
+
+/// Say whether a newer Weir is out; with `check`, ask GitHub first and
+/// wait for the answer.
+pub fn update(c: &mut Client, check: bool, json: bool) -> Result<()> {
+    if check {
+        c.call(&Request::CheckForUpdate)?;
+        // The answer comes as a notification; asking the state now and
+        // then is simpler than listening for it.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(40);
+        while c.state()?.update.checking && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(250));
+        }
+    }
+    let st = c.state()?;
+    if json {
+        return print_json(&st.update);
+    }
+    show::update(&st.update, &st.settings);
     Ok(())
 }
 

@@ -175,6 +175,7 @@ impl App {
                 if state.settings.tray {
                     card(ui, "Tray icon", |ui| self.tray_prefs(ui, state));
                 }
+                card(ui, "Updates", |ui| self.update_prefs(ui, state));
             }
             PrefsPage::Audio => {
                 card(ui, "Sample rate and buffer size", |ui| {

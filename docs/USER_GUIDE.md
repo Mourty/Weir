@@ -21,6 +21,7 @@ look up when you need it.
 * [Names, colors and order](#names-colors-and-order)
 * [Undo](#undo)
 * [Preferences](#preferences)
+* [New versions](#new-versions)
 * [Weir in the background](#weir-in-the-background)
 * [Mouse and keyboard](#mouse-and-keyboard)
 * [Where Weir keeps things](#where-weir-keeps-things)
@@ -848,6 +849,8 @@ of its own, with its pages down the left side.
   tray without a window.
 * **Tray icon**: in color, or in one color that matches the panel like the
   desktop's own tray icons.
+* **Updates**: **Tell me when a new version of Weir is out**, what the last
+  check found, and **Check now**. See [New versions](#new-versions).
 
 **Audio**
 
@@ -892,6 +895,29 @@ of its own, with its pages down the left side.
 Audio, solo, hotkeys, startup and the tray icon are kept by the Weir
 service, so they apply however Weir starts, including at login. The rest
 belongs to the window.
+
+## New versions
+
+The first time the mixer window opens, a line under the top bar asks
+whether Weir should tell you when a new version is out. **Yes, tell me**
+or **No thanks**; it is never asked again, and Preferences › General
+changes it later.
+
+With it on, each time Weir starts it asks GitHub, where Weir lives, for
+its newest release. That is the only time Weir goes online: GitHub sees
+your computer's internet address, and nothing else is sent. When a newer
+version is out, a window says so, with what is new and how to update the
+way you installed Weir (Discover or `dnf` for COPR, the new `.rpm` or
+`.deb` from the release page, your AUR helper, or `make install` again).
+**Weir never installs anything itself.**
+
+* **Remind me later** asks again the next time Weir starts.
+* **Skip this version** says nothing more about it; the next one is told
+  about again. Preferences › General can undo it.
+* **Never tell me again** switches checking off.
+
+`weirctl update` says the same in a terminal, and `weirctl update --check`
+asks GitHub now.
 
 ## Weir in the background
 

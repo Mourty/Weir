@@ -35,7 +35,7 @@ Python and Node.js are in [`examples/`](../examples/).
   * [Undo](#undo): `undo`, `redo`, `history`
   * [Hotkeys](#hotkeys): `list_hotkeys`, `set_hotkey`, `remove_hotkey`, `switch_hotkey`, `move_hotkey`, `run_hotkey`, `press_hotkey`, `release_hotkey`, `add_hotkey_group`, `set_hotkey_group`, `remove_hotkey_group`, `move_hotkey_group`, `open_shortcut_settings`, `add_sound`, `remove_sound`, `play_sound`
   * [Export and import](#export-and-import): `export_settings`, `inspect_import`, `import_settings`
-  * [Settings and the window](#settings-and-the-window): `set_settings`, `show_window`
+  * [Settings and the window](#settings-and-the-window): `set_settings`, `check_for_update`, `show_window`
 * [Notifications](#notifications)
 * [Types](#types)
 * [Errors](#errors)
@@ -286,7 +286,7 @@ Returns `{"protocol_version", "daemon_version", "capabilities"}`:
                    "limiter", "bus_delay", "sends", "upmix", "downmix", "spectrum", "history",
                    "scenes", "setups", "app_rules", "seen_apps", "system_volumes",
                    "external_effects", "hotkeys", "toggle", "deltas", "names",
-                   "batch", "describe", "diagnostics"]
+                   "batch", "describe", "diagnostics", "updates"]
 }
 ```
 
@@ -365,7 +365,7 @@ stop when the connection closes.
 | `devices` | `devices_changed`, `system_volumes_changed`, `inserts_changed` |
 | `apps` | `apps_changed`, `seen_apps_changed` |
 | `engine` | `engine_changed` |
-| `settings` | `settings_changed` |
+| `settings` | `settings_changed`, `update_changed` |
 | `hotkeys` | `hotkeys_changed` |
 | `window` | `show_window`, `quit`. Only for a mixer window: subscribing to it tells the daemon this connection *is* one. There is one window at a time: while one is open, a second connection subscribing to `window` gets `quit` at once, and the open window gets `show_window`. |
 
@@ -1945,6 +1945,8 @@ Change the daemon's settings. Only the fields you give change.
 | `hotkey_popup` | string, *optional* | What pressing a hotkey shows: `popup`, `notification` or `nothing`. See [Settings](#settings). |
 | `sounds_device` | string or `null`, *optional* | The playback device hotkeys' sounds play on, by `node.name`; `null` for the first bus's device. A device not plugged in now is kept, and used once it is. |
 | `sounds_volume_db` | number, *optional* | How loud hotkeys' sounds play, from -40 to 0 dB. |
+| `update_check` | boolean or `"toggle"`, *optional* | Ask GitHub for Weir's newest release each time the daemon starts, or stop. Switching it on checks at once. See [`check_for_update`](#check_for_update). |
+| `skipped_version` | string or `null`, *optional* | A version not to be told about, such as `1.3.1`; `null` to be told about every newer one again. |
 
 Returns the [Settings](#settings) as they are now.
 
@@ -1975,6 +1977,47 @@ mixer.call("set_settings", solo="exclusive")
 
 ```js
 await mixer.call("set_settings", { meter_rate_hz: 60 });
+```
+
+<!-- not tested: asks GitHub -->
+```sh
+weirctl raw set_settings '{"update_check": true}'
+weirctl raw set_settings '{"skipped_version": "1.3.1"}'
+```
+
+#### `check_for_update`
+
+Ask GitHub for Weir's newest release now, whether or not `update_check`
+is on. With `update_check` on, the daemon also asks once each time it
+starts, about 20 seconds in, and tries twice more if the network is not
+up yet. That is the only time Weir goes online. It never installs
+anything: it only says what it found. A release whose packages are not
+attached yet is passed over, so nobody is told about a version they
+cannot get.
+
+Takes no parameters. Returns the [UpdateStatus](#updatestatus) at once,
+with `checking` true; `update_changed` (topic `settings`) brings what was
+found, as does `get_state` afterwards.
+
+<!-- not tested: asks GitHub -->
+```sh
+weirctl raw check_for_update
+```
+
+<!-- not tested: asks GitHub -->
+```python
+import time
+
+mixer.call("check_for_update")
+while (update := mixer.call("get_state")["update"])["checking"]:
+    time.sleep(0.5)
+if update["newer"]:
+    print("Weir", update["latest"]["version"], "is out:", update["latest"]["url"])
+```
+
+<!-- not tested: asks GitHub -->
+```js
+await mixer.call("check_for_update");
 ```
 
 #### `show_window`
@@ -2019,6 +2062,7 @@ replace its copy.
 | `seen_apps_changed` | `apps` | list of [SeenApp](#seenapp) | An application played for the first time, started or stopped playing, or moved, or applications were forgotten. |
 | `engine_changed` | `engine` | [EngineStatus](#enginestatus) | The engine connected, stopped, or changed rate or buffer size. |
 | `settings_changed` | `settings` | [Settings](#settings) | A setting changed. |
+| `update_changed` | `settings` | [UpdateStatus](#updatestatus) | A check for Weir's newest release started or ended. |
 | `hotkeys_changed` | `hotkeys` | [HotkeysInfo](#hotkeysinfo) | A hotkey was added, changed or removed, the desktop gave them other keys, or something went wrong with one, or came right. |
 | `spectrum` | see [`watch_spectrum`](#watch_spectrum) | [Spectrum](#spectrum) | 30 times a second for each strip or bus watched. |
 | `show_window` | `window` | none | The mixer window should come to the front. |
@@ -2060,6 +2104,7 @@ What [`get_state`](#get_state) returns.
 | `system_volumes` | [SystemVolumes](#systemvolumes) | The system's volume on Weir's devices. |
 | `inserts` | list of [InsertStatus](#insertstatus) | Whether each strip's and bus's external effects are connected, for those that have them on. Left out when none do. |
 | `hotkeys` | [HotkeysInfo](#hotkeysinfo) | The hotkeys, and how keys reach Weir. |
+| `update` | [UpdateStatus](#updatestatus) | Whether a newer Weir is out, as far as the daemon knows. |
 | `seen_apps` | list of [SeenApp](#seenapp) | The applications heard lately, as [`list_seen_apps`](#list_seen_apps) gives them. Left out when there are none. |
 
 ### MixerState
@@ -2412,6 +2457,8 @@ name; the daemon keeps the name.
 | `hotkey_popup` | What pressing a [hotkey](#hotkeys) shows: `popup`, the desktop's own small popup, the one its volume keys show, which goes over full-screen games and takes no focus (KDE Plasma; a notification where the desktop has none); `notification`, one that does not stay in the desktop's list of them; or `nothing`. |
 | `sounds_device` | The playback device hotkeys' sounds play on, by `node.name` (see [`list_devices`](#list_devices)). Left out for the first bus's device. While it is not plugged in, sounds play on the first bus's device. |
 | `sounds_volume_db` | How loud hotkeys' sounds play, from -40 to 0 dB. |
+| `update_check` | Whether the daemon asks GitHub for Weir's newest release each time it starts, to say when a new version is out. Left out until the person has been asked: the window asks once. |
+| `skipped_version` | A version the person chose not to be told about. Later ones are told about again. |
 
 ### EngineStatus
 
@@ -2583,6 +2630,28 @@ keys, media keys, `Pause`, `Print` and `ScrollLock` can be on their own.
 What `undo` and `redo` would take back or bring back, most recent first, up
 to 25 of each: a label for people, and when it happened, in milliseconds
 since 1970.
+
+### UpdateStatus
+
+What the daemon knows about Weir's newest release: in [FullState](#fullstate),
+`update_changed` and the answer to [`check_for_update`](#check_for_update).
+
+```json
+{"checking": false, "checked_at_ms": 1792270933000, "newer": true,
+ "latest": {"version": "1.3.0", "name": "Weir 1.3.0", "notes": "## New\n- A recorder",
+            "url": "https://github.com/Mourty/Weir/releases/tag/v1.3.0",
+            "published_at": "2026-10-20T18:04:11Z"},
+ "how_to_update": "Weir came from COPR: Discover offers the update, or run sudo dnf upgrade --refresh weir"}
+```
+
+| Field | Type | |
+|---|---|---|
+| `checking` | boolean | Whether a check is under way. |
+| `checked_at_ms` | number, *optional* | When the last check ended, in milliseconds since 1970. Left out before the first. |
+| `latest` | object, *optional* | The newest release with its packages up: `version`, `name`, `notes` (Markdown), `url` (its page, with the packages) and `published_at`. |
+| `newer` | boolean | Whether `latest` is newer than the daemon. |
+| `error` | string, *optional* | Why the last check failed. What an earlier one found stays. |
+| `how_to_update` | string | How to update Weir as it was installed here: from COPR, a downloaded `.rpm` or `.deb`, the AUR, `make install` or a build folder. |
 
 ### Diagnostics
 

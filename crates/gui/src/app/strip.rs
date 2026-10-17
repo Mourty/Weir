@@ -32,6 +32,7 @@ impl App {
             theme::p().strip_bg
         };
         let target = StripOrBus::Strip(s.id);
+        let recording = App::recording_it(state, target);
         let frame = Frame::new()
             .fill(bg)
             .corner_radius(8)
@@ -45,7 +46,7 @@ impl App {
                         StripKind::Virtual => "VIRTUAL INPUT",
                     };
                     let layout = s.layout.label().to_uppercase();
-                    drag_caption(ui, &format!("{kind_text} · {layout}"), target);
+                    drag_caption(ui, &format!("{kind_text} · {layout}"), target, recording);
                     self.name_editor(ui, state, target, &s.name);
                     self.strip_source_band(ui, state, s, inner_w);
                     self.strip_fader_row(ui, state, s, lay, inner_w);
@@ -57,6 +58,9 @@ impl App {
                 });
             });
         paint_color_band(ui, frame.response.rect, s.color.as_deref());
+        if recording {
+            App::paint_recording_outline(ui, frame.response.rect);
+        }
         frame.response
     }
 
@@ -420,6 +424,8 @@ impl App {
         ui.menu_button("Hotkeys", |ui| {
             self.hotkey_items(ui, state, Simple::new(target, state).with(Action::Mute));
         });
+        ui.separator();
+        self.record_menu_item(ui, state, target, TrackSource::Strip(s.name.clone()));
         ui.separator();
         if ui
             .button(RichText::new("Remove strip").color(theme::p().meter_red))

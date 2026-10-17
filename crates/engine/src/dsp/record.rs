@@ -36,6 +36,8 @@ pub struct RecordTap {
     read: AtomicU64,
     /// Frames dropped because the ring was full, not yet made up.
     lost: AtomicU64,
+    /// Frames dropped, in all.
+    lost_total: AtomicU64,
     /// The sample rate of the last cycle written.
     rate: AtomicU32,
     /// The real-time thread's count of the cycle it last wrote in.
@@ -56,6 +58,7 @@ impl RecordTap {
             written: AtomicU64::new(0),
             read: AtomicU64::new(0),
             lost: AtomicU64::new(0),
+            lost_total: AtomicU64::new(0),
             rate: AtomicU32::new(0),
             cycle: AtomicU64::new(u64::MAX),
         }
@@ -78,6 +81,7 @@ impl RecordTap {
         let read = self.read.load(Ordering::Acquire);
         if start - read + n as u64 > self.frames as u64 {
             self.lost.fetch_add(n as u64, Ordering::Relaxed);
+            self.lost_total.fetch_add(n as u64, Ordering::Relaxed);
             return;
         }
         let ch = self.channels;
@@ -124,6 +128,11 @@ impl RecordTap {
         n + lost
     }
 
+    /// Frames lost so far because the recorder fell behind.
+    pub fn lost_frames(&self) -> u64 {
+        self.lost_total.load(Ordering::Relaxed)
+    }
+
     /// The sample rate of what was written last, 0 before anything was.
     pub fn rate(&self) -> u32 {
         self.rate.load(Ordering::Relaxed)
@@ -167,6 +176,7 @@ mod tests {
         assert_eq!(tap.take(&mut out), frames + 4);
         assert!(out[..frames * 2].iter().all(|v| *v == 0.5));
         assert!(out[frames * 2..].iter().all(|v| *v == 0.0));
+        assert_eq!(tap.lost_frames(), 4);
         // And it wraps around the ring.
         let (l, r) = (
             [0.0, 2.0, 4.0, 6.0, 8.0, 10.0],

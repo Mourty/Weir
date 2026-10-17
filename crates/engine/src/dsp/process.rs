@@ -293,6 +293,9 @@ impl Processor {
         strip.fx.set_out_peak(out_peak);
         // Recorded as its meter reads: after its effects and fader.
         if let Some(tap) = &strip.record {
+            // The tap keeps the channels the strip had when it started.
+            let have = strip.ports.len();
+            let channel = |c: usize| if c < have { channel(c) } else { None };
             tap.write(self.cycle, n, rate, channel, lvl_buf);
         }
 
@@ -406,7 +409,11 @@ impl Processor {
         }
         if let Some(tap) = &bus.record {
             let channel = |o: usize| {
-                let out = output(o);
+                let out = if o < bus.ports.len() {
+                    output(o)
+                } else {
+                    std::ptr::null_mut()
+                };
                 (!out.is_null()).then(|| std::slice::from_raw_parts(out as *const f32, n))
             };
             tap.write(self.cycle, n, rate, channel, &[]);
@@ -1944,5 +1951,31 @@ mod tests {
                 .chunks(2)
                 .all(|f| close(f[0], 0.5 * music) && close(f[1], -0.25 * music)));
         }
+    }
+
+    #[test]
+    fn a_recording_keeps_its_channels_when_the_strip_has_fewer() {
+        use crate::dsp::params::attach_record_taps;
+        use crate::dsp::record::RecordTap;
+        // The mono Mic, recorded as it was when it had two channels.
+        let st = state();
+        let taps = vec![
+            Arc::new(RecordTap::new(StripOrBus::Strip(1), 2)),
+            Arc::new(RecordTap::new(StripOrBus::Bus(2), 3)),
+        ];
+        let mut params = build_rt_params(&st, SoloMode::Exclusive, &NoPorts, None);
+        attach_record_taps(Arc::get_mut(&mut params).unwrap(), &taps);
+        let mut rig = Rig::new(&st, 32);
+        rig.inputs[0][0].fill(0.5);
+        rig.settle(&params);
+        let mut out = Vec::new();
+        taps[0].take(&mut out);
+        assert!(out
+            .chunks(2)
+            .last()
+            .is_some_and(|f| close(f[0], 0.5) && f[1] == 0.0));
+        out.clear();
+        taps[1].take(&mut out);
+        assert!(out.chunks(3).last().is_some_and(|f| f[2] == 0.0));
     }
 }

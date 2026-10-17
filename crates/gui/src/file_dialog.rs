@@ -39,6 +39,20 @@ impl Dialog {
         Self::start(ctx, "OpenFile", title, options)
     }
 
+    /// Ask for a folder, starting in `start` when it is there. Portals
+    /// older than version 3 show a dialog for files instead.
+    pub fn folder(ctx: &egui::Context, title: &str, start: Option<&std::path::Path>) -> Self {
+        let mut options = vec![("directory", Value::from(true).try_into().ok())];
+        if let Some(start) = start.filter(|p| p.is_dir()) {
+            use std::os::unix::ffi::OsStrExt;
+            // A path in bytes, ending in a nul, as the portal wants it.
+            let mut bytes = start.as_os_str().as_bytes().to_vec();
+            bytes.push(0);
+            options.push(("current_folder", Value::from(bytes).try_into().ok()));
+        }
+        Self::start(ctx, "OpenFile", title, options)
+    }
+
     /// Ask where to save a file, suggesting `name`.
     pub fn save(ctx: &egui::Context, title: &str, name: &str, filters: &[(&str, &[&str])]) -> Self {
         let options = vec![

@@ -28,6 +28,7 @@ pub enum Action {
     Solo,
     Scene,
     ShowWindow,
+    Record,
 }
 
 impl Action {
@@ -43,7 +44,7 @@ impl Action {
         Action::Solo,
     ];
     /// What the whole mixer can be made to do.
-    pub const ON_ALL: [Action; 2] = [Action::Scene, Action::ShowWindow];
+    pub const ON_ALL: [Action; 3] = [Action::Scene, Action::Record, Action::ShowWindow];
 
     pub fn label(self) -> &'static str {
         match self {
@@ -57,12 +58,13 @@ impl Action {
             Action::Solo => "Solo",
             Action::Scene => "Load a scene",
             Action::ShowWindow => "Bring up the Weir window",
+            Action::Record => "Start or stop recording",
         }
     }
 
     /// Whether it works on one strip or bus, picked under "On".
     pub fn has_target(self) -> bool {
-        !matches!(self, Action::Scene | Action::ShowWindow)
+        !matches!(self, Action::Scene | Action::ShowWindow | Action::Record)
     }
 
     /// Whether only strips can do it: buses have no solo, and are not
@@ -365,6 +367,7 @@ impl Simple {
             }
             Action::Scene => HotkeyStep::new("load_scene", json!({ "name": self.scene })),
             Action::ShowWindow => HotkeyStep::new("show_window", Value::Null),
+            Action::Record => HotkeyStep::new("set_recording", json!({"on": "toggle"})),
         }
     }
 
@@ -456,6 +459,7 @@ impl Simple {
             Action::Solo => switched(&format!("Solo {t}")),
             Action::Scene => format!("Scene {}", self.scene),
             Action::ShowWindow => "Show Weir".into(),
+            Action::Record => "Record".into(),
         }
     }
 
@@ -620,6 +624,13 @@ impl Simple {
             }
             "show_window" if h.on_release == OnRelease::Nothing && repeat_ok => {
                 s.action = Action::ShowWindow;
+            }
+            "set_recording"
+                if h.on_release == OnRelease::Nothing
+                    && repeat_ok
+                    && params?.get("on")?.as_str() == Some("toggle") =>
+            {
+                s.action = Action::Record;
             }
             _ => return None,
         }

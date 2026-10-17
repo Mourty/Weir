@@ -26,6 +26,8 @@
 //! * `dialogs`: adding and removing strips and buses.
 //! * `settings`: the Preferences window.
 //! * `about`: the About window, and help with reporting a problem.
+//! * `recorder`: the Recorder window, and what shows in the mixer while it
+//!   records.
 //! * `updates`: saying when a new version of Weir is out.
 //! * `history`: undo, redo, and the messages that report them.
 //! * `status`: what shows while there is no daemon to talk to.
@@ -41,6 +43,7 @@ mod library;
 mod meter_colors;
 mod meters;
 mod mixer;
+mod recorder;
 mod settings;
 mod sounds;
 mod status;
@@ -102,6 +105,7 @@ struct Snapshot {
     /// tell whether it answers what it sent.
     error_at: Option<(String, Instant)>,
     show_seq: u64,
+    recorder_seq: u64,
     quit_requested: bool,
     /// Recent spectra, by strip or bus.
     spectra: HashMap<StripOrBus, Spectrum>,
@@ -146,6 +150,10 @@ pub struct App {
     confirm_rename: Option<dialogs::RenameConfirm>,
     /// The About window.
     about: about::About,
+    /// The Recorder window.
+    recorder: recorder::RecorderWindow,
+    /// Last "open the recorder" request acted on.
+    last_recorder_seq: u64,
     /// What the person said about a new version, for this run.
     updates: updates::Updates,
     /// Preferences › Meters' meter colors, as being edited.
@@ -223,6 +231,7 @@ impl App {
         socket: PathBuf,
         allow_spawn: bool,
         start_minimized: bool,
+        open_recorder: bool,
     ) -> Self {
         // The first frame puts the right palette in; see `palette`.
         theme::apply(&cc.egui_ctx, theme::DARK);
@@ -247,6 +256,8 @@ impl App {
             confirm_remove: None,
             confirm_rename: None,
             about: about::About::default(),
+            recorder: recorder::RecorderWindow::opened(open_recorder),
+            last_recorder_seq: 0,
             updates: updates::Updates::default(),
             meter_page: meter_colors::MeterColorsPage::default(),
             show_prefs: false,
@@ -309,6 +320,7 @@ impl App {
                 .as_ref()
                 .and_then(|(m, t)| t.map(|t| (m.clone(), t))),
             show_seq: sh.show_seq,
+            recorder_seq: sh.recorder_seq,
             quit_requested: sh.quit_requested,
             // Anything older than this stopped coming; do not draw it frozen.
             spectra: sh
@@ -564,6 +576,7 @@ impl eframe::App for App {
             daemon_exit,
             error_at,
             show_seq,
+            recorder_seq,
             quit_requested,
             spectra,
             history,
@@ -588,6 +601,10 @@ impl eframe::App for App {
             }
         }
         self.window_requests(ctx, quit_requested, show_seq);
+        if recorder_seq != self.last_recorder_seq {
+            self.last_recorder_seq = recorder_seq;
+            self.open_recorder();
+        }
         if let Some((m, seq)) = meters {
             self.last_meter_seq = seq;
             self.take_meters(&m);
@@ -618,6 +635,7 @@ impl eframe::App for App {
         self.toast_view(ctx);
         self.show_fx_windows(ctx, &state, &spectra);
         if connected {
+            self.recorder_window(ctx, &state);
             self.update_window(ctx, &state);
             self.show_hotkeys(ctx, &state, error_at.as_ref());
             self.poll_sounds(&state);

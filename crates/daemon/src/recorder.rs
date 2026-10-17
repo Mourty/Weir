@@ -114,25 +114,6 @@ impl Recording {
     }
 }
 
-/// The local time at `unix_ms`.
-pub fn local_time(unix_ms: i64) -> LocalTime {
-    let t = (unix_ms.div_euclid(1000)) as libc::time_t;
-    // SAFETY: localtime_r only writes into the tm given.
-    let tm = unsafe {
-        let mut tm: libc::tm = std::mem::zeroed();
-        libc::localtime_r(&t, &mut tm);
-        tm
-    };
-    LocalTime {
-        year: tm.tm_year + 1900,
-        month: (tm.tm_mon + 1) as u32,
-        day: tm.tm_mday as u32,
-        hour: tm.tm_hour as u32,
-        minute: tm.tm_min as u32,
-        second: tm.tm_sec as u32,
-    }
-}
-
 /// Bytes free for this user on the disk holding `path`, or the nearest
 /// folder above it that exists.
 pub fn free_bytes(path: &Path) -> Option<u64> {
@@ -270,7 +251,7 @@ impl Writer {
     fn open_part(&mut self) -> Result<(), String> {
         self.part_number += 1;
         let s = &self.plan.settings;
-        let when = local_time(self.plan.started_ms);
+        let when = LocalTime::at(self.plan.started_ms);
         let names: Vec<&str> = self
             .plan
             .tracks
@@ -293,7 +274,7 @@ impl Writer {
             .collect();
         let paths = free_paths(paths);
         let now_ms = crate::history::now_ms() as i64;
-        let part_start = local_time(now_ms);
+        let part_start = LocalTime::at(now_ms);
         let bwf = (s.format == RecordFormat::Wav && s.bwf).then(|| Bwf {
             start: part_start,
             start_ms_fraction: now_ms.rem_euclid(1000) as u32,
@@ -647,7 +628,5 @@ mod tests {
         assert_eq!(resolve_folder("/x/y").unwrap(), PathBuf::from("/x/y"));
         assert!(resolve_folder("~/Rec").unwrap().ends_with("Rec"));
         assert!(resolve_folder("").unwrap().ends_with("Weir recordings"));
-        let t = local_time(0);
-        assert!(t.year == 1970 || t.year == 1969);
     }
 }

@@ -345,8 +345,9 @@ pub(super) fn caption(ui: &mut Ui, text: &str) {
 
 /// The caption at the top of a strip or bus, which is also the handle to
 /// drag it to another place by. A grip of dots in front of it says so, and
-/// the whole line can be grabbed, not just the words.
-pub(super) fn drag_caption(ui: &mut Ui, text: &str, item: StripOrBus) {
+/// the whole line can be grabbed, not just the words. While it is recorded,
+/// a red REC badge ends the line.
+pub(super) fn drag_caption(ui: &mut Ui, text: &str, item: StripOrBus, recording: bool) {
     let id = egui::Id::new(("drag", item));
     let hovered = ui
         .ctx()
@@ -356,12 +357,71 @@ pub(super) fn drag_caption(ui: &mut Ui, text: &str, item: StripOrBus) {
         ui.horizontal(|ui| {
             ui.set_min_width(ui.available_width());
             crate::widgets::grip(ui, hovered);
-            caption(ui, text);
+            if recording {
+                const BADGE_W: f32 = 30.0;
+                ui.scope(|ui| {
+                    ui.set_max_width((ui.available_width() - BADGE_W).max(0.0));
+                    caption(ui, text);
+                });
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    rec_badge(ui).on_hover_text("Being recorded");
+                });
+            } else {
+                caption(ui, text);
+            }
         });
     })
     .response
     .on_hover_cursor(egui::CursorIcon::Grab)
     .on_hover_text("Drag to move it");
+}
+
+/// A small red dot and "REC".
+fn rec_badge(ui: &mut Ui) -> egui::Response {
+    let color = theme::p().rec;
+    let galley = ui
+        .painter()
+        .layout_no_wrap("REC".into(), egui::FontId::proportional(9.5), color);
+    let size = vec2(galley.size().x + 9.0, galley.size().y);
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::hover());
+    ui.painter()
+        .circle_filled(egui::pos2(rect.left() + 3.0, rect.center().y), 3.0, color);
+    ui.painter()
+        .galley(egui::pos2(rect.left() + 9.0, rect.top()), galley, color);
+    response
+}
+
+impl App {
+    /// The "Record" item of a strip's or bus's "…" menu.
+    pub(super) fn record_menu_item(
+        &mut self,
+        ui: &mut Ui,
+        state: &FullState,
+        target: StripOrBus,
+        source: TrackSource,
+    ) {
+        let mut on = state.recorder.records(&source);
+        let what = match target {
+            StripOrBus::Strip(_) => "this strip, as heard in the mix,",
+            StripOrBus::Bus(_) => "what this bus plays",
+        };
+        let r = ui
+            .add_enabled(
+                !state.recording.recording,
+                egui::Checkbox::new(&mut on, "Record"),
+            )
+            .on_hover_text(format!(
+                "Record {what} on a track of its own when the recorder records"
+            ))
+            .on_disabled_hover_text("Stop recording to change what is recorded");
+        if r.changed() {
+            self.set_record_track(target, on);
+        }
+        if ui.button("Recorder…").clicked() {
+            self.open_recorder();
+            ui.close();
+        }
+    }
 }
 
 /// A strip's or bus's own color, if it has one.

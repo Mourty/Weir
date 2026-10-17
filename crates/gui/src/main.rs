@@ -45,6 +45,9 @@ struct Args {
     /// Start with the window minimized to the taskbar.
     #[arg(long)]
     minimized: bool,
+    /// Open the recorder's window too.
+    #[arg(long)]
+    recorder: bool,
 }
 
 fn main() -> eframe::Result {
@@ -88,6 +91,7 @@ fn main() -> eframe::Result {
                 socket,
                 !args.no_spawn,
                 args.minimized,
+                args.recorder,
             )))
         }),
     )

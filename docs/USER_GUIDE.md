@@ -16,6 +16,7 @@ look up when you need it.
 * [Effects](#effects)
 * [Surround sound](#surround-sound)
 * [Scenes and setups](#scenes-and-setups)
+* [Recording](#recording)
 * [Hotkeys](#hotkeys)
 * [Export and import](#export-and-import)
 * [Names, colors and order](#names-colors-and-order)
@@ -139,6 +140,8 @@ thing you did appears here for a few seconds.
 
 On the right:
 
+* **Recorder** opens the [recorder](#recording). While it records, it is a
+  red **REC** with how long and how many tracks.
 * **+ Strip** and **+ Bus** add one.
 * **Apps** lists the applications playing, and holds the rules.
 * **Scenes** keep how things sound, and **Setups** which strips and buses
@@ -159,7 +162,9 @@ level, or their level in one bus's mix (see [Who hears what](#who-hears-what)).
 From top to bottom:
 
 * **The caption**, such as "VIRTUAL INPUT · STEREO", with six dots in front.
-  Drag it to move the strip.
+  Drag it to move the strip. While the strip is
+  [recorded](#recording), a red **REC** ends it and a red outline goes
+  around the strip.
 * **The name.** Click it to rename the strip. With
   [external effects](#external-effects) on, a badge beside it says whether
   they are working: **EXT** while they are connected, a yellow **EXT !**
@@ -594,6 +599,71 @@ keep (see [Export and import](#export-and-import)). **Save … as** saves
 under a new name, and says as you type if the name will not do. Loading
 can be undone.
 
+## Recording
+
+Weir records strips and buses, each its own track: a strip as you hear it
+in the mix, after its effects and fader, and a bus as it plays. Record your
+microphone, the game and the stream's mix at once, and line them up in an
+editor afterwards: every track starts and ends at the same moment.
+
+Open the recorder with **Recorder** in the top bar, or **Recorder…** in a
+strip's or bus's **…** menu.
+
+![The recorder](images/recorder.png)
+
+1. **Tick what to record** under **Tracks**: a box for each strip and bus,
+   with a small meter to see that sound is arriving. A strip's or bus's
+   **…** menu has **Record** too. Ticked strips and buses stay ticked by
+   name, so a [setup](#scenes-and-setups) without one just leaves it out.
+2. Click **Record**. The window may be closed while it records: the service
+   does the recording, and goes on until you stop it.
+3. Click **Stop**, and the files are finished.
+
+While it records, the top bar shows a red **REC** with how long and how
+many tracks (click it to open the recorder), each strip and bus recorded
+has a red outline and a **REC** badge, and the tray icon has a red dot
+with **Stop recording** in its menu. The recorder says how big the files
+are so far and how much room is left. Should the computer fall behind,
+what was lost is silence in the files, so the tracks still line up, and
+the recorder says how much.
+
+**Settings**, which apply from the next recording:
+
+* **Save as**: **A folder of files, one per track**, the usual choice, or
+  **One file holding every track (.mka)**, as OBS records several tracks.
+  Some editors open only the first track of a `.mka` file.
+* **Format** and **Quality**:
+
+  | Format | | Quality |
+  |---|---|---|
+  | **WAV** | Uncompressed: the biggest files, opened by everything. | 16 or 24 bits |
+  | **FLAC** | Lossless, about half the size of WAV. | 16 or 24 bits |
+  | **MP3** | Small files that play anywhere. Stereo at most: more channels are mixed down. | 128 to 320 kbps |
+  | **Opus** | The smallest files for the quality. | 64 to 256 kbps |
+  | **Ogg Vorbis** | Small files, an open format. | 128 to 320 kbps |
+
+  With WAV, **Write when each file starts (Broadcast Wave)** puts the time
+  into each file, so editors that read it can line them up by when they
+  were recorded.
+* **Save in**: the folder, `Weir recordings` in your Music folder unless
+  you pick another with **Change…** or type one. **Open the folder**, at
+  the bottom, shows it in the file manager.
+* **File names**: where in the folder each file goes, and what it is
+  called. The list has a few ready-made, or type your own, adding parts
+  with the buttons under it: `{date}`, `{time}`, `{number}` (counting
+  recordings), `{track}` (the strip's or bus's name), `{part}` and
+  `{setup}`. A `/` makes a folder. The default, `{date} {time}/{track}`,
+  makes a folder for each recording with a file for each track. Under it,
+  **Next recording** shows the names the next one will get.
+* **Start new files every … minutes**: long recordings in parts, with
+  nothing lost between them. Every track starts its next part at the same
+  moment. WAV files also start anew before they reach 4 GB, the most a WAV
+  file can hold.
+
+A [hotkey](#hotkeys) can start and stop recording: pick **Start or stop
+recording** under **Do this**. Its popup says **Recording** or **Recording
+stopped**.
+
 ## Hotkeys
 
 A hotkey is keys that do something in the mixer, whichever window is in
@@ -683,8 +753,8 @@ to change one. Each strip's and bus's **…** menu has them too, under
     it back when you let go if you like. For a strip, **Fader** picks its
     own fader, or its level in one bus's mix: turn the music down on your
     stream and nowhere else.
-  * **Change the equalizer preset**, **Load a scene**, or **Bring up the
-    Weir window**.
+  * **Change the equalizer preset**, **Load a scene**, **Start or stop
+    recording**, or **Bring up the Weir window**.
 * **Name**: optional. One is made up from what it does.
 
 Each press is one step in [Undo](#undo): **Ctrl+Z** after a push to talk
@@ -961,8 +1031,11 @@ leaves the service running, so applications keep their devices and the
 sound keeps flowing. Opening the window again picks up where it was.
 
 **The tray icon** is the service's. Clicking it shows the mixer, opening it
-if needed. Its menu has **Show the mixer**, **When Weir starts**, **Restart
-Weir** and **Quit Weir**.
+if needed. Its menu has **Show the mixer**, **Start recording** (once
+something is ticked to record) or, while recording, how long it has been
+and **Stop recording**, **Open the recorder**, **When Weir starts**,
+**Restart Weir** and **Quit Weir**. While recording, the icon has a red
+dot.
 
 **Starting at login.** Tick **Start Weir when I log in** in Preferences › General.
 From your next login, the service starts on its own, so its devices are
@@ -1023,6 +1096,9 @@ Your settings, which are kept when Weir is uninstalled:
 | `~/.config/weir/gui.toml` | The window's own preferences, and the names of your devices, for showing them while they are unplugged. |
 | `~/.config/weir/backups/` | Copies of `config.toml` from the last ten times Weir started with a changed one. To go back to one, quit Weir and copy it over `config.toml`. Also, in `import-` folders, copies of what each import replaced, and in `setups-before-scenes`, your setups as they were before Weir 1.2.0. |
 | `~/.local/state/weir/daemon.log` | What the service said, when the window started it. |
+
+Recordings go to `Weir recordings` in your Music folder, or the folder
+picked in the [recorder](#recording).
 
 To start over completely, quit Weir and delete `~/.config/weir`.
 

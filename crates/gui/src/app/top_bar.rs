@@ -77,6 +77,7 @@ impl App {
                         {
                             self.add_strip = Some(AddStripDialog::new(&state.mixer));
                         }
+                        ui.add_enabled_ui(connected, |ui| self.recorder_button(ui, state));
                     });
                 });
             });

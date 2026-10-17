@@ -28,6 +28,7 @@ impl App {
     ) -> egui::Response {
         let inner_w = lay.bus_w(b.layout.channel_count()) - 12.0;
         let target = StripOrBus::Bus(b.id);
+        let recording = App::recording_it(state, target);
         let frame = Frame::new()
             .fill(theme::p().bus_bg)
             .corner_radius(8)
@@ -45,7 +46,7 @@ impl App {
                         bus_label(&state.mixer, b),
                         b.layout.label().to_uppercase()
                     );
-                    drag_caption(ui, &title, target);
+                    drag_caption(ui, &title, target, recording);
                     self.name_editor(ui, state, target, &b.name);
                     self.bus_band(ui, state, b, inner_w);
                     self.bus_fader_row(ui, state, b, lay, inner_w);
@@ -72,6 +73,9 @@ impl App {
             );
         }
         paint_color_band(ui, frame.response.rect, b.color.as_deref());
+        if recording {
+            App::paint_recording_outline(ui, frame.response.rect);
+        }
         frame.response
     }
 
@@ -280,6 +284,8 @@ impl App {
         self.limiter_menu(ui, b);
         ui.separator();
         self.delay_menu(ui, b);
+        ui.separator();
+        self.record_menu_item(ui, state, target, TrackSource::Bus(b.name.clone()));
         ui.separator();
         if ui
             .button(RichText::new("Remove bus").color(theme::p().meter_red))

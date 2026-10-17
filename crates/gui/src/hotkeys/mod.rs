@@ -913,6 +913,11 @@ pub(crate) fn examples(state: &FullState) -> Vec<Hotkey> {
     }
     out.push(
         base(0)
+            .with(Action::Record)
+            .hotkey("Record", &["Ctrl+Alt+R".into()]),
+    );
+    out.push(
+        base(0)
             .with(Action::ShowWindow)
             .hotkey("Show Weir", &["Ctrl+Alt+W".into()]),
     );
@@ -939,7 +944,14 @@ mod tests {
             Strip::new(2, "Music", StripKind::Virtual, ChannelLayout::Stereo),
         ];
         let all = examples(&st);
-        assert_eq!(all.len(), 6);
+        assert_eq!(all.len(), 7);
+        let record = all.iter().find(|h| h.name == "Record").unwrap();
+        let base = Simple::new(StripOrBus::Strip(1), &st);
+        assert_eq!(
+            Simple::read(record, &base, &st.mixer).map(|s| s.action),
+            Some(Action::Record),
+            "the simple form reads back what it makes"
+        );
         assert!(all.iter().all(|h| !h.enabled));
         assert_eq!(all[0].sounds.press.as_deref(), Some("Beep up"));
         assert!(all[1].sounds.is_empty(), "only push to talk makes a sound");

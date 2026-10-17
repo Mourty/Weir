@@ -44,6 +44,7 @@ egui = "0.33"
 dirs = "6"
 ksni = "0.3"
 libc = "0.2"
+png = "0.18.1"
 ashpd = { version = "0.12", default-features = false, features = ["tokio"] }
 x11rb = { version = "0.13", features = ["xkb"] }
 futures-util = "0.3"

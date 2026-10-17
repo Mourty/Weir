@@ -398,6 +398,33 @@ pub struct LocalTime {
 }
 
 impl LocalTime {
+    /// The local time at `unix_ms`, milliseconds since 1970.
+    pub fn at(unix_ms: i64) -> Self {
+        let t = unix_ms.div_euclid(1000) as libc::time_t;
+        // SAFETY: localtime_r only writes into the tm given.
+        let tm = unsafe {
+            let mut tm: libc::tm = std::mem::zeroed();
+            libc::localtime_r(&t, &mut tm);
+            tm
+        };
+        Self {
+            year: tm.tm_year + 1900,
+            month: (tm.tm_mon + 1) as u32,
+            day: tm.tm_mday as u32,
+            hour: tm.tm_hour as u32,
+            minute: tm.tm_min as u32,
+            second: tm.tm_sec as u32,
+        }
+    }
+
+    /// The local time now.
+    pub fn now() -> Self {
+        let ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_millis() as i64);
+        Self::at(ms)
+    }
+
     /// `2026-10-17`.
     pub fn date(&self) -> String {
         format!("{:04}-{:02}-{:02}", self.year, self.month, self.day)
@@ -541,7 +568,7 @@ pub fn record_names_problem(pattern: &str) -> Option<String> {
     let mut rest = pattern;
     while let Some(start) = rest.find('{') {
         let Some(len) = rest[start..].find('}') else {
-            break;
+            return Some("A { needs a } to close it, as in {date}.".into());
         };
         let token = &rest[start..start + len + 1];
         if !RECORD_NAME_TOKENS.contains(&token) {
@@ -620,6 +647,8 @@ mod tests {
 
     #[test]
     fn times_and_sizes_in_words() {
+        let t = LocalTime::at(0);
+        assert!(t.year == 1970 || t.year == 1969);
         assert_eq!(clock(42.9), "0:42");
         assert_eq!(clock(754.0), "12:34");
         assert_eq!(clock(3723.0), "1:02:03");
@@ -634,6 +663,7 @@ mod tests {
         assert!(record_names_problem("{date}/../x").is_some());
         assert!(record_names_problem("/home/x").is_some());
         assert!(record_names_problem("{song}").unwrap().contains("{song}"));
+        assert!(record_names_problem("{date} {tra").is_some());
         let mut s = RecorderSettings {
             bit_depth: 32,
             kbps: 200,

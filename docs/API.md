@@ -371,7 +371,7 @@ stop when the connection closes.
 | `settings` | `settings_changed`, `update_changed` |
 | `hotkeys` | `hotkeys_changed` |
 | `recorder` | `recorder_changed`, `recording_changed` |
-| `window` | `show_window`, `quit`. Only for a mixer window: subscribing to it tells the daemon this connection *is* one. There is one window at a time: while one is open, a second connection subscribing to `window` gets `quit` at once, and the open window gets `show_window`. |
+| `window` | `show_window`, `show_recorder`, `quit`, `window_look`. Only for a mixer window: subscribing to it tells the daemon this connection *is* one. There is one window at a time: while one is open, a second connection subscribing to `window` gets `quit` at once, and the open window gets `show_window`. |
 
 Returns the list of topics now active on this connection.
 
@@ -2282,6 +2282,7 @@ replace its copy.
 | `recording_changed` | `recorder` | [RecordingStatus](#recordingstatus) | A recording started or stopped, once a second while it goes on, when it starts new files, and when the folder for the next one changes. |
 | `spectrum` | see [`watch_spectrum`](#watch_spectrum) | [Spectrum](#spectrum) | 30 times a second for each strip or bus watched. |
 | `show_window` | `window` | none | The mixer window should come to the front. |
+| `show_recorder` | `window` | none | The mixer window should open its recorder, as the tray's **Open the recorder** asks. |
 | `quit` | `window` | none | The daemon is stopping, or another window is already open; the window should close. |
 | `window_look` | `window` | object | A window look was imported: the window takes these settings (`appearance`, `system_accent`, `system_font`, `bus_sources`, `show_app_volume`, `spectrum`, `meter_scale`, `meter_peak`, `meter_number`, `meter_colors`) and saves them. |
 

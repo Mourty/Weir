@@ -159,6 +159,19 @@ impl Controller {
         Ok(to_json(&self.recording_status()))
     }
 
+    /// Start or stop recording, for the tray. Stopping waits until the
+    /// files are finished.
+    pub fn record(&self, on: bool) -> Result<(), String> {
+        self.set_recording(SetRecordingParams { on: Flag::Set(on) })
+            .map(|_| ())
+            .map_err(|e| e.message)
+    }
+
+    /// Whether any strip or bus is ticked for recording.
+    pub fn can_record(&self) -> bool {
+        !self.inner.lock().unwrap().recorder.tracks.is_empty()
+    }
+
     /// Whether a recording is under way.
     pub(super) fn recording_now(&self) -> bool {
         self.recording

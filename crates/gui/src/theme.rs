@@ -87,6 +87,11 @@ pub struct Palette {
     /// Lines and rings that must stand out on a graph: the current level,
     /// the band being edited.
     pub marker: Color32,
+    /// Recording: the outline and dot on what is recorded, the fill behind
+    /// the REC pill, and words on it.
+    pub rec: Color32,
+    pub rec_fill: Color32,
+    pub rec_text: Color32,
 }
 
 /// The dark palette, and the default.
@@ -133,6 +138,9 @@ pub const DARK: Palette = Palette {
     grid_zero: Color32::from_rgb(90, 96, 112),
     section_fill: Color32::from_rgb(46, 51, 62),
     marker: Color32::from_rgb(255, 255, 255),
+    rec: Color32::from_rgb(235, 75, 65),
+    rec_fill: Color32::from_rgb(58, 29, 31),
+    rec_text: Color32::from_rgb(255, 217, 214),
 };
 
 /// The light palette, for desktops set to light.
@@ -179,6 +187,9 @@ pub const LIGHT: Palette = Palette {
     grid_zero: Color32::from_rgb(150, 157, 168),
     section_fill: Color32::from_rgb(232, 235, 240),
     marker: Color32::from_rgb(35, 38, 41),
+    rec: Color32::from_rgb(218, 56, 46),
+    rec_fill: Color32::from_rgb(252, 228, 226),
+    rec_text: Color32::from_rgb(150, 30, 24),
 };
 
 static PALETTE: RwLock<Palette> = RwLock::new(DARK);

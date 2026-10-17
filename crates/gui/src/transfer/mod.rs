@@ -29,6 +29,30 @@ pub(crate) fn window(
     title: &str,
     raise: &mut bool,
     closed: &mut bool,
+    draw: impl FnMut(&mut Ui, Pane),
+) {
+    let size = WindowSize {
+        size: [720.0, 620.0],
+        min: [520.0, 360.0],
+    };
+    window_sized(ctx, key, title, size, raise, closed, draw);
+}
+
+/// How big a window opens, and how small it can be made.
+#[derive(Clone, Copy)]
+pub(crate) struct WindowSize {
+    pub size: [f32; 2],
+    pub min: [f32; 2],
+}
+
+/// [`window`], of another size.
+pub(crate) fn window_sized(
+    ctx: &egui::Context,
+    key: &str,
+    title: &str,
+    size: WindowSize,
+    raise: &mut bool,
+    closed: &mut bool,
     mut draw: impl FnMut(&mut Ui, Pane),
 ) {
     let id = egui::ViewportId::from_hash_of(key);
@@ -40,15 +64,15 @@ pub(crate) fn window(
         .with_title(format!("{title} · Weir"))
         .with_app_id("weir")
         .with_icon(crate::icon())
-        .with_inner_size([720.0, 620.0])
-        .with_min_inner_size([520.0, 360.0]);
+        .with_inner_size(size.size)
+        .with_min_inner_size(size.min);
     ctx.show_viewport_immediate(id, builder, |ctx, class| {
         if class == egui::ViewportClass::Embedded {
             let mut open = true;
             egui::Window::new(title)
                 .id(egui::Id::new((key, "embedded")))
                 .open(&mut open)
-                .default_size([680.0, 560.0])
+                .default_size([size.size[0] - 40.0, size.size[1] - 60.0])
                 .show(ctx, |ui| {
                     draw(ui, Pane::Body);
                     ui.separator();

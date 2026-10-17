@@ -4828,6 +4828,7 @@ dependencies = [
  "futures-util",
  "ksni",
  "libc",
+ "png",
  "serde",
  "serde_json",
  "symphonia",
@@ -4864,6 +4865,7 @@ dependencies = [
 name = "weir-protocol"
 version = "1.2.0"
 dependencies = [
+ "libc",
  "schemars",
  "serde",
  "serde_json",

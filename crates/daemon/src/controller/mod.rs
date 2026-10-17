@@ -343,6 +343,11 @@ impl Controller {
         self.announce(Notification::ShowWindow);
     }
 
+    /// Ask any attached window to open the recorder.
+    pub fn show_recorder(&self) {
+        self.announce(Notification::ShowRecorder);
+    }
+
     /// Ask any attached window to close, before the daemon goes away.
     pub fn quit_windows(&self) {
         self.announce(Notification::Quit);

@@ -506,6 +506,18 @@ options, as a list of steps and as JSON. Requests bring the window no
 replies, so after Save the editor stays open until the daemon's hotkeys
 change, or shows the error the daemon sent after it saved.
 
+The Recorder window (`app/recorder.rs`) only asks: what to record and how
+are the daemon's settings, and starting and stopping are requests, so the
+window can close while a recording goes on. It works out the next files'
+names itself, with the protocol's `recording_files`, so they follow a
+pattern as it is typed; the pattern is sent when the field is left, never
+half typed. While recording, the mixer outlines each strip and bus
+recorded, outside its frame so the color band and a bus's own outline
+stay as they are. The tray, in the daemon, follows `recording_changed`:
+a red dot over its icon (a drawn overlay, since icon themes differ) and
+a Stop item; its "Open the recorder" asks the window with
+`show_recorder`, or starts it with `--recorder`.
+
 ## Testing
 
 * `cargo test --workspace` runs over 250 unit tests without PipeWire:

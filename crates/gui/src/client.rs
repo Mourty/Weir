@@ -37,6 +37,8 @@ pub struct Shared {
     pub spawned_daemon: bool,
     /// Bumped each time the daemon asks this window to come forward.
     pub show_seq: u64,
+    /// Bumped each time the daemon asks this window to open the recorder.
+    pub recorder_seq: u64,
     /// Set when the daemon is going away and wants the window closed.
     pub quit_requested: bool,
     /// The latest equalizer spectrum of each watched strip or bus, and when
@@ -315,6 +317,7 @@ fn read_loop(
                     }
                 }
                 Notification::ShowWindow => sh.show_seq += 1,
+                Notification::ShowRecorder => sh.recorder_seq += 1,
                 Notification::Quit => sh.quit_requested = true,
                 Notification::HistoryChanged(h) => sh.history = h,
                 Notification::AppRulesChanged(r) => sh.state.app_rules = r,

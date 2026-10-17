@@ -5,6 +5,7 @@
 use super::filter::FilterShared;
 use super::runner;
 use crate::dsp::analyzer::Analyzer;
+use crate::dsp::record::RecordTap;
 use crate::dsp::sounds::{PlayRequest, SoundBank};
 use std::collections::BTreeSet;
 use std::sync::atomic::Ordering;
@@ -48,6 +49,8 @@ pub(super) enum EngineCommand {
     SetSounds(Arc<SoundBank>),
     /// Play them on this device, by `node.name`, or nowhere.
     SetSoundsDevice(Option<String>),
+    /// Record into these taps from the next snapshot on; none stops.
+    SetRecordTaps(Vec<Arc<RecordTap>>),
     /// Move an application stream to a virtual input strip.
     MoveApp { app: u32, strip: StripId },
     /// Set an application stream's own volume and/or mute.
@@ -123,6 +126,15 @@ impl EngineHandle {
     /// there.
     pub fn set_sounds_device(&self, device: Option<String>) -> Result<(), EngineError> {
         self.send(EngineCommand::SetSoundsDevice(device))
+    }
+
+    /// Record the strips and buses `taps` name into them, from the next
+    /// cycle the engine gets to; an empty list stops. Every tap gets each
+    /// cycle, silence when its strip or bus is quiet or gone, so they stay
+    /// the same length. The engine may still write a cycle or two into
+    /// taps it was told to stop using.
+    pub fn set_record_taps(&self, taps: Vec<Arc<RecordTap>>) -> Result<(), EngineError> {
+        self.send(EngineCommand::SetRecordTaps(taps))
     }
 
     /// Play sound number `sound` of the bank, `gain` linear, from the next

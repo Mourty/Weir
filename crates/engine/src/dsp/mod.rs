@@ -25,6 +25,7 @@ pub mod handoff;
 pub mod mapping;
 pub mod params;
 pub mod process;
+pub mod record;
 pub mod sounds;
 
 pub use params::{build_rt_params, PortPtr, PortResolver, RtParams};

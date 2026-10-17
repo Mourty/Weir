@@ -522,9 +522,17 @@ fn rule_table(ui: &mut Ui, state: &FullState, rules: &mut Vec<AppRule>) -> bool 
     let strips = virtual_strips(state);
     let mut changed = false;
     let mut remove = None;
+    // The rules take the card's whole width, half each for the app and
+    // the strip, so long names of either have room.
+    const GAP: f32 = 10.0;
+    const REMOVE_W: f32 = 22.0;
+    let room = (ui.available_width() - REMOVE_W - 2.0 * GAP).max(240.0);
+    let app_w = (room / 2.0).floor();
+    let strip_w = room - app_w;
     egui::Grid::new("rules")
         .num_columns(3)
-        .spacing([10.0, 6.0])
+        .spacing([GAP, 6.0])
+        .min_col_width(REMOVE_W)
         .striped(true)
         .show(ui, |ui| {
             if !rules.is_empty() {
@@ -541,12 +549,20 @@ fn rule_table(ui: &mut Ui, state: &FullState, rules: &mut Vec<AppRule>) -> bool 
                 } else {
                     theme::p().text_dim
                 };
-                ui.label(RichText::new(&r.app).color(color))
-                    .on_hover_text(if playing {
-                        "Playing now"
-                    } else {
-                        "Not playing now"
-                    });
+                let hover = if playing {
+                    format!("{}\nPlaying now", r.app)
+                } else {
+                    format!("{}\nNot playing now", r.app)
+                };
+                ui.allocate_ui_with_layout(
+                    egui::vec2(app_w, ui.spacing().interact_size.y),
+                    egui::Layout::left_to_right(egui::Align::Center),
+                    |ui| {
+                        ui.set_min_width(app_w);
+                        ui.add(egui::Label::new(RichText::new(&r.app).color(color)).truncate())
+                            .on_hover_text(hover);
+                    },
+                );
                 // A strip this setup lacks: the rule waits for one that has
                 // it.
                 let here = r.strip.as_deref().and_then(|n| state.mixer.find_strip(n));
@@ -557,6 +573,7 @@ fn rule_table(ui: &mut Ui, state: &FullState, rules: &mut Vec<AppRule>) -> bool 
                 };
                 egui::ComboBox::from_id_salt(("rule", k))
                     .selected_text(text)
+                    .width(strip_w)
                     .truncate()
                     .show_ui(ui, |ui| {
                         for s in &strips {

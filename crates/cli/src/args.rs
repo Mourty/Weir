@@ -209,6 +209,12 @@ pub enum Cmd {
         #[command(subcommand)]
         action: EqCmd,
     },
+    /// The colors meters are drawn in: list them, or save or delete your
+    /// own.
+    MeterColors {
+        #[command(subcommand)]
+        action: Option<MeterColorsCmd>,
+    },
     /// List the hotkeys, and how keys reach Weir on this desktop.
     Hotkeys,
     /// Add, change, remove or press a hotkey.
@@ -253,8 +259,8 @@ pub enum Cmd {
 pub struct ExportArgs {
     /// The file to write: a .zip, or a .json for one thing alone.
     pub file: std::path::PathBuf,
-    /// Everything: every scene, setup, hotkey, sound and equalizer preset
-    /// of your own, the app rules and the preferences.
+    /// Everything: every scene, setup, hotkey, sound, equalizer preset and
+    /// meter colors of your own, the app rules and the preferences.
     #[arg(long)]
     pub all: bool,
     /// A scene, by name. Give it again for more.
@@ -273,6 +279,9 @@ pub struct ExportArgs {
     /// An equalizer preset of your own, by name. Give it again for more.
     #[arg(long = "eq-preset", value_name = "NAME")]
     pub eq_presets: Vec<String>,
+    /// Meter colors of your own, by name. Give it again for more.
+    #[arg(long = "meter-colors", value_name = "NAME")]
+    pub meter_colors: Vec<String>,
     /// The app rules.
     #[arg(long)]
     pub app_rules: bool,
@@ -557,6 +566,27 @@ pub enum EqCmd {
         target: EqTarget,
     },
     /// Delete a preset of your own.
+    Delete { name: String },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum MeterColorsCmd {
+    /// List them, Weir's own first.
+    List,
+    /// Save meter colors of your own, or replace them.
+    Save {
+        /// Their name.
+        name: String,
+        /// The colors from the bottom of the meter up, such as "#3C7FD6".
+        /// Give it again for each.
+        #[arg(long = "color", value_name = "COLOR", required = true)]
+        colors: Vec<String>,
+        /// Where each color gives way to the next, in dB, rising: one
+        /// fewer than the colors. Give it again for each.
+        #[arg(long = "line", value_name = "DB", allow_negative_numbers = true)]
+        lines: Vec<f32>,
+    },
+    /// Delete meter colors of your own.
     Delete { name: String },
 }
 

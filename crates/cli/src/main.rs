@@ -121,6 +121,7 @@ fn run() -> Result<()> {
         Cmd::Setup { action } => commands::library(c, action, false, json),
         Cmd::Scene { action } => commands::library(c, action, true, json),
         Cmd::Eq { action } => commands::eq(c, action, json),
+        Cmd::MeterColors { action } => commands::meter_colors(c, action, json),
         Cmd::Hotkeys => commands::hotkeys(c, json),
         Cmd::Hotkey { action } => commands::hotkey(c, action, json),
         Cmd::Sounds => commands::sounds(c, json),

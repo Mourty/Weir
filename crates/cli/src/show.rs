@@ -597,6 +597,22 @@ pub fn update(u: &UpdateStatus, settings: &Settings) {
     }
 }
 
+/// The ways of coloring meters, one per line: each band's color and
+/// where the next begins.
+pub fn meter_colors(list: &[MeterColors]) {
+    for c in list {
+        let mut bands = String::new();
+        for (k, color) in c.colors.iter().enumerate() {
+            bands.push_str(color);
+            if let Some(line) = c.breaks_db.get(k) {
+                bands.push_str(&format!(" |{line:+} dB| "));
+            }
+        }
+        let whose = if c.builtin { "  (Weir's own)" } else { "" };
+        println!("{:<20} {bands}{whose}", c.name);
+    }
+}
+
 /// What can be undone and redone, the next undo marked.
 pub fn history(h: &HistoryInfo) {
     if h.undo.is_empty() && h.redo.is_empty() {

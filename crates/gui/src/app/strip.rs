@@ -161,7 +161,8 @@ impl App {
                 widgets::meter_scale(ui, lay.fader_h);
                 ui.add_space(2.0);
             }
-            meter_rect = Some(widgets::meter(ui, &lv, &pk, lay.fader_h).rect);
+            let paint = self.meter_paint(state);
+            meter_rect = Some(widgets::meter(ui, &lv, &pk, lay.fader_h, &paint).rect);
             ui.add_space(4.0);
             match view {
                 None => {

@@ -52,6 +52,7 @@ enum Content {
     /// With strips and buses by name, and its group's name.
     Hotkey(Hotkey, Option<String>),
     EqPreset(Vec<EqBand>),
+    MeterColors(MeterColors),
     /// A sound file as it came, and its extension.
     Sound(String, Vec<u8>),
     AppRules(Vec<RuleFile>),
@@ -84,6 +85,7 @@ struct Here {
     scenes: Vec<String>,
     setups: Vec<String>,
     presets: Vec<EqPreset>,
+    meter_colors: Vec<MeterColors>,
     hotkeys: HotkeyList,
     rules: Vec<AppRule>,
     sounds: Vec<SoundInfo>,
@@ -104,6 +106,10 @@ impl Here {
                 .presets
                 .iter()
                 .any(|p| p.name.eq_ignore_ascii_case(name)),
+            ExportKind::MeterColors => self
+                .meter_colors
+                .iter()
+                .any(|c| c.name.eq_ignore_ascii_case(name)),
             ExportKind::Sound => self
                 .sounds
                 .iter()
@@ -375,6 +381,42 @@ impl Controller {
             ));
         }
 
+        let schemes = self.meter_colors();
+        let scheme_names: Vec<String> = if p.all {
+            schemes
+                .iter()
+                .filter(|x| !x.builtin)
+                .map(|x| x.name.clone())
+                .collect()
+        } else {
+            p.meter_colors.clone()
+        };
+        for name in scheme_names {
+            let Some(scheme) = schemes
+                .iter()
+                .find(|x| x.name.eq_ignore_ascii_case(name.trim()))
+            else {
+                return Err(RpcError::application(format!(
+                    "no meter colors called '{name}'"
+                )));
+            };
+            if scheme.builtin {
+                return Err(RpcError::application(format!(
+                    "'{}' comes with Weir, so it is not exported",
+                    scheme.name
+                )));
+            }
+            out.push((
+                ExportKind::MeterColors,
+                scheme.name.clone(),
+                Body::MeterColors(MeterColorsFile {
+                    name: scheme.name.clone(),
+                    colors: scheme.colors.clone(),
+                    breaks_db: scheme.breaks_db.clone(),
+                }),
+            ));
+        }
+
         let rules = self.inner.lock().unwrap().app_rules.clone();
         if p.app_rules || (p.all && !rules.is_empty()) {
             let rules = rules
@@ -603,6 +645,7 @@ impl Controller {
             scenes: config::list_saved(&self.paths.scenes_dir),
             setups: config::list_saved(&self.paths.setups_dir),
             presets: self.eq_presets(),
+            meter_colors: self.meter_colors(),
             hotkeys: self.hotkey_list(),
             rules: self.inner.lock().unwrap().app_rules.clone(),
             sounds,
@@ -805,6 +848,7 @@ impl Controller {
             Body::Hotkey(b) => (ExportKind::Hotkey, b.hotkey.name.trim().to_string()),
             Body::Sound(b) => (ExportKind::Sound, b.name.trim().to_string()),
             Body::EqPreset(b) => (ExportKind::EqPreset, b.name.trim().to_string()),
+            Body::MeterColors(b) => (ExportKind::MeterColors, b.name.trim().to_string()),
             _ => (ExportKind::AppRules, "App rules".to_string()),
         };
         let mut it = item(id, kind, &name);
@@ -886,6 +930,26 @@ impl Controller {
                 }
                 it.summary = format!("{} bands", b.bands.len());
                 Content::EqPreset(b.bands)
+            }
+            Body::MeterColors(b) => {
+                let scheme = MeterColors {
+                    name: name.clone(),
+                    colors: b.colors,
+                    breaks_db: b.breaks_db,
+                    builtin: false,
+                };
+                if let Some(problem) = scheme.problem() {
+                    it.broken = Some(problem);
+                }
+                if name.eq_ignore_ascii_case(METER_COLORS_DEFAULT) {
+                    it.note = Some(
+                        "Weir's own meter colors have this name, so these can only come \
+                         in under another."
+                            .into(),
+                    );
+                }
+                it.summary = format!("{} colors", scheme.colors.len());
+                Content::MeterColors(scheme)
             }
             Body::AppRules(b) => {
                 let mut missing = BTreeSet::new();
@@ -1178,6 +1242,16 @@ impl Controller {
                         ));
                         continue;
                     }
+                    if taken
+                        && kind == ExportKind::MeterColors
+                        && f.item.name.eq_ignore_ascii_case(METER_COLORS_DEFAULT)
+                    {
+                        result.skipped.push(format!(
+                            "{said}: Weir's own meter colors have this name, and they cannot \
+                             be replaced"
+                        ));
+                        continue;
+                    }
                     if taken && kind == ExportKind::EqPreset && is_builtin_eq_preset(&f.item.name) {
                         result.skipped.push(format!(
                             "{said}: a preset that comes with Weir has this name, and it \
@@ -1192,6 +1266,8 @@ impl Controller {
                     let clash = (here.has(kind, &new)
                         && !(replace_all && kind == ExportKind::Hotkey))
                         || (kind == ExportKind::EqPreset && is_builtin_eq_preset(&new))
+                        || (kind == ExportKind::MeterColors
+                            && new.eq_ignore_ascii_case(METER_COLORS_DEFAULT))
                         || (kind == ExportKind::Sound && is_builtin_sound(&new));
                     if let Some(problem) = name_problem(kind, &new) {
                         result
@@ -1215,6 +1291,7 @@ impl Controller {
                     | ExportKind::Hotkey
                     | ExportKind::Sound
                     | ExportKind::EqPreset
+                    | ExportKind::MeterColors
             ) && !used.insert((kind, name.to_lowercase()))
             {
                 result.skipped.push(format!(
@@ -1233,6 +1310,7 @@ impl Controller {
         result.backup = self.back_up_for_import(&plan)?;
         self.import_library(&plan, &mut result);
         self.import_presets(&plan, &mut result);
+        self.import_meter_colors(&plan, &mut result);
         self.import_rules(&plan, &p, &here, &mut result);
         let sounds = self.import_sounds(&plan, &mut result);
         self.import_hotkeys(&plan, &p, ex.list.as_ref(), &sounds, &mut result);
@@ -1278,6 +1356,12 @@ impl Controller {
         }
         if has(ExportKind::EqPreset) {
             copies.push((self.paths.eq_presets_file.clone(), "eq-presets.toml".into()));
+        }
+        if has(ExportKind::MeterColors) {
+            copies.push((
+                self.paths.meter_colors_file.clone(),
+                "meter-colors.json".into(),
+            ));
         }
         // The window's look is the window's, not in the daemon's files.
         let settings = plan.iter().any(|x| {
@@ -1376,6 +1460,44 @@ impl Controller {
         });
         for (x, _) in presets {
             let said = format!("equalizer preset '{}'", x.name);
+            match &edited {
+                Ok(_) => result.imported.push(said),
+                Err(e) => result.skipped.push(format!("{said}: {}", e.message)),
+            }
+        }
+    }
+
+    /// Ways of coloring meters, added to the user's own.
+    fn import_meter_colors(&self, plan: &[Planned], result: &mut ImportResult) {
+        let schemes: Vec<(&Planned, &MeterColors)> = plan
+            .iter()
+            .filter_map(|x| match &x.content {
+                Content::MeterColors(c) => Some((x, c)),
+                _ => None,
+            })
+            .collect();
+        if schemes.is_empty() {
+            return;
+        }
+        let edited = self.edit_meter_colors(|user| {
+            for (x, c) in &schemes {
+                let c = MeterColors {
+                    name: x.name.clone(),
+                    ..(*c).clone()
+                };
+                let c = super::meter_colors::checked_meter_colors(&c)?;
+                match user
+                    .iter_mut()
+                    .find(|u| u.name.eq_ignore_ascii_case(&c.name))
+                {
+                    Some(existing) => *existing = c,
+                    None => user.push(c),
+                }
+            }
+            Ok(())
+        });
+        for (x, _) in schemes {
+            let said = format!("set of meter colors '{}'", x.name);
             match &edited {
                 Ok(_) => result.imported.push(said),
                 Err(e) => result.skipped.push(format!("{said}: {}", e.message)),

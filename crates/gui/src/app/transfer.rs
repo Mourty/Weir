@@ -18,12 +18,17 @@ pub(super) enum One {
     Setup(String),
     Hotkey(HotkeyId, String, bool),
     EqPreset(String),
+    MeterColors(String),
 }
 
 impl One {
     fn name(&self) -> &str {
         match self {
-            One::Scene(n) | One::Setup(n) | One::Hotkey(_, n, _) | One::EqPreset(n) => n,
+            One::Scene(n)
+            | One::Setup(n)
+            | One::Hotkey(_, n, _)
+            | One::EqPreset(n)
+            | One::MeterColors(n) => n,
         }
     }
 
@@ -41,6 +46,7 @@ impl One {
             One::Setup(_) => "setup",
             One::Hotkey(..) => "hotkey",
             One::EqPreset(_) => "equalizer preset",
+            One::MeterColors(_) => "meter colors",
         }
     }
 
@@ -55,6 +61,7 @@ impl One {
             One::Setup(n) => p.setups.push(n.clone()),
             One::Hotkey(id, ..) => p.hotkeys.push(HotkeyKey::Id(*id)),
             One::EqPreset(n) => p.eq_presets.push(n.clone()),
+            One::MeterColors(n) => p.meter_colors.push(n.clone()),
         }
         Request::ExportSettings(p)
     }

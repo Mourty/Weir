@@ -19,6 +19,7 @@ enum Item {
     Hotkey(HotkeyId),
     Sound(String),
     EqPreset(String),
+    MeterColors(String),
     AppRules,
     Part(PreferencePart),
 }
@@ -78,6 +79,16 @@ fn lines(state: &FullState) -> Vec<(ExportKind, Vec<Line>)> {
             detail: count(p.bands.len(), "band", "bands"),
         })
         .collect();
+    let meter_colors = state
+        .meter_colors
+        .iter()
+        .filter(|c| !c.builtin)
+        .map(|c| Line {
+            item: Item::MeterColors(c.name.clone()),
+            name: c.name.clone(),
+            detail: count(c.colors.len(), "color", "colors"),
+        })
+        .collect();
     let rules = if state.app_rules.is_empty() {
         Vec::new()
     } else {
@@ -103,6 +114,7 @@ fn lines(state: &FullState) -> Vec<(ExportKind, Vec<Line>)> {
         (ExportKind::Hotkey, hotkeys),
         (ExportKind::Sound, sounds),
         (ExportKind::EqPreset, presets),
+        (ExportKind::MeterColors, meter_colors),
         (ExportKind::AppRules, rules),
         (ExportKind::Preferences, parts),
     ]
@@ -348,6 +360,11 @@ impl ExportWindow {
             (n(|i| matches!(i, Item::Hotkey(_))), "hotkey", "hotkeys"),
             (n(|i| matches!(i, Item::Sound(_))), "sound", "sounds"),
             (n(|i| matches!(i, Item::EqPreset(_))), "preset", "presets"),
+            (
+                n(|i| matches!(i, Item::MeterColors(_))),
+                "set of meter colors",
+                "sets of meter colors",
+            ),
             (n(|i| matches!(i, Item::AppRules)), "app rules", "app rules"),
             (
                 n(|i| matches!(i, Item::Part(_))),
@@ -385,6 +402,7 @@ impl ExportWindow {
                 Item::Hotkey(id) => p.hotkeys.push(HotkeyKey::Id(*id)),
                 Item::Sound(n) => p.sounds.push(n.clone()),
                 Item::EqPreset(n) => p.eq_presets.push(n.clone()),
+                Item::MeterColors(n) => p.meter_colors.push(n.clone()),
                 Item::AppRules => p.app_rules = true,
                 Item::Part(part) => p.preferences.push(*part),
             }

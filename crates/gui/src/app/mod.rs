@@ -38,6 +38,7 @@ mod dialogs;
 mod history;
 mod hotkeys;
 mod library;
+mod meter_colors;
 mod meters;
 mod mixer;
 mod settings;
@@ -147,6 +148,8 @@ pub struct App {
     about: about::About,
     /// What the person said about a new version, for this run.
     updates: updates::Updates,
+    /// Preferences › Meters' meter colors, as being edited.
+    meter_page: meter_colors::MeterColorsPage,
     show_prefs: bool,
     /// Asked to bring Preferences forward, and the page it shows.
     raise_prefs: bool,
@@ -245,6 +248,7 @@ impl App {
             confirm_rename: None,
             about: about::About::default(),
             updates: updates::Updates::default(),
+            meter_page: meter_colors::MeterColorsPage::default(),
             show_prefs: false,
             raise_prefs: false,
             prefs_page: settings::PrefsPage::default(),

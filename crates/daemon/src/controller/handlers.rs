@@ -52,6 +52,7 @@ const CAPABILITIES: &[&str] = &[
     "describe",
     "diagnostics",
     "updates",
+    "meter_colors",
 ];
 
 impl Controller {
@@ -120,6 +121,9 @@ impl Controller {
             Request::SaveEqPreset(p) => self.save_eq_preset(p),
             Request::DeleteEqPreset(p) => self.delete_eq_preset(p),
             Request::ApplyEqPreset(p) => self.apply_eq_preset(p, step),
+            Request::ListMeterColors => Ok(to_json(&self.meter_colors())),
+            Request::SaveMeterColors(c) => self.save_meter_colors(c),
+            Request::DeleteMeterColors(p) => self.delete_meter_colors(p),
             Request::ListHotkeys => Ok(to_json(&self.hotkeys_info())),
             Request::SetHotkey(h) => self.set_hotkey(h),
             Request::RemoveHotkey(r) => self.remove_hotkey(r),
@@ -156,6 +160,7 @@ impl Controller {
     /// Everything a client needs to draw itself.
     fn full_state(&self) -> FullState {
         let eq_presets = self.eq_presets();
+        let meter_colors = self.meter_colors();
         let library = self.library();
         let hotkeys = self.hotkeys_info();
         let update = self.update_status();
@@ -174,6 +179,7 @@ impl Controller {
             hotkeys,
             update,
             seen_apps: inner.seen_apps.list().to_vec(),
+            meter_colors,
         }
     }
 

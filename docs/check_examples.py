@@ -105,8 +105,8 @@ def write_sound(path, hz, seconds):
 
 
 def reset(mixer, sounds_device, workdir):
-    """Put the mixer, the settings, the rules, the hotkeys and the sounds back
-    as they were."""
+    """Put the mixer, the settings, the rules, the hotkeys, the sounds and the
+    meter colors back as they were."""
     mixer.batch(
         ("load_setup", {"name": BASELINE}),
         ("load_scene", {"name": BASELINE}),
@@ -118,6 +118,9 @@ def reset(mixer, sounds_device, workdir):
     )
     clear_hotkeys(mixer)
     clear_sounds(mixer)
+    for colors in mixer.call("list_meter_colors"):
+        if not colors.get("builtin"):
+            mixer.call("delete_meter_colors", name=colors["name"])
     mixer.call("add_sound", name=BASELINE_SOUND, path=str(workdir / "airhorn.wav"))
     mixer.call("set_hotkey", **BASELINE_HOTKEY)
     mixer.call("add_hotkey_group", name="Streaming")

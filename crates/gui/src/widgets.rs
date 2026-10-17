@@ -133,8 +133,73 @@ fn meter_metrics(n: usize) -> (f32, f32) {
     }
 }
 
-/// A multi-channel peak meter with peak-hold marks. Levels in dBFS.
-pub fn meter(ui: &mut Ui, levels_db: &[f32], peaks_db: &[f32], height: f32) -> Response {
+/// The colors a meter is drawn in: one per band from the bottom up, and
+/// the levels where each gives way to the next.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MeterPaint {
+    pub colors: Vec<Color32>,
+    pub breaks_db: Vec<f32>,
+}
+
+impl MeterPaint {
+    /// Weir's own colors in the theme's shades: green, yellow from -12 dB,
+    /// red from 0 dB.
+    pub fn theme() -> Self {
+        let p = theme::p();
+        Self {
+            colors: vec![p.meter_green, p.meter_yellow, p.meter_red],
+            breaks_db: vec![-12.0, 0.0],
+        }
+    }
+
+    /// The colors of `scheme`; the theme's for Weir's own.
+    pub fn of(scheme: &weir_protocol::MeterColors) -> Self {
+        if scheme.builtin || scheme.problem().is_some() {
+            return Self::theme();
+        }
+        Self {
+            colors: scheme
+                .rgb()
+                .into_iter()
+                .map(|[r, g, b]| Color32::from_rgb(r, g, b))
+                .collect(),
+            breaks_db: scheme.breaks_db.clone(),
+        }
+    }
+
+    /// The color of a level.
+    pub fn color_at(&self, db: f32) -> Color32 {
+        let band = self.breaks_db.iter().take_while(|b| db >= **b).count();
+        self.colors
+            .get(band)
+            .or(self.colors.last())
+            .copied()
+            .unwrap_or(Color32::GRAY)
+    }
+
+    /// Each band's color with the levels it spans, from the bottom up.
+    pub fn bands(&self) -> impl Iterator<Item = (f32, f32, Color32)> + '_ {
+        self.colors.iter().enumerate().map(|(k, c)| {
+            let lo = if k == 0 {
+                f32::NEG_INFINITY
+            } else {
+                self.breaks_db[k - 1]
+            };
+            let hi = self.breaks_db.get(k).copied().unwrap_or(f32::INFINITY);
+            (lo, hi, *c)
+        })
+    }
+}
+
+/// A multi-channel peak meter with peak-hold marks, colored by `paint`.
+/// Levels in dBFS.
+pub fn meter(
+    ui: &mut Ui,
+    levels_db: &[f32],
+    peaks_db: &[f32],
+    height: f32,
+    paint: &MeterPaint,
+) -> Response {
     let n = levels_db.len().max(1);
     let (bar_w, gap) = meter_metrics(n);
     let width = meter_width(n);
@@ -144,49 +209,29 @@ pub fn meter(ui: &mut Ui, levels_db: &[f32], peaks_db: &[f32], height: f32) -> R
     let top = rect.top() + METER_INSET;
     let bottom = rect.bottom() - METER_INSET;
     let y_of = |db: f32| meter_y(rect, db);
-    let y_yellow = y_of(-12.0);
     let y_red = y_of(0.0);
     for (i, &lvl) in levels_db.iter().enumerate() {
         let x0 = rect.left() + gap + i as f32 * (bar_w + gap);
         let x1 = x0 + bar_w;
         let y = y_of(lvl);
         if y < bottom {
-            // Green segment.
-            let g_top = y.max(y_yellow);
-            if g_top < bottom {
-                painter.rect_filled(
-                    Rect::from_min_max(pos2(x0, g_top), pos2(x1, bottom)),
-                    CornerRadius::ZERO,
-                    theme::p().meter_green,
-                );
-            }
-            if y < y_yellow {
-                let y_top = y.max(y_red);
-                painter.rect_filled(
-                    Rect::from_min_max(pos2(x0, y_top), pos2(x1, y_yellow)),
-                    CornerRadius::ZERO,
-                    theme::p().meter_yellow,
-                );
-            }
-            if y < y_red {
-                painter.rect_filled(
-                    Rect::from_min_max(pos2(x0, y), pos2(x1, y_red)),
-                    CornerRadius::ZERO,
-                    theme::p().meter_red,
-                );
+            // Each band's part of the bar, up to the level.
+            for (lo, hi, color) in paint.bands() {
+                let seg_bottom = y_of(lo).min(bottom);
+                let seg_top = y_of(hi).max(y);
+                if seg_top < seg_bottom {
+                    painter.rect_filled(
+                        Rect::from_min_max(pos2(x0, seg_top), pos2(x1, seg_bottom)),
+                        CornerRadius::ZERO,
+                        color,
+                    );
+                }
             }
         }
         if let Some(&pk) = peaks_db.get(i) {
             if pk > GAIN_MIN_DB {
                 let py = y_of(pk);
-                let c = if pk >= 0.0 {
-                    theme::p().meter_red
-                } else if pk >= -12.0 {
-                    theme::p().meter_yellow
-                } else {
-                    theme::p().meter_green
-                };
-                painter.hline(x0..=x1, py, Stroke::new(2.0_f32, c));
+                painter.hline(x0..=x1, py, Stroke::new(2.0_f32, paint.color_at(pk)));
             }
         }
     }

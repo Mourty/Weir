@@ -22,6 +22,7 @@ weirctl scene load Streaming           # everything as saved for streaming
 * [Adding, removing and moving](#adding-removing-and-moving)
 * [Applications](#applications): `move-app`, `app-volume`, `rules`, `rule`, `unrule`, `seen-apps`, `forget-app`
 * [Equalizer presets](#equalizer-presets): `eq`
+* [Meter colors](#meter-colors): `meter-colors`
 * [Scenes and setups](#scenes-and-setups): `scene`, `setup`
 * [Undo](#undo): `undo`, `redo`, `history`
 * [Hotkeys](#hotkeys): `hotkeys`, `hotkey`
@@ -271,6 +272,25 @@ weirctl eq save "My mic" --strip Mic
 weirctl eq delete "My mic"
 ```
 
+## Meter colors
+
+The colors meters are drawn in, as bands from the bottom up. Weir's own,
+Default, is green, yellow from -12 dB and red from 0 dB. Which ones the
+window uses is picked in its Preferences › Meters.
+
+| Command | |
+|---|---|
+| `weirctl meter-colors` | List them, Default first, each with its colors and the lines between them. |
+| `weirctl meter-colors save NAME --color C [--line DB --color C …]` | Save meter colors of your own, or replace them: the colors from the bottom up as `#RRGGBB`, and one `--line` fewer, where each color gives way to the next. Up to 12 colors. |
+| `weirctl meter-colors delete NAME` | Delete meter colors of your own. |
+
+```sh
+weirctl meter-colors save Sunset --color "#3060C0" --line -24 --color "#40B0A0" \
+    --line -6 --color "#F0A030" --line 0 --color "#E03030"
+weirctl meter-colors
+weirctl meter-colors delete Sunset
+```
+
 ## Scenes and setups
 
 A **scene** keeps how it sounds: levels, mutes, routes and effects. A
@@ -407,8 +427,8 @@ weirctl sound remove Applause
 ## Export and import
 
 Settings to keep safe, take to another computer or share: scenes, setups,
-hotkeys and the sounds of your own they play, equalizer presets of your
-own, the app rules and parts of the preferences, in a `.zip`, or one of
+hotkeys and the sounds of your own they play, equalizer presets and meter
+colors of your own, the app rules and parts of the preferences, in a `.zip`, or one of
 them in a `.json`. Strips and buses go
 by name, so a hotkey for "Music" works on any mixer with a strip called
 Music. [What is in the files](API.md#exported-files).
@@ -420,7 +440,8 @@ Music. [What is in the files](API.md#exported-files).
 | `weirctl import FILE [options]` | Import it. Scenes and setups are added to your library, never loaded. Copies of anything replaced are kept in `~/.config/weir/backups/`. |
 
 `export` takes `--all`, or any of `--scene NAME`, `--setup NAME`, `--hotkey
-HOTKEY`, `--sound NAME`, `--eq-preset NAME` (each as often as needed),
+HOTKEY`, `--sound NAME`, `--eq-preset NAME`, `--meter-colors NAME` (each
+as often as needed),
 `--app-rules` and `--preferences PART`, where PART is `window-look`,
 `mixer`, `hotkey-feedback`, `audio-timing` or `start-at-login`. A hotkey
 brings the sounds of your own it plays, so one that plays any goes to a

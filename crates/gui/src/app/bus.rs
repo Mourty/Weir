@@ -164,7 +164,8 @@ impl App {
                 self.set_value(Key::BusCeiling(b.id), ceiling);
             }
             widgets::field_context_menu(&handle, |ui| self.limiter_menu(ui, b));
-            let meter = widgets::meter(ui, &lv, &pk, lay.fader_h);
+            let paint = self.meter_paint(state);
+            let meter = widgets::meter(ui, &lv, &pk, lay.fader_h, &paint);
             if b.limiter.enabled {
                 widgets::ceiling_line(ui, meter.rect, ceiling);
             }

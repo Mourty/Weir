@@ -205,6 +205,7 @@ impl App {
             }
             PrefsPage::Meters => {
                 card(ui, "Beside each meter", |ui| self.meter_prefs(ui));
+                card(ui, "Meter colors", |ui| self.meter_colors_prefs(ui, state));
             }
             PrefsPage::Hotkeys => {
                 card(ui, "When a hotkey is pressed", |ui| {

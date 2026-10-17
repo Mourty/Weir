@@ -13,7 +13,7 @@ use std::sync::Arc;
 use weir_protocol::{
     db_to_linear, linear_to_db, Bus, BusId, ChannelPosition, Compressor, CompressorMeter, Denoise,
     Gate, GateMeter, Insert, InsertFallback, InsertPoint, Limiter, MixerState, Side, SoloMode,
-    Strip, StripId, StripOrBus,
+    Strip, StripId, StripOrBus, TrackSource,
 };
 
 use super::fx::{DenoiseBank, EqParams, FxState, RtDuck};
@@ -432,15 +432,19 @@ pub fn build_rt_params(
     })
 }
 
-/// Have `p` record into `taps`: each strip and bus being recorded finds
-/// its own.
-pub fn attach_record_taps(p: &mut RtParams, taps: &[Arc<RecordTap>]) {
-    let find = |target: StripOrBus| taps.iter().find(|t| t.target == target).cloned();
+/// Have `p`, a snapshot of `m`, record into `taps`: each strip and bus
+/// being recorded finds its own, by name.
+pub fn attach_record_taps(p: &mut RtParams, m: &MixerState, taps: &[Arc<RecordTap>]) {
+    let find = |source: TrackSource| taps.iter().find(|t| t.records(&source)).cloned();
     for s in &mut p.strips {
-        s.record = find(StripOrBus::Strip(s.id));
+        s.record = m
+            .strip(s.id)
+            .and_then(|strip| find(TrackSource::Strip(strip.name.clone())));
     }
     for b in &mut p.buses {
-        b.record = find(StripOrBus::Bus(b.id));
+        b.record = m
+            .bus(b.id)
+            .and_then(|bus| find(TrackSource::Bus(bus.name.clone())));
     }
     p.record = taps.to_vec();
 }

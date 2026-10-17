@@ -64,11 +64,18 @@ pub enum Event {
 pub struct Recording {
     stop: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
+    /// The plan's taps, to follow renames.
+    taps: Vec<Arc<RecordTap>>,
 }
 
 impl Recording {
-    /// Start writing `plan`, telling `send` how it goes.
-    pub fn start(plan: Plan, send: impl Fn(Event) + Send + 'static) -> std::io::Result<Self> {
+    /// Start writing `plan`, whose taps are `taps`, telling `send` how it
+    /// goes.
+    pub fn start(
+        plan: Plan,
+        taps: Vec<Arc<RecordTap>>,
+        send: impl Fn(Event) + Send + 'static,
+    ) -> std::io::Result<Self> {
         let stop = Arc::new(AtomicBool::new(false));
         let flag = stop.clone();
         let thread = std::thread::Builder::new()
@@ -77,7 +84,15 @@ impl Recording {
         Ok(Self {
             stop,
             thread: Some(thread),
+            taps,
         })
+    }
+
+    /// Keep recording `old` now that it is called `new`.
+    pub fn rename(&self, old: &TrackSource, new: &str) {
+        for t in self.taps.iter().filter(|t| t.records(old)) {
+            t.rename(new);
+        }
     }
 
     /// Ask it to stop: it takes what the taps still hold, and finishes its
@@ -530,7 +545,7 @@ impl Writer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use weir_protocol::{ChannelPosition, StripOrBus};
+    use weir_protocol::ChannelPosition;
 
     fn feed(taps: &[Arc<RecordTap>], cycle: u64, frames: usize, value: f32) {
         let block = vec![value; frames];
@@ -543,14 +558,14 @@ mod tests {
     fn parts_split_at_the_same_frame_and_end_the_same_length() {
         let dir = std::env::temp_dir().join(format!("weir-recorder-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        let taps: Vec<Arc<RecordTap>> = [StripOrBus::Strip(1), StripOrBus::Bus(1)]
-            .into_iter()
-            .map(|t| Arc::new(RecordTap::new(t, 2)))
-            .collect();
         let sources = [
             TrackSource::Strip("Mic".into()),
             TrackSource::Bus("Headset".into()),
         ];
+        let taps: Vec<Arc<RecordTap>> = sources
+            .iter()
+            .map(|t| Arc::new(RecordTap::new(t.clone(), 2)))
+            .collect();
         let plan = Plan {
             tracks: taps
                 .iter()

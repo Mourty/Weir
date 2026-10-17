@@ -702,7 +702,7 @@ impl Runner {
                 build_rt_params(&self.state, self.options.solo, &ports, Some(&current));
             if let Some(p) = Arc::get_mut(&mut params) {
                 p.sounds = self.sounds.clone();
-                attach_record_taps(p, &self.record_taps);
+                attach_record_taps(p, &self.state, &self.record_taps);
             }
             params
         };

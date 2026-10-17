@@ -14,7 +14,8 @@
 //! length and line up sample for sample.
 
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
-use weir_protocol::StripOrBus;
+use std::sync::Mutex;
+use weir_protocol::TrackSource;
 
 /// How long a tap holds, in seconds of audio at 48 kHz: how long the
 /// recorder may stall, on a slow disk say, before anything is lost.
@@ -22,8 +23,10 @@ pub const RECORD_RING_SECONDS: usize = 8;
 
 /// A ring of one strip's or bus's audio, interleaved.
 pub struct RecordTap {
-    /// What it records.
-    pub target: StripOrBus,
+    /// What it records, by name: loading another setup puts it on the
+    /// strip of that name there, not on whichever has the same id. Read
+    /// when a snapshot is built, never on the real-time thread.
+    source: Mutex<TrackSource>,
     /// Its channels. The strip or bus may change its layout while it is
     /// recorded: extra channels are left out and missing ones are silent.
     pub channels: usize,
@@ -45,13 +48,13 @@ pub struct RecordTap {
 }
 
 impl RecordTap {
-    /// A tap for `target`, of `channels` channels. Allocates everything,
+    /// A tap for `source`, of `channels` channels. Allocates everything,
     /// so make it off the real-time thread.
-    pub fn new(target: StripOrBus, channels: usize) -> Self {
+    pub fn new(source: TrackSource, channels: usize) -> Self {
         let channels = channels.max(1);
         let frames = RECORD_RING_SECONDS * 48_000;
         Self {
-            target,
+            source: Mutex::new(source),
             channels,
             ring: (0..frames * channels).map(|_| AtomicU32::new(0)).collect(),
             frames,
@@ -62,6 +65,25 @@ impl RecordTap {
             rate: AtomicU32::new(0),
             cycle: AtomicU64::new(u64::MAX),
         }
+    }
+
+    /// What it records.
+    pub fn source(&self) -> TrackSource {
+        self.source.lock().unwrap().clone()
+    }
+
+    /// Whether it records `source`.
+    pub fn records(&self, source: &TrackSource) -> bool {
+        self.source.lock().unwrap().same(source)
+    }
+
+    /// Keep recording its strip or bus under the name it was given.
+    pub fn rename(&self, name: &str) {
+        let mut source = self.source.lock().unwrap();
+        *source = match &*source {
+            TrackSource::Strip(_) => TrackSource::Strip(name.into()),
+            TrackSource::Bus(_) => TrackSource::Bus(name.into()),
+        };
     }
 
     /// The real-time thread's side: add `n` frames, each channel's from
@@ -146,7 +168,7 @@ mod tests {
 
     #[test]
     fn frames_come_out_in_order_and_a_full_ring_loses_samples_not_time() {
-        let tap = RecordTap::new(StripOrBus::Strip(1), 2);
+        let tap = RecordTap::new(TrackSource::Strip("Mic".into()), 2);
         let (l, r) = ([0.0, 10.0, 20.0], [1.0, 11.0, 21.0]);
         tap.write(
             0,

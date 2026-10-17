@@ -1912,17 +1912,17 @@ mod tests {
         let mut st = state();
         st.strips[0].mute = true;
         let taps: Vec<Arc<RecordTap>> = [
-            StripOrBus::Strip(1),
-            StripOrBus::Strip(2),
-            StripOrBus::Bus(1),
+            TrackSource::Strip("Mic".into()),
+            TrackSource::Strip("Music".into()),
+            TrackSource::Bus("Headset".into()),
             // Removed while it was being recorded.
-            StripOrBus::Strip(9),
+            TrackSource::Strip("Game".into()),
         ]
         .into_iter()
         .map(|t| Arc::new(RecordTap::new(t, 2)))
         .collect();
         let mut params = build_rt_params(&st, SoloMode::Exclusive, &NoPorts, None);
-        attach_record_taps(Arc::get_mut(&mut params).unwrap(), &taps);
+        attach_record_taps(Arc::get_mut(&mut params).unwrap(), &st, &taps);
         let mut rig = Rig::new(&st, 64);
         rig.inputs[0][0].fill(0.9);
         rig.inputs[1][0].fill(0.5);
@@ -1932,7 +1932,7 @@ mod tests {
             .iter()
             .map(|t| {
                 let mut out = Vec::new();
-                assert_eq!(t.take(&mut out), 4 * 64, "{:?}", t.target);
+                assert_eq!(t.take(&mut out), 4 * 64, "{:?}", t.source());
                 out
             })
             .collect();
@@ -1954,17 +1954,44 @@ mod tests {
     }
 
     #[test]
+    fn a_recording_follows_its_strip_by_name_not_its_id() {
+        use crate::dsp::params::attach_record_taps;
+        use crate::dsp::record::RecordTap;
+        let taps = vec![Arc::new(RecordTap::new(
+            TrackSource::Strip("Music".into()),
+            2,
+        ))];
+        let attached = |m: &MixerState| {
+            let mut params = build_rt_params(m, SoloMode::Exclusive, &NoPorts, None);
+            attach_record_taps(Arc::get_mut(&mut params).unwrap(), m, &taps);
+            params
+                .strips
+                .iter()
+                .map(|s| s.record.is_some())
+                .collect::<Vec<_>>()
+        };
+        let mut st = state();
+        assert_eq!(attached(&st), [false, true]);
+        // Another setup, where a strip called Game has Music's id.
+        st.strips[1].name = "Game".into();
+        assert_eq!(attached(&st), [false, false]);
+        // Music renamed Game: the controller renames the tap first.
+        taps[0].rename("game");
+        assert_eq!(attached(&st), [false, true]);
+    }
+
+    #[test]
     fn a_recording_keeps_its_channels_when_the_strip_has_fewer() {
         use crate::dsp::params::attach_record_taps;
         use crate::dsp::record::RecordTap;
         // The mono Mic, recorded as it was when it had two channels.
         let st = state();
         let taps = vec![
-            Arc::new(RecordTap::new(StripOrBus::Strip(1), 2)),
-            Arc::new(RecordTap::new(StripOrBus::Bus(2), 3)),
+            Arc::new(RecordTap::new(TrackSource::Strip("Mic".into()), 2)),
+            Arc::new(RecordTap::new(TrackSource::Bus("Stream".into()), 3)),
         ];
         let mut params = build_rt_params(&st, SoloMode::Exclusive, &NoPorts, None);
-        attach_record_taps(Arc::get_mut(&mut params).unwrap(), &taps);
+        attach_record_taps(Arc::get_mut(&mut params).unwrap(), &st, &taps);
         let mut rig = Rig::new(&st, 32);
         rig.inputs[0][0].fill(0.5);
         rig.settle(&params);

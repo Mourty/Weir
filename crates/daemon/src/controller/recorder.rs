@@ -187,19 +187,19 @@ impl Controller {
             let source = TrackSource::Strip(s.name.clone());
             settings
                 .records(&source)
-                .then(|| (StripOrBus::Strip(s.id), source, s.layout.positions()))
+                .then(|| (source, s.layout.positions()))
         });
         let buses = mixer.buses.iter().filter_map(|b| {
             let source = TrackSource::Bus(b.name.clone());
             settings
                 .records(&source)
-                .then(|| (StripOrBus::Bus(b.id), source, b.layout.positions()))
+                .then(|| (source, b.layout.positions()))
         });
         let tracks: Vec<PlanTrack> = strips
             .chain(buses)
-            .filter(|(_, _, positions)| !positions.is_empty())
-            .map(|(target, source, positions)| PlanTrack {
-                tap: Arc::new(RecordTap::new(target, positions.len())),
+            .filter(|(_, positions)| !positions.is_empty())
+            .map(|(source, positions)| PlanTrack {
+                tap: Arc::new(RecordTap::new(source.clone(), positions.len())),
                 spec: TrackSpec {
                     name: source.name().to_string(),
                     positions,
@@ -257,10 +257,10 @@ impl Controller {
             started_ms,
         };
         engine
-            .set_record_taps(taps)
+            .set_record_taps(taps.clone())
             .map_err(|e| RpcError::application(format!("the audio engine: {e}")))?;
         let me: Weak<Controller> = self.me.get().cloned().unwrap_or_default();
-        let recording = Recording::start(plan, move |ev| {
+        let recording = Recording::start(plan, taps, move |ev| {
             if let Some(c) = me.upgrade() {
                 c.on_recorder_event(ev);
             }
@@ -319,8 +319,18 @@ impl Controller {
         self.announce(Notification::RecordingChanged(self.recording_status()));
     }
 
-    /// Ticked strips and buses keep their names when renamed.
+    /// Ticked strips and buses keep their names when renamed, and so does
+    /// a recording under way, before the engine hears of the new names.
     pub(super) fn recorder_follow_renames(&self, renamed: &[Rename]) {
+        if let Some(r) = &*self.recording.lock().unwrap() {
+            for (kind, old, new) in renamed {
+                let old = match kind {
+                    TargetKind::Strip => TrackSource::Strip(old.clone()),
+                    TargetKind::Bus => TrackSource::Bus(old.clone()),
+                };
+                r.rename(&old, new);
+            }
+        }
         let changed = {
             let mut inner = self.inner.lock().unwrap();
             let mut changed = false;

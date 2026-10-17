@@ -902,7 +902,7 @@ of its own, with its pages down the left side.
     second copy of its color, ready to change.
   * **Right-click a tab**, or drag it off sideways, to remove the line. The
     band below it grows to fill the space.
-  * **Click a band's color button** to change its color.
+  * **Click the pencil** in a band to change its color.
 
   Every meter changes as you go, and the small meters beside the editor
   show quiet, middling and too-loud sound. **Rename…**, **Export…** and

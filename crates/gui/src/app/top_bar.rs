@@ -145,7 +145,7 @@ impl App {
         }
         ui.separator();
         if ui.button("Preferences…").clicked() {
-            self.show_prefs = true;
+            self.open_prefs(None);
             ui.close();
         }
         if ui.button("About").clicked() {

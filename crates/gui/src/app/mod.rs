@@ -139,6 +139,9 @@ pub struct App {
     confirm_rename: Option<dialogs::RenameConfirm>,
     show_about: bool,
     show_prefs: bool,
+    /// Asked to bring Preferences forward, and the page it shows.
+    raise_prefs: bool,
+    prefs_page: settings::PrefsPage,
     prefs: Prefs,
     /// Minimize on the first frame, for `--minimized`.
     start_minimized: bool,
@@ -230,6 +233,8 @@ impl App {
             confirm_rename: None,
             show_about: false,
             show_prefs: false,
+            raise_prefs: false,
+            prefs_page: settings::PrefsPage::default(),
             prefs: Prefs::load(),
             start_minimized,
             last_show_seq: 0,

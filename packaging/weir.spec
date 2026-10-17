@@ -29,7 +29,7 @@
 %global cargo_flags --release --locked
 
 Name:           weir
-Version:        1.2.0
+Version:        1.3.0
 Release:        %{?_release}%{!?_release:1}%{?dist}
 Summary:        Voicemeeter-style audio mixer for PipeWire
 
@@ -98,6 +98,28 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/io.github.mour
 %doc %{_datadir}/doc/%{name}/docs/
 
 %changelog
+* Sat Oct 17 2026 Mourty <Mourt2@proton.me> - 1.3.0-1
+- Add a recorder: strips and buses as heard in the mix, each on its own
+  track, in WAV, FLAC, MP3, Opus or Ogg Vorbis, as a folder of files or
+  one Matroska file, with names from a pattern, new files every so many
+  minutes if wanted, and time stamps in WAV files for editors. Start it
+  in the Recorder window, from the tray or with a hotkey; the mixer
+  marks what is recording.
+- Show a dB scale beside each meter and a number above it: the level
+  now, or the highest peak until clicked.
+- Let meters be drawn in colors of your choosing, in as many bands as
+  you like, kept as sets that export and import.
+- Remember applications heard before, so app rules can be made for them
+  while they are not playing. Asked for by NeonLightning.
+- Say when a new version of Weir is out, if asked to. Weir asks once,
+  looks at startup, and never installs anything itself.
+- Help with reporting a problem: About shows the details a report needs,
+  copies them, and opens a new report with them filled in. Licenses…
+  shows the licenses of everything built into Weir.
+- Give Preferences a window of its own, with pages.
+- Show the tray icon in color on KDE Plasma too, which drew it in one
+  color whatever Preferences said.
+
 * Sun Oct 11 2026 Mourty <Mourt2@proton.me> - 1.2.0-1
 - Add hotkeys: keyboard shortcuts for anything the mixer does, such as
   push to talk, muting or loading a scene, that work with the window

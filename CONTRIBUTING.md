@@ -4,11 +4,15 @@ Thank you for helping. Bug reports, testing on real hardware and code are
 all welcome.
 
 **Reporting a bug.** Say what you did, what you expected and what happened
-instead. If the daemon stopped, the window's **Copy the message** button
-copies what it said; the whole log is in `~/.local/state/weir/daemon.log`,
-or `journalctl --user -u weir` if it runs as a service. Weir has mostly
-been developed against a headless PipeWire, so reports from real sound
-cards, USB headsets and unusual setups are especially useful.
+instead. **Report a problem…** in Weir's About window opens a new report
+with the details one needs filled in: Weir's version, your system,
+PipeWire's version and the latest problems Weir noticed. **Copy details
+for a bug report** there copies the same. If the daemon stopped, the
+window's **Copy the message** button copies what it said; the whole log
+is in `~/.local/state/weir/daemon.log`, or `journalctl --user -u weir` if
+it runs as a service. Weir has mostly been developed against a headless
+PipeWire, so reports from real sound cards, USB headsets and unusual
+setups are especially useful.
 
 [How Weir works](docs/ARCHITECTURE.md) is the map of the code; read it
 before a larger change.

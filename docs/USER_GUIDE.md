@@ -1035,7 +1035,10 @@ if needed. Its menu has **Show the mixer**, **Start recording** (once
 something is ticked to record) or, while recording, how long it has been
 and **Stop recording**, **Open the recorder**, **When Weir starts**,
 **Restart Weir** and **Quit Weir**. While recording, the icon has a red
-dot.
+dot. GNOME shows tray icons only with the **AppIndicator and
+KStatusNotifierItem Support** extension, which Ubuntu has already; on
+other GNOME systems, install it from your software center or
+extensions.gnome.org.
 
 **Starting at login.** Tick **Start Weir when I log in** in Preferences › General.
 From your next login, the service starts on its own, so its devices are

@@ -42,12 +42,19 @@ lets the rest flow on.*
   your other shortcuts. A beep or a sound of your own, and the desktop's
   own volume popup, tell you a key worked, and your stream never hears
   the beep.
+* **Recording.** Record any strips and buses as you hear them in the mix,
+  each on its own track, in WAV, FLAC, MP3, Opus or Ogg Vorbis: a folder
+  of files ready for an audio editor, or one file holding every track.
+  Start it from the window, the tray or a hotkey.
+* **Meters you can read**, with a dB scale beside them, a number for the
+  level now or the highest peak, and colors of your choosing.
 * **Setups and scenes.** A setup keeps which strips and buses you have,
   a scene how they sound, and any setup loads with any scene. **Rules**
-  put applications on the right strip as they start, and every change
-  can be **undone**.
-* **Export and import** your scenes, setups, hotkeys and their sounds, and
-  preferences, to keep them safe or take them to another computer.
+  put applications on the right strip as they start, and can be made for
+  any app Weir has heard, playing or not. Every change can be **undone**.
+* **Export and import** your scenes, setups, hotkeys and their sounds,
+  meter colors and preferences, to keep them safe or take them to
+  another computer.
 * **Scriptable.** `weirctl` does everything the window does from a
   terminal or a script, and a documented protocol lets any program, such
   as a Stream Deck plugin, do the same.
@@ -81,8 +88,10 @@ To check that a download is exactly what GitHub built, use the
 `gh auth login`: `gh attestation verify weir_*.deb --repo Mourty/Weir`
 (or whichever file you downloaded).
 
-A downloaded package does not update itself. To hear about new releases,
-choose **Watch → Custom → Releases** at the top of Weir's GitHub page.
+A downloaded package does not update itself, but Weir can tell you when
+a new version is out: it asks the first time it starts, and only ever
+tells you, never installs anything. Or choose **Watch → Custom →
+Releases** at the top of Weir's GitHub page.
 To remove Weir, run `sudo dnf remove weir`, `sudo apt remove weir` or
 `sudo pacman -R weir`.
 
@@ -185,9 +194,9 @@ Nobara, or `make uninstall` in the `Weir` folder elsewhere.
 ### Then
 
 Open **Weir** from your application menu. To have it ready whenever you
-log in, tick **Start Weir when I log in** in Preferences, in the **…**
-menu at the top right. Your settings stay in `~/.config/weir`, even if
-you remove Weir, until you delete that folder.
+log in, tick **Start Weir when I log in** on the General page of
+Preferences, in the **…** menu at the top right. Your settings stay in
+`~/.config/weir`, even if you remove Weir, until you delete that folder.
 
 ## First steps
 
@@ -228,10 +237,23 @@ Voicemeeter itself; Weir exists because it does not run on Linux.
 
 ## Status
 
-Weir 1.0 has been built, installed and tried on Fedora, Nobara, Ubuntu,
-Linux Mint, Pop!_OS, Debian and CachyOS. Sound hardware varies endlessly,
-so reports of how it does with yours, good or bad, are very welcome: see
-[Contributing](CONTRIBUTING.md).
+Weir is stable and in everyday use, and each release is tried on KDE
+Plasma before it comes out. There are packages for Fedora and Nobara,
+for Ubuntu, Debian, Linux Mint and Pop!_OS, and for Arch, and Weir has
+been built and run on Fedora, Nobara, Ubuntu, Linux Mint, Pop!_OS,
+Debian and CachyOS. Your settings carry over to every new version: when
+one keeps them differently, it updates them the first time it starts,
+and keeps a copy of the old ones in `~/.config/weir/backups`.
+
+Plasma is where Weir is used most. The mixer itself works the same on
+any desktop, but hotkeys, their popups and the tray have seen less use
+elsewhere, and GNOME shows the tray icon only with its AppIndicator
+extension.
+
+Sound hardware varies endlessly, so reports of how Weir does with yours,
+good or bad, are very welcome. **Report a problem…** in Weir's About
+window, in the **…** menu, opens a report on GitHub with the details it
+needs already filled in; see also [Contributing](CONTRIBUTING.md).
 
 ## AI Notice
 

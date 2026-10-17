@@ -26,7 +26,7 @@ impl App {
         b: &Bus,
         lay: &Metrics,
     ) -> egui::Response {
-        let inner_w = lay.bus_w - 12.0;
+        let inner_w = lay.bus_w(b.layout.channel_count()) - 12.0;
         let target = StripOrBus::Bus(b.id);
         let recording = App::recording_it(state, target);
         let frame = Frame::new()
@@ -135,20 +135,16 @@ impl App {
         inner_w: f32,
     ) {
         let n_ch = b.layout.channel_count();
-        let scale_w = if lay.scale {
-            theme::METER_SCALE_W + 2.0
-        } else {
-            0.0
-        };
-        let row_w =
-            scale_w + theme::CEILING_W + 4.0 + widgets::meter_width(n_ch) + 8.0 + theme::FADER_W;
+        let row_w = lay.bus_row_w(n_ch);
         let peak_area = lay.peak.then(|| self.peak_area(ui, inner_w));
         let mut meter_rect = None;
         ui.horizontal(|ui| {
+            // The gaps are the row's own, as the bus's width counts them.
+            ui.spacing_mut().item_spacing.x = 0.0;
             ui.add_space(((inner_w - row_w) / 2.0).max(0.0));
             if lay.scale {
                 widgets::meter_scale(ui, lay.fader_h);
-                ui.add_space(2.0);
+                ui.add_space(theme::SCALE_GAP);
             }
             let (lv, pk) = self
                 .meters
@@ -168,13 +164,14 @@ impl App {
                 self.set_value(Key::BusCeiling(b.id), ceiling);
             }
             widgets::field_context_menu(&handle, |ui| self.limiter_menu(ui, b));
+            ui.add_space(theme::CEILING_GAP);
             let paint = self.meter_paint(state);
             let meter = widgets::meter(ui, &lv, &pk, lay.fader_h, &paint);
             if b.limiter.enabled {
                 widgets::ceiling_line(ui, meter.rect, ceiling);
             }
             meter_rect = Some(meter.rect);
-            ui.add_space(4.0);
+            ui.add_space(theme::METER_GAP);
             let key = Key::Gain(StripOrBus::Bus(b.id));
             let mut gain = self.value(key, b.gain_db);
             let fill = own_color(b.color.as_deref()).unwrap_or(theme::p().fader);

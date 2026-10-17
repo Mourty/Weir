@@ -363,7 +363,7 @@ stop when the connection closes.
 | `state` | `state_changed`, `eq_presets_changed`, `history_changed`, `app_rules_changed`, `library_changed` |
 | `meters` | `meters`, up to 30 times a second |
 | `devices` | `devices_changed`, `system_volumes_changed`, `inserts_changed` |
-| `apps` | `apps_changed` |
+| `apps` | `apps_changed`, `seen_apps_changed` |
 | `engine` | `engine_changed` |
 | `settings` | `settings_changed` |
 | `hotkeys` | `hotkeys_changed` |

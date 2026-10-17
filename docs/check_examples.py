@@ -105,8 +105,9 @@ def write_sound(path, hz, seconds):
 
 
 def reset(mixer, sounds_device, workdir):
-    """Put the mixer, the settings, the rules, the hotkeys, the sounds and the
-    meter colors back as they were."""
+    """Put the mixer, the settings, the rules, the hotkeys, the sounds, the
+    meter colors and the recorder back as they were."""
+    mixer.call("set_recording", on=False)
     mixer.batch(
         ("load_setup", {"name": BASELINE}),
         ("load_scene", {"name": BASELINE}),
@@ -115,6 +116,10 @@ def reset(mixer, sounds_device, workdir):
                           "meter_rate_hz": 30, "startup": "window",
                           "tray_icon": "color", "hotkey_popup": "popup",
                           "sounds_device": sounds_device, "sounds_volume_db": -12}),
+        ("set_recorder", {"tracks": [], "folder": str(workdir / "recordings"),
+                          "names": "{date} {time}/{track}", "format": "flac",
+                          "bit_depth": 24, "kbps": 192, "layout": "files",
+                          "split_minutes": 0, "bwf": False, "next_number": 1}),
     )
     clear_hotkeys(mixer)
     clear_sounds(mixer)

@@ -35,6 +35,7 @@ Python and Node.js are in [`examples/`](../examples/).
   * [Scenes and setups](#scenes-and-setups): `save_scene`, `load_scene`, `list_scenes`, `delete_scene` and the same for setups
   * [Undo](#undo): `undo`, `redo`, `history`
   * [Hotkeys](#hotkeys): `list_hotkeys`, `set_hotkey`, `remove_hotkey`, `switch_hotkey`, `move_hotkey`, `run_hotkey`, `press_hotkey`, `release_hotkey`, `add_hotkey_group`, `set_hotkey_group`, `remove_hotkey_group`, `move_hotkey_group`, `open_shortcut_settings`, `add_sound`, `remove_sound`, `play_sound`
+  * [Recording](#recording): `set_recorder`, `set_record_track`, `set_recording`
   * [Export and import](#export-and-import): `export_settings`, `inspect_import`, `import_settings`
   * [Settings and the window](#settings-and-the-window): `set_settings`, `check_for_update`, `show_window`
 * [Notifications](#notifications)
@@ -287,7 +288,8 @@ Returns `{"protocol_version", "daemon_version", "capabilities"}`:
                    "limiter", "bus_delay", "sends", "upmix", "downmix", "spectrum", "history",
                    "scenes", "setups", "app_rules", "seen_apps", "system_volumes",
                    "external_effects", "hotkeys", "toggle", "deltas", "names",
-                   "batch", "describe", "diagnostics", "updates", "meter_colors"]
+                   "batch", "describe", "diagnostics", "updates", "meter_colors",
+                   "recorder"]
 }
 ```
 
@@ -368,6 +370,7 @@ stop when the connection closes.
 | `engine` | `engine_changed` |
 | `settings` | `settings_changed`, `update_changed` |
 | `hotkeys` | `hotkeys_changed` |
+| `recorder` | `recorder_changed`, `recording_changed` |
 | `window` | `show_window`, `quit`. Only for a mixer window: subscribing to it tells the daemon this connection *is* one. There is one window at a time: while one is open, a second connection subscribing to `window` gets `quit` at once, and the open window gets `show_window`. |
 
 Returns the list of topics now active on this connection.
@@ -1848,6 +1851,130 @@ mixer.call("play_sound", name="Airhorn")
 await mixer.call("play_sound", { name: "Tick" });
 ```
 
+### Recording
+
+Weir records strips and buses, each its own track: a strip as it is heard
+in the mix, after its effects and fader, a bus as it plays. A recording is
+a folder of files, one per track, or one Matroska audio file (`.mka`)
+holding every track. Every track starts and ends at the same moment, so
+they line up in an editor.
+
+What to record and how are the recorder's settings,
+[RecorderSettings](#recordersettings), kept with the daemon's settings.
+Strips and buses are ticked for recording by name, so a setup without one
+just leaves it out, and renaming one keeps it ticked. Changes apply to the
+next recording.
+
+While it records, the daemon sends a
+[`recording_changed`](#notifications) notification once a second, with how
+long, how big and how much room is left. Should the computer fall behind,
+what was lost becomes silence, so the tracks still line up, and
+`lost_seconds` says how much. A recording that cannot go on, say for a full
+disk, ends with what it wrote so far finished and readable, and says why in
+`error`.
+
+#### `set_recorder`
+
+Change how recordings are made. Only the fields you give change.
+
+| Parameter | Type | |
+|---|---|---|
+| `tracks` | list of [TrackSource](#tracksource), *optional* | Replaces the strips and buses to record, in the order of their tracks: `{"strip": "Mic"}`, `{"bus": "Stream Mic"}`. By name only. |
+| `folder` | string, *optional* | Where recordings go: a whole path, or `~/` and a path in your home folder. Empty for `Weir recordings` in your Music folder. |
+| `names` | string, *optional* | Where in the folder each file goes and what it is called, without its extension. It can hold `{date}` (`2026-10-17`), `{time}` (`20.52`), `{number}` (`007`, counting recordings), `{track}` (the strip's or bus's name), `{part}` and `{setup}`; a `/` makes a folder. Default `{date} {time}/{track}`: a folder for each recording, a file for each track. With a file per track and no `{track}`, the name goes on the end. |
+| `format` | string, *optional* | `wav`, `flac`, `mp3`, `opus` or `vorbis` (Ogg Vorbis). |
+| `bit_depth` | number, *optional* | WAV and FLAC: 16 or 24. |
+| `kbps` | number, *optional* | MP3, Opus and Ogg Vorbis: kilobits a second for a stereo track. The nearest the format offers is used: MP3 and Vorbis 128, 192, 256 or 320; Opus 64, 96, 128, 192 or 256. |
+| `layout` | string, *optional* | `files` for a file per track, `multitrack` for one `.mka` holding them all. |
+| `split_minutes` | number, *optional* | Start new files every this many minutes, without a gap between them; `0` never does. At most 1440. WAV files also start anew before they reach 4 GB, which WAV cannot go past. |
+| `bwf` | boolean or `"toggle"`, *optional* | WAV only: write when each file starts into it (a Broadcast Wave `bext` chunk), so editors can line files up by time. |
+| `next_number` | number, *optional* | The number `{number}` gives the next recording. |
+
+Returns the [RecorderSettings](#recordersettings) as they are now.
+
+```sh
+weirctl raw set_recorder '{"tracks": [{"strip": "Mic"}, {"bus": "Stream Mic"}]}'
+weirctl raw set_recorder '{"format": "wav", "bit_depth": 24, "bwf": true}'
+weirctl raw set_recorder '{"layout": "multitrack", "names": "{setup} {number}", "split_minutes": 60}'
+```
+
+```python
+mixer.call("set_recorder", format="opus", kbps=128, folder="~/Recordings")
+```
+
+```js
+await mixer.call("set_recorder", {
+  format: "flac",
+  bit_depth: 16,
+  names: "{date}/{time} {track}",
+});
+```
+
+#### `set_record_track`
+
+Tick one strip or bus for recording, or untick it. A strip or bus ticked
+goes after those ticked already.
+
+| Parameter | Type | |
+|---|---|---|
+| `strip` | id or name, *optional* | The strip. |
+| `bus` | id, label or name, *optional* | The bus. Give a strip or a bus. |
+| `on` | boolean or `"toggle"` | Record it, or not. |
+
+Returns the [RecorderSettings](#recordersettings) as they are now.
+
+```sh
+weirctl raw set_record_track '{"strip": "Music", "on": true}'
+weirctl raw set_record_track '{"bus": "B1", "on": "toggle"}'
+```
+
+```python
+mixer.call("set_record_track", strip="Mic", on=True)
+```
+
+```js
+await mixer.call("set_record_track", { bus: "Stream Mic", on: true });
+```
+
+#### `set_recording`
+
+Start or stop recording. Starting records the strips and buses ticked that
+this mixer has; it is an error when there are none, or the folder cannot be
+made. Stopping answers once the files are finished. It may be a hotkey's
+step, and the hotkey's popup then says "Recording" or "Recording stopped".
+
+| Parameter | Type | |
+|---|---|---|
+| `on` | boolean or `"toggle"` | Start, or stop. |
+
+Returns the [RecordingStatus](#recordingstatus) as it is now.
+
+```sh
+weirctl raw set_record_track '{"strip": "Mic", "on": true}'
+weirctl raw set_recording '{"on": true}'
+sleep 2
+weirctl raw set_recording '{"on": false}'
+```
+
+```python
+import time
+
+mixer.call("set_record_track", strip="Music", on=True)
+status = mixer.call("set_recording", on=True)
+print("recording into", status["folder"])
+time.sleep(2)
+for track in mixer.call("set_recording", on=False)["tracks"]:
+    print(track["file"])
+```
+
+```js
+await mixer.call("set_record_track", { strip: "Music", on: true });
+await mixer.call("set_recording", { on: true });
+await new Promise((done) => setTimeout(done, 2000));
+const { tracks } = await mixer.call("set_recording", { on: false });
+console.log(tracks.map((t) => t.file));
+```
+
 ### Export and import
 
 Settings to keep safe, to take to another computer, or to share: scenes,
@@ -2151,6 +2278,8 @@ replace its copy.
 | `settings_changed` | `settings` | [Settings](#settings) | A setting changed. |
 | `update_changed` | `settings` | [UpdateStatus](#updatestatus) | A check for Weir's newest release started or ended. |
 | `hotkeys_changed` | `hotkeys` | [HotkeysInfo](#hotkeysinfo) | A hotkey was added, changed or removed, the desktop gave them other keys, or something went wrong with one, or came right. |
+| `recorder_changed` | `recorder` | [RecorderSettings](#recordersettings) | How recordings are made changed, or the strips and buses ticked for recording. |
+| `recording_changed` | `recorder` | [RecordingStatus](#recordingstatus) | A recording started or stopped, once a second while it goes on, when it starts new files, and when the folder for the next one changes. |
 | `spectrum` | see [`watch_spectrum`](#watch_spectrum) | [Spectrum](#spectrum) | 30 times a second for each strip or bus watched. |
 | `show_window` | `window` | none | The mixer window should come to the front. |
 | `quit` | `window` | none | The daemon is stopping, or another window is already open; the window should close. |
@@ -2193,6 +2322,8 @@ What [`get_state`](#get_state) returns.
 | `inserts` | list of [InsertStatus](#insertstatus) | Whether each strip's and bus's external effects are connected, for those that have them on. Left out when none do. |
 | `hotkeys` | [HotkeysInfo](#hotkeysinfo) | The hotkeys, and how keys reach Weir. |
 | `update` | [UpdateStatus](#updatestatus) | Whether a newer Weir is out, as far as the daemon knows. |
+| `recorder` | [RecorderSettings](#recordersettings) | How recordings are made. |
+| `recording` | [RecordingStatus](#recordingstatus) | The recording under way, or the last one. |
 | `seen_apps` | list of [SeenApp](#seenapp) | The applications heard lately, as [`list_seen_apps`](#list_seen_apps) gives them. Left out when there are none. |
 
 ### MixerState
@@ -2727,6 +2858,54 @@ keys, media keys, `Pause`, `Print` and `ScrollLock` can be on their own.
 What `undo` and `redo` would take back or bring back, most recent first, up
 to 25 of each: a label for people, and when it happened, in milliseconds
 since 1970.
+
+### RecorderSettings
+
+How recordings are made, as [`set_recorder`](#set_recorder) changes them.
+
+| Field | Type | |
+|---|---|---|
+| `tracks` | list of [TrackSource](#tracksource) | The strips and buses ticked for recording, in the order of their tracks. Left out when none are. |
+| `folder` | string | Where recordings go, as given: a whole path, or `~/` and a path. Left out for `Weir recordings` in your Music folder; [RecordingStatus](#recordingstatus) has the whole path. |
+| `names` | string | The file name pattern. |
+| `format` | string | `wav`, `flac`, `mp3`, `opus` or `vorbis`. |
+| `bit_depth` | number | 16 or 24, for WAV and FLAC. |
+| `kbps` | number | Kilobits a second for a stereo track, for the others. |
+| `layout` | string | `files` or `multitrack`. |
+| `split_minutes` | number | Start new files every this many minutes; `0` never does. |
+| `bwf` | boolean | WAV files say when they start. Left out when off. |
+| `next_number` | number | What `{number}` gives the next recording. |
+
+### TrackSource
+
+A strip or bus to record, by name: `{"strip": "Mic"}` or `{"bus": "Stream Mic"}`.
+
+### RecordingStatus
+
+What the recorder is doing.
+
+| Field | Type | |
+|---|---|---|
+| `recording` | boolean | Whether it is recording. |
+| `started_at_ms` | number, *optional* | When the recording under way, or the last one, started, in milliseconds since 1970. |
+| `seconds` | number | How long it has recorded. |
+| `folder` | string | While recording, the folder its files are in; otherwise where the next recording goes. A whole path. |
+| `tracks` | list of [RecordingTrack](#recordingtrack) | Its tracks, or the last recording's. |
+| `part` | number | Which part the files are, counting from 1, when it starts new files now and then. |
+| `next_part_in` | number, *optional* | Seconds until it starts new files. |
+| `bytes` | number | Bytes written so far, every part together. |
+| `free_bytes` | number, *optional* | Bytes free on the disk it records to. |
+| `lost_seconds` | number, *optional* | Sound lost because the computer could not keep up, in seconds. It is silence in the files. |
+| `missing` | list of [TrackSource](#tracksource), *optional* | Ticked strips and buses the mixer did not have when it started. |
+| `error` | string, *optional* | Why the last recording stopped by itself. |
+
+### RecordingTrack
+
+| Field | Type | |
+|---|---|---|
+| `source` | [TrackSource](#tracksource) | The strip or bus, by the name it had when the recording started. |
+| `channels` | number | Its channels. MP3 files are stereo at most: more are mixed down. |
+| `file` | string | The file it goes into now, a whole path. In a `.mka`, every track's is the same file. |
 
 ### UpdateStatus
 

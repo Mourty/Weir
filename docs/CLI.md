@@ -27,6 +27,7 @@ weirctl scene load Streaming           # everything as saved for streaming
 * [Undo](#undo): `undo`, `redo`, `history`
 * [Hotkeys](#hotkeys): `hotkeys`, `hotkey`
 * [Hotkeys' sounds](#hotkeys-sounds): `sounds`, `sound`
+* [Recording](#recording): `record`, `recorder`
 * [Export and import](#export-and-import): `export`, `import`
 * [Settings and the window](#settings-and-the-window): `settings`, `update`, `show`
 * [Watching and anything else](#watching-and-anything-else): `watch`, `report`, `raw`
@@ -422,6 +423,58 @@ weirctl sounds
 weirctl sound play Applause
 weirctl hotkey add "Clap" --do 'set_strip {"id": "Soundboard", "mute": false}' --press-sound Applause
 weirctl sound remove Applause
+```
+
+## Recording
+
+Weir records strips and buses, each its own track: a strip as it is heard
+in the mix, after its effects and fader, a bus as it plays. Tick what to
+record, then start and stop. Every track starts and ends at the same
+moment, so they line up in an editor.
+
+| Command | |
+|---|---|
+| `weirctl record` | Say what is recording: how long, where, each track's file, how big and how much room is left. When not recording, what is ticked and where the next recording goes. |
+| `weirctl record strip STRIP [on\|off\|toggle]` | Tick a strip for recording, or untick it (on when left out). |
+| `weirctl record bus BUS [on\|off\|toggle]` | The same for a bus. |
+| `weirctl record start` | Start recording what is ticked. |
+| `weirctl record stop` | Stop, and finish the files. It answers once they are finished. |
+| `weirctl record toggle` | Start, or stop. |
+| `weirctl recorder [options]` | Show how recordings are made, or change it. Changes apply to the next recording. |
+
+`weirctl recorder` options:
+
+| Option | |
+|---|---|
+| `--format FORMAT` | `wav`, `flac` (the default), `mp3`, `opus` or `vorbis` (Ogg Vorbis). |
+| `--quality N` | Bits per sample for WAV and FLAC, 16 or 24; kilobits a second for a stereo track for the others: MP3 and Vorbis 128 to 320, Opus 64 to 256. |
+| `--layout files\|one-file` | A file per track (the default), or one `.mka` file holding every track. |
+| `--folder PATH` | Where recordings go: a whole path, or `~/` and a path. `default` for `Weir recordings` in your Music folder. |
+| `--names PATTERN` | Where in the folder each file goes and what it is called. It can hold `{date}`, `{time}`, `{number}`, `{track}`, `{part}` and `{setup}`; a `/` makes a folder. The default, `{date} {time}/{track}`, makes a folder for each recording with a file for each track. |
+| `--split MINUTES` | Start new files every this many minutes, without a gap; 0 never does. |
+| `--bwf on\|off` | WAV only: write when each file starts into it (Broadcast Wave), so editors can line files up by time. |
+| `--number N` | The number `{number}` gives the next recording. |
+
+```sh
+weirctl record strip Mic
+weirctl record bus "Stream Mic"
+weirctl recorder --format wav --quality 24 --bwf on
+weirctl record start
+sleep 2
+weirctl record
+weirctl record stop
+```
+
+One file for a whole stream, in Opus, a new one every hour:
+
+```sh
+weirctl recorder --format opus --quality 128 --layout one-file --names "{setup} {number}" --split 60
+```
+
+Recording can also be a hotkey's step:
+
+```sh
+weirctl hotkey add "Record" --keys Ctrl+Alt+R --do 'set_recording {"on": "toggle"}'
 ```
 
 ## Export and import

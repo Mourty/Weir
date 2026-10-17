@@ -93,6 +93,17 @@ pub enum Cmd {
     },
     /// Remove an application's rule.
     Unrule { app: String },
+    /// List applications heard playing lately, to make rules for.
+    SeenApps,
+    /// Take an application off the list of those heard lately.
+    ForgetApp {
+        /// The application's name, as `seen-apps` shows it.
+        #[arg(required_unless_present = "all")]
+        app: Option<String>,
+        /// Forget every application heard, but those playing now.
+        #[arg(long, conflicts_with = "app")]
+        all: bool,
+    },
     /// Move a strip to another place, counting from 1 on the left.
     MoveStrip { strip: String, position: usize },
     /// Move a bus to another place, counting from 1 on the left.

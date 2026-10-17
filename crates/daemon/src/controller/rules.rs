@@ -1,12 +1,16 @@
 //! Application rules: putting applications on the strip their rule names
-//! when they start playing.
+//! when they start playing. And the applications heard lately, for making
+//! rules for ones that are not playing now.
 
 use super::names::Rename;
 use super::Inner;
+use serde_json::Value;
 use std::collections::HashSet;
 use std::sync::atomic::Ordering;
 use tracing::warn;
-use weir_protocol::{find_named, rule_for, Notification, StripId, TargetKind};
+use weir_protocol::{
+    find_named, rule_for, to_json, Notification, RpcError, SeenApp, StripId, TargetKind,
+};
 
 /// How many times a rule tries to move an application before leaving it be,
 /// in case something else keeps moving it back.
@@ -55,8 +59,19 @@ pub(super) fn rule_moves(inner: &mut Inner) -> Vec<(u32, String, StripId)> {
 }
 
 impl super::Controller {
-    /// Strips were renamed: rules naming them take the new names.
+    /// Strips were renamed: rules naming them take the new names, and so
+    /// does where applications heard lately last played.
     pub(super) fn rules_follow_renames(&self, renamed: &[Rename]) {
+        let seen = {
+            let mut inner = self.inner.lock().unwrap();
+            inner
+                .seen_apps
+                .follow_renames(renamed)
+                .then(|| inner.seen_apps.list().to_vec())
+        };
+        if let Some(list) = seen {
+            self.seen_apps_changed(list);
+        }
         let changed = {
             let mut inner = self.inner.lock().unwrap();
             let mut changed = false;
@@ -76,6 +91,59 @@ impl super::Controller {
             self.dirty.store(true, Ordering::Release);
             self.announce(Notification::AppRulesChanged(rules));
         }
+    }
+
+    /// The applications heard lately, most recently heard first.
+    pub(super) fn seen_apps(&self) -> Vec<SeenApp> {
+        self.inner.lock().unwrap().seen_apps.list().to_vec()
+    }
+
+    /// Take one application off the list of those heard lately.
+    pub(super) fn forget_seen_app(&self, name: &str) -> Result<Value, RpcError> {
+        let list = {
+            let mut inner = self.inner.lock().unwrap();
+            let inner = &mut *inner;
+            inner
+                .seen_apps
+                .forget(name, &inner.apps)
+                .map_err(|e| RpcError::application(e.to_string()))?;
+            inner.seen_apps.list().to_vec()
+        };
+        self.seen_apps_changed(list.clone());
+        Ok(to_json(&list))
+    }
+
+    /// Forget every application heard lately but those playing now.
+    pub(super) fn clear_seen_apps(&self) -> Result<Value, RpcError> {
+        let (cleared, list) = {
+            let mut inner = self.inner.lock().unwrap();
+            let inner = &mut *inner;
+            let cleared = inner.seen_apps.clear(&inner.apps);
+            (cleared, inner.seen_apps.list().to_vec())
+        };
+        if cleared {
+            self.seen_apps_changed(list.clone());
+        }
+        Ok(to_json(&list))
+    }
+
+    /// The daemon is stopping: what plays now stops being heard.
+    pub fn stop_hearing_apps(&self) {
+        let mut inner = self.inner.lock().unwrap();
+        let inner = &mut *inner;
+        if !inner.apps.is_empty() {
+            inner
+                .seen_apps
+                .stop_all(&inner.apps, crate::seen_apps::now_ms());
+            self.seen_dirty.store(true, Ordering::Release);
+        }
+    }
+
+    /// The applications heard lately changed: save them soon and tell
+    /// clients.
+    pub(super) fn seen_apps_changed(&self, list: Vec<SeenApp>) {
+        self.seen_dirty.store(true, Ordering::Release);
+        self.announce(Notification::SeenAppsChanged(list));
     }
 
     /// Carry out moves the application rules asked for.

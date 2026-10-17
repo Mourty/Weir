@@ -41,6 +41,7 @@ const CAPABILITIES: &[&str] = &[
     "scenes",
     "setups",
     "app_rules",
+    "seen_apps",
     "system_volumes",
     "external_effects",
     "hotkeys",
@@ -82,6 +83,9 @@ impl Controller {
             Request::GetState => Ok(to_json(&self.full_state())),
             Request::ListDevices => Ok(to_json(&self.inner.lock().unwrap().devices)),
             Request::ListApps => Ok(to_json(&self.inner.lock().unwrap().apps)),
+            Request::ListSeenApps => Ok(to_json(&self.seen_apps())),
+            Request::ForgetSeenApp(p) => self.forget_seen_app(&p.name),
+            Request::ClearSeenApps => self.clear_seen_apps(),
             Request::SetStrip(p) => self.mutate(step, |m| set_strip(m, p)),
             Request::SetBus(p) => self.mutate(step, |m| set_bus(m, p)),
             Request::SetRoute(p) => self.mutate(step, |m| set_route(m, p)),
@@ -161,6 +165,7 @@ impl Controller {
             system_volumes: inner.system_volumes.clone(),
             inserts: inner.inserts.clone(),
             hotkeys,
+            seen_apps: inner.seen_apps.list().to_vec(),
         }
     }
 

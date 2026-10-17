@@ -1422,6 +1422,10 @@ pub struct FullState {
     /// Every hotkey, and how keys reach Weir.
     #[serde(default)]
     pub hotkeys: crate::hotkeys::HotkeysInfo,
+    /// Applications heard playing in the last [`SEEN_APPS_DAYS`] days, the
+    /// ones playing now included, most recently heard first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub seen_apps: Vec<SeenApp>,
 }
 
 /// Whether a strip's or bus's external effects are connected: whether any
@@ -1491,19 +1495,70 @@ impl AppRule {
     /// Whether this rule is about `app`: its name or its program's name is
     /// the rule's `app`, ignoring case.
     pub fn matches(&self, app: &AppStream) -> bool {
+        self.matches_app(&app.name, app.binary.as_deref())
+    }
+
+    /// Whether this rule is about the application called `name`, played by
+    /// the program `binary`.
+    pub fn matches_app(&self, name: &str, binary: Option<&str>) -> bool {
         let want = self.app.trim();
         !want.is_empty()
-            && (app.name.eq_ignore_ascii_case(want)
-                || app
-                    .binary
-                    .as_deref()
-                    .is_some_and(|b| b.eq_ignore_ascii_case(want)))
+            && (name.eq_ignore_ascii_case(want)
+                || binary.is_some_and(|b| b.eq_ignore_ascii_case(want)))
     }
 }
 
 /// The rule for `app`: the first one that matches.
 pub fn rule_for<'a>(rules: &'a [AppRule], app: &AppStream) -> Option<&'a AppRule> {
     rules.iter().find(|r| r.matches(app))
+}
+
+/// How many days an application stays in [`FullState::seen_apps`] after it
+/// last played.
+pub const SEEN_APPS_DAYS: u64 = 90;
+/// Most applications [`FullState::seen_apps`] keeps; past that the one
+/// heard longest ago goes.
+pub const SEEN_APPS_MAX: usize = 200;
+
+/// An application Weir has heard play, kept for [`SEEN_APPS_DAYS`] days
+/// so rules can be made for applications that play only now and then. The
+/// list stays on this computer: it is not part of an export.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct SeenApp {
+    /// The application's name (`application.name`), as `apps` lists it.
+    pub name: String,
+    /// The program that played it (`application.process.binary`), when
+    /// known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub binary: Option<String>,
+    /// When it last stopped playing, in milliseconds since the Unix epoch;
+    /// for an application playing now, when it started.
+    pub last_seen_ms: u64,
+    /// The strip it last played into, by name, when that was one of Weir's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strip: Option<String>,
+}
+
+/// How long before `now_ms` the moment `at_ms` was, in words, for
+/// [`SeenApp::last_seen_ms`]: "just now", "2 hours ago", "yesterday".
+pub fn heard_ago(now_ms: u64, at_ms: u64) -> String {
+    let minutes = now_ms.saturating_sub(at_ms) / 60_000;
+    let (hours, days) = (minutes / 60, minutes / (60 * 24));
+    let plural = |n: u64, one: &str| {
+        if n == 1 {
+            format!("1 {one} ago")
+        } else {
+            format!("{n} {one}s ago")
+        }
+    };
+    match (minutes, hours, days) {
+        (0, _, _) => "just now".into(),
+        (m, 0, _) => plural(m, "minute"),
+        (_, h, 0) => plural(h, "hour"),
+        (_, _, 1) => "yesterday".into(),
+        (_, _, d) if d < 14 => plural(d, "day"),
+        (_, _, d) => plural(d / 7, "week"),
+    }
 }
 
 /// A level in dB as a factor to multiply samples by. At or below
@@ -1529,6 +1584,19 @@ pub fn linear_to_db(lin: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn times_heard_read_as_words() {
+        let now = 100 * 24 * 3_600_000;
+        let ago = |ms: u64| heard_ago(now, now - ms);
+        assert_eq!(ago(20_000), "just now");
+        assert_eq!(ago(60_000), "1 minute ago");
+        assert_eq!(ago(25 * 60_000), "25 minutes ago");
+        assert_eq!(ago(2 * 3_600_000), "2 hours ago");
+        assert_eq!(ago(30 * 3_600_000), "yesterday");
+        assert_eq!(ago(3 * 24 * 3_600_000), "3 days ago");
+        assert_eq!(ago(20 * 24 * 3_600_000), "2 weeks ago");
+    }
     use crate::fx::InsertPoint;
 
     #[test]

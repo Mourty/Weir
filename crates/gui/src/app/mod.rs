@@ -183,9 +183,15 @@ pub struct App {
     sound_wanted: Option<(String, Option<crate::sounds::SoundSlot>, Instant)>,
     /// The sound of the person's own being asked about removing.
     sound_remove: Option<String>,
-    /// The App rules window, and the name typed into its "by name" field.
+    /// The App rules window, whether to bring it to the front, the name
+    /// typed into its "by name" field, what is typed into its box for
+    /// finding an application heard before, and whether it asks about
+    /// forgetting them all.
     show_rules: bool,
+    raise_rules: bool,
     rule_name: String,
+    seen_filter: String,
+    clear_seen_asked: bool,
     /// What can be undone and redone, as of this frame.
     history: HistoryInfo,
     /// Strips and buses that have clipped since their CLIP light was last
@@ -256,7 +262,10 @@ impl App {
             sound_wanted: None,
             sound_remove: None,
             show_rules: false,
+            raise_rules: false,
             rule_name: String::new(),
+            seen_filter: String::new(),
+            clear_seen_asked: false,
             history: HistoryInfo::default(),
             reductions: HashMap::new(),
             desktop_font: None,

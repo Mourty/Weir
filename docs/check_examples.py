@@ -25,6 +25,9 @@ and use 87 for its id; the check puts in its real one. For instance:
     cat /dev/zero | pw-cat --playback --target weir.input.3 \
         -P '{ application.name = "Firefox" }' -
 
+They also need Spotify among the applications heard before, so the check
+plays a moment of silence as Spotify, with pw-cat, whenever it is not.
+
 A comment line before a block changes how it is checked:
 
     <!-- runs until stopped -->   it is meant to run forever; it passes if it
@@ -45,6 +48,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import time
 import wave
 from pathlib import Path
 
@@ -58,6 +62,7 @@ BASELINE = "docs-check-baseline"
 BASELINE_HOTKEY = {"name": "Mute mic", "steps": [
     {"method": "set_strip", "params": {"id": "Mic", "mute": "toggle"}}]}
 BASELINE_SOUND = "Airhorn"
+HEARD_APP = "Spotify"
 FOREVER_SECONDS = 2
 TIMEOUT_SECONDS = 20
 
@@ -116,6 +121,32 @@ def reset(mixer, sounds_device, workdir):
     mixer.call("add_sound", name=BASELINE_SOUND, path=str(workdir / "airhorn.wav"))
     mixer.call("set_hotkey", **BASELINE_HOTKEY)
     mixer.call("add_hotkey_group", name="Streaming")
+    if not any(app["name"] == HEARD_APP for app in mixer.call("list_seen_apps")):
+        hear(mixer, HEARD_APP)
+
+
+def hear(mixer, name):
+    """Play silence as the application `name` until the daemon hears it,
+    then stop, so it is among the applications heard before."""
+    def playing():
+        return weir.find(mixer.call("list_apps"), name) is not None
+
+    def wait(until):
+        for _ in range(100):
+            if until():
+                return
+            time.sleep(0.05)
+        sys.exit(f"The daemon did not hear {name} play; is pw-cat there?")
+
+    with open("/dev/zero", "rb") as silence:
+        player = subprocess.Popen(
+            ["pw-cat", "--playback", "--format", "s16", "--rate", "48000",
+             "--channels", "2", "-P", f'{{ application.name = "{name}" }}', "-"],
+            stdin=silence, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        wait(playing)
+        player.terminate()
+        player.wait()
+    wait(lambda: not playing())
 
 
 def clear_sounds(mixer):

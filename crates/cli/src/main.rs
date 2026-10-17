@@ -70,6 +70,8 @@ fn run() -> Result<()> {
         Cmd::Rules => commands::rules(c, json),
         Cmd::Rule { app, strip } => commands::rule(c, app, &strip, json),
         Cmd::Unrule { app } => commands::unrule(c, &app, json),
+        Cmd::SeenApps => commands::seen_apps(c, json),
+        Cmd::ForgetApp { app, all } => commands::forget_app(c, app, all, json),
         Cmd::MoveStrip { strip, position } => commands::move_strip(c, &strip, position, json),
         Cmd::MoveBus { bus, position } => commands::move_bus(c, &bus, position, json),
         Cmd::MoveApp { app, strip } => commands::move_app(c, app, &strip),

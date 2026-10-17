@@ -11,7 +11,8 @@
 //! * [`hotkeys`]: keeping hotkeys, and passing presses to the runner.
 //! * [`names`]: looking strips and buses up by name in a request.
 //! * [`undo_labels`]: what each change is called in the undo history.
-//! * [`rules`]: putting applications where their rules say.
+//! * [`rules`]: putting applications where their rules say, and the
+//!   applications heard lately.
 //! * [`sounds`]: hotkeys' sounds and popups.
 
 mod handlers;
@@ -102,6 +103,8 @@ struct Inner {
     sounds_device: Option<Option<String>>,
     /// What is known about Weir's newest release.
     update: UpdateStatus,
+    /// Applications heard lately, for making rules.
+    seen_apps: crate::seen_apps::SeenApps,
 }
 
 /// The daemon's state and its request handlers, shared by every
@@ -116,6 +119,8 @@ pub struct Controller {
     paths: Paths,
     /// Set when the configuration changed since it was last saved.
     dirty: AtomicBool,
+    /// Set when the applications heard lately changed since last saved.
+    seen_dirty: AtomicBool,
     /// How many connections have claimed to be the mixer window. The tray
     /// uses this to decide between raising a window and starting one.
     window_clients: AtomicUsize,
@@ -194,11 +199,17 @@ impl Controller {
                 sounds: crate::sounds::Library::load(&paths.sounds_dir),
                 sounds_device: None,
                 update: UpdateStatus::default(),
+                seen_apps: crate::seen_apps::SeenApps::load(
+                    &paths.seen_apps_file,
+                    &paths.backups_dir,
+                    crate::seen_apps::now_ms(),
+                ),
             }),
             engine,
             notify,
             paths,
             dirty: AtomicBool::new(false),
+            seen_dirty: AtomicBool::new(false),
             window_clients: AtomicUsize::new(0),
             window_tx: Mutex::new(None),
             spectrum_watchers: Mutex::new(BTreeMap::new()),
@@ -349,38 +360,56 @@ impl Controller {
                 self.dirty.store(true, Ordering::Release);
             }
         }
+        if self.seen_dirty.swap(false, Ordering::AcqRel) {
+            let saved = {
+                let inner = self.inner.lock().unwrap();
+                inner.seen_apps.save(&self.paths.seen_apps_file)
+            };
+            if let Err(e) = saved {
+                warn!("could not save the applications heard: {e:#}");
+                self.seen_dirty.store(true, Ordering::Release);
+            }
+        }
     }
 
     /// Take in something the engine reports, and pass it on to clients.
     pub fn on_engine_event(&self, ev: EngineEvent) {
-        let (n, moves) = {
+        let (n, moves, seen) = {
             let mut inner = self.inner.lock().unwrap();
             match ev {
                 EngineEvent::Status(s) => {
                     inner.engine = s.clone();
-                    (Notification::EngineChanged(s), Vec::new())
+                    (Notification::EngineChanged(s), Vec::new(), None)
                 }
                 EngineEvent::Devices(d) => {
                     inner.devices = d.clone();
-                    (Notification::DevicesChanged(d), Vec::new())
+                    (Notification::DevicesChanged(d), Vec::new(), None)
                 }
                 EngineEvent::Apps(a) => {
-                    inner.apps = a.clone();
+                    let before = std::mem::replace(&mut inner.apps, a.clone());
                     let moves = rules::rule_moves(&mut inner);
-                    (Notification::AppsChanged(a), moves)
+                    let inner = &mut *inner;
+                    let seen = inner
+                        .seen_apps
+                        .note(&before, &a, &inner.mixer, crate::seen_apps::now_ms())
+                        .then(|| inner.seen_apps.list().to_vec());
+                    (Notification::AppsChanged(a), moves, seen)
                 }
                 EngineEvent::SystemVolumes(v) => {
                     inner.system_volumes = v.clone();
-                    (Notification::SystemVolumesChanged(v), Vec::new())
+                    (Notification::SystemVolumesChanged(v), Vec::new(), None)
                 }
                 EngineEvent::Inserts(v) => {
                     inner.inserts = v.clone();
-                    (Notification::InsertsChanged(v), Vec::new())
+                    (Notification::InsertsChanged(v), Vec::new(), None)
                 }
             }
         };
         let devices = matches!(n, Notification::DevicesChanged(_));
         self.announce(n);
+        if let Some(list) = seen {
+            self.seen_apps_changed(list);
+        }
         self.make_moves(moves);
         if devices {
             self.update_sounds_device();

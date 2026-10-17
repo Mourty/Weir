@@ -39,6 +39,7 @@ fn allowed_in_hotkey(req: &Request) -> bool {
             | Request::GetState
             | Request::ListDevices
             | Request::ListApps
+            | Request::ListSeenApps
             | Request::ListSetups
             | Request::ListScenes
             | Request::ListEqPresets

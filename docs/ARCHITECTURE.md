@@ -242,6 +242,18 @@ of the requests that take names, `names::takes_names`); when the mixer has
 no strip of that name the rule waits, and loading a setup applies the
 rules afresh. Renames reach the rules as they reach hotkeys.
 
+**Applications heard** (`seen_apps.rs`) are kept so rules can be made for
+ones not playing now. Each list of applications the engine reports is
+compared with the one before, by name: a name not playing before starts
+(or adds) an entry, one gone stops it, and either stamps the time; a
+volume change, which also brings a new list, changes nothing, so neither
+a notification nor a save. The strip an application last played into is
+kept by name, follows renames, and survives the moment a stream ending
+is connected nowhere. Entries go after 90 days or past 200. The list has
+a file of its own, `seen-apps.json`, saved like the configuration but
+outside it, its backups and exports: it belongs to the computer. A file
+that cannot be read is copied into `backups/` and the list starts afresh.
+
 **Scenes and setups** (`protocol/library.rs`) are two halves that do not
 overlap. A `Setup` is what is there: the strips and buses in order, with
 name, kind, layout, device, color and external effects, which belong here

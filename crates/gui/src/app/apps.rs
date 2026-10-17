@@ -1,18 +1,20 @@
 //! Applications: the Apps menu, which moves a playing application to
 //! another strip, and the App rules window, which says where applications
-//! go as soon as they start playing.
+//! go as soon as they start playing, and lists those heard before so rules
+//! can be made for ones that play only now and then.
 
 use super::App;
 use crate::theme;
+use crate::transfer::Pane;
 use egui::{RichText, Ui};
 use weir_protocol::*;
 
-/// The strips applications can play into.
 /// Whether a rule's strip, `rule`, is the strip called `name`.
 fn same_name(rule: Option<&str>, name: &str) -> bool {
     rule.is_some_and(|r| r.trim().eq_ignore_ascii_case(name))
 }
 
+/// The strips applications can play into.
 fn virtual_strips(state: &FullState) -> Vec<&Strip> {
     state
         .mixer
@@ -31,7 +33,7 @@ impl App {
             .on_hover_text("Where applications go when they start playing")
             .clicked()
         {
-            self.show_rules = true;
+            self.open_rules();
             ui.close();
         }
         ui.separator();
@@ -40,17 +42,7 @@ impl App {
         }
         let strips = virtual_strips(state);
         for a in &state.apps {
-            let where_ = match a.strip.and_then(|id| state.mixer.strip(id)) {
-                // Worded, not an arrow: the fonts do not all have one.
-                Some(s) => format!("in {}", s.name),
-                None => match &a.target {
-                    Some(t) => match crate::effects::return_device(state, t) {
-                        Some(device) => format!("in {device}"),
-                        None => format!("in {t}"),
-                    },
-                    None => "(not playing anywhere)".into(),
-                },
-            };
+            let where_ = where_playing(state, a);
             ui.menu_button(format!("{}  {}", a.name, where_), |ui| {
                 ui.label(RichText::new("Move to").color(theme::p().text_dim));
                 for s in &strips {
@@ -93,76 +85,117 @@ impl App {
             .push(Request::SetAppRules(AppRulesParams { rules }));
     }
 
-    /// The App rules window. The whole list is edited here and sent back
-    /// in one request whenever it changes.
+    /// Open the App rules window, or bring it to the front.
+    pub(super) fn open_rules(&mut self) {
+        if !self.show_rules {
+            self.clear_seen_asked = false;
+        }
+        self.show_rules = true;
+        self.raise_rules = true;
+    }
+
+    /// The App rules window: the rules, the applications playing now and
+    /// those heard before, each with a button to make it a rule. The whole
+    /// list of rules is edited here and sent back in one request whenever
+    /// it changes.
     pub(super) fn rules_window(&mut self, ctx: &egui::Context, state: &FullState) {
         if !self.show_rules {
             return;
         }
-        let mut open = true;
         let mut rules = state.app_rules.clone();
         let mut changed = false;
-        egui::Window::new("App rules")
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(false)
-            .default_width(380.0)
-            .show(ctx, |ui| {
-                ui.label(
-                    RichText::new(
-                        "Applications matching a rule are moved there as soon as they start \
-                         playing. Move one by hand afterwards and it stays where you put it.",
-                    )
-                    .size(11.0)
-                    .color(theme::p().text_dim),
-                );
-                ui.add_space(6.0);
-                if rules.is_empty() {
-                    ui.label(RichText::new("No rules yet.").color(theme::p().text_dim));
+        let (mut raise, mut closed) = (self.raise_rules, false);
+        crate::transfer::window(
+            ctx,
+            "app-rules",
+            "App rules",
+            &mut raise,
+            &mut closed,
+            |ui, pane| match pane {
+                Pane::Body => {
+                    egui::ScrollArea::vertical()
+                        .auto_shrink(false)
+                        .show(ui, |ui| changed |= self.rules_body(ui, state, &mut rules));
                 }
-                changed |= rule_table(ui, state, &mut rules);
-                ui.add_space(8.0);
-                changed |= self.new_rule_row(ui, state, &mut rules);
-            });
+                Pane::Footer => self.rules_footer(ui, state),
+            },
+        );
         if changed {
             self.actions
                 .push(Request::SetAppRules(AppRulesParams { rules }));
         }
-        self.show_rules = open;
+        self.raise_rules = raise;
+        if closed {
+            self.show_rules = false;
+            self.clear_seen_asked = false;
+        }
     }
 
-    /// Buttons to add a rule, for an application playing now or by name.
-    /// Returns whether one was added.
-    fn new_rule_row(&mut self, ui: &mut Ui, state: &FullState, rules: &mut Vec<AppRule>) -> bool {
+    /// Everything but the footer. Returns whether the rules changed.
+    fn rules_body(&mut self, ui: &mut Ui, state: &FullState, rules: &mut Vec<AppRule>) -> bool {
         let mut changed = false;
-        let first = virtual_strips(state).first().map(|s| s.name.clone());
-        ui.horizontal(|ui| {
-            let unruled: Vec<&AppStream> = state
-                .apps
-                .iter()
-                .filter(|a| rule_for(rules, a).is_none())
-                .collect();
-            ui.add_enabled_ui(!unruled.is_empty(), |ui| {
-                ui.menu_button("+ Rule for a playing app", |ui| {
-                    for a in &unruled {
-                        if ui.button(&a.name).clicked() {
-                            let on = a.strip.and_then(|id| state.mixer.strip(id));
-                            rules.push(AppRule {
-                                app: a.name.clone(),
-                                strip: on.map(|s| s.name.clone()).or(first.clone()),
-                            });
-                            changed = true;
-                            ui.close();
-                        }
-                    }
-                });
-            });
+        ui.label(
+            RichText::new(
+                "A rule puts an application on the same strip every time it starts playing. \
+                 Move one by hand afterwards and it stays where you put it.",
+            )
+            .color(theme::p().text_dim),
+        );
+        ui.add_space(10.0);
+        ui.label(RichText::new("Rules").strong().size(15.0));
+        ui.add_space(2.0);
+        card(ui, |ui| {
+            if rules.is_empty() {
+                ui.label(
+                    RichText::new(
+                        "No rules yet. Make one for an application below, playing now or \
+                         heard before, or by its name.",
+                    )
+                    .color(theme::p().text_dim),
+                );
+            } else {
+                changed |= rule_table(ui, state, rules);
+            }
         });
+        ui.add_space(4.0);
+        changed |= self.rule_by_name(ui, state, rules);
+        ui.add_space(14.0);
+
+        // Side by side when there is room, one above the other when not.
+        let gap = 16.0;
+        let wide = ui.available_width() >= 640.0;
+        if wide {
+            let w = ui.available_width() - gap;
+            ui.horizontal_top(|ui| {
+                ui.spacing_mut().item_spacing.x = gap;
+                ui.allocate_ui_with_layout(
+                    egui::vec2(w * 0.42, 0.0),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |ui| changed |= playing_list(ui, state, rules),
+                );
+                ui.allocate_ui_with_layout(
+                    egui::vec2(w * 0.58, 0.0),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |ui| changed |= self.seen_list(ui, state, rules),
+                );
+            });
+        } else {
+            changed |= playing_list(ui, state, rules);
+            ui.add_space(14.0);
+            changed |= self.seen_list(ui, state, rules);
+        }
+        changed
+    }
+
+    /// A field and a button to make a rule for an application by its
+    /// name, for one that has not played yet. Returns whether one was made.
+    fn rule_by_name(&mut self, ui: &mut Ui, state: &FullState, rules: &mut Vec<AppRule>) -> bool {
+        let mut changed = false;
         ui.horizontal(|ui| {
             let r = ui.add(
                 egui::TextEdit::singleline(&mut self.rule_name)
                     .hint_text("application or program name")
-                    .desired_width(200.0),
+                    .desired_width(220.0),
             );
             let enter = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
             let name = self.rule_name.trim().to_string();
@@ -171,14 +204,14 @@ impl App {
             let clicked = ui
                 .add_enabled(valid, egui::Button::new("+ Rule by name"))
                 .on_hover_text(
-                    "For an application that is not playing now. Use the name the Apps \
+                    "For an application Weir has not heard yet. Use the name the Apps \
                      menu shows, or the name of its program, such as firefox.",
                 )
                 .clicked();
             if (clicked || enter) && valid {
                 rules.push(AppRule {
                     app: name,
-                    strip: first.clone(),
+                    strip: first_strip(state),
                 });
                 self.rule_name.clear();
                 changed = true;
@@ -186,6 +219,301 @@ impl App {
         });
         changed
     }
+
+    /// The applications heard before and not playing now, newest first,
+    /// with a box to find one. Returns whether a rule was made.
+    fn seen_list(&mut self, ui: &mut Ui, state: &FullState, rules: &mut Vec<AppRule>) -> bool {
+        let mut changed = false;
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("Seen before").strong().size(15.0));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.seen_filter)
+                        .hint_text("Find an app")
+                        .desired_width(150.0),
+                );
+            });
+        });
+        ui.add_space(2.0);
+        let find = self.seen_filter.trim().to_lowercase();
+        let seen: Vec<&SeenApp> = state
+            .seen_apps
+            .iter()
+            .filter(|s| {
+                !state
+                    .apps
+                    .iter()
+                    .any(|a| a.name.eq_ignore_ascii_case(&s.name))
+            })
+            .collect();
+        let shown: Vec<&SeenApp> = seen
+            .iter()
+            .copied()
+            .filter(|s| {
+                find.is_empty()
+                    || s.name.to_lowercase().contains(&find)
+                    || s.binary
+                        .as_deref()
+                        .is_some_and(|b| b.to_lowercase().contains(&find))
+            })
+            .collect();
+        let now = now_ms();
+        let mut forget = None;
+        card(ui, |ui| {
+            if seen.is_empty() {
+                ui.label(
+                    RichText::new(
+                        "Applications show here once they have played and stopped, so \
+                         you can make rules for ones that play only now and then.",
+                    )
+                    .color(theme::p().text_dim),
+                );
+            } else if shown.is_empty() {
+                ui.label(RichText::new("No application matches.").color(theme::p().text_dim));
+            }
+            for s in &shown {
+                let when = heard_ago(now, s.last_seen_ms);
+                let detail = match &s.strip {
+                    Some(strip) => format!("{when} · last in {strip}"),
+                    None => when,
+                };
+                let rule = rules
+                    .iter()
+                    .find(|r| r.matches_app(&s.name, s.binary.as_deref()));
+                let clicked = app_row(ui, false, &s.name, s.binary.as_deref(), &detail, rule, true);
+                match clicked {
+                    RowClick::Rule => {
+                        // Where it played last, when this setup has it.
+                        let strip = s
+                            .strip
+                            .as_deref()
+                            .and_then(|n| state.mixer.find_strip(n))
+                            .filter(|x| x.kind == StripKind::Virtual)
+                            .map(|x| x.name.clone())
+                            .or_else(|| first_strip(state));
+                        rules.push(AppRule {
+                            app: s.name.clone(),
+                            strip,
+                        });
+                        changed = true;
+                    }
+                    RowClick::Forget => forget = Some(s.name.clone()),
+                    RowClick::Nothing => {}
+                }
+            }
+        });
+        if let Some(name) = forget {
+            self.actions
+                .push(Request::ForgetSeenApp(NameParams { name }));
+        }
+        changed
+    }
+
+    /// The footer: what the list of applications heard is, and a button
+    /// to empty it, which asks first.
+    fn rules_footer(&mut self, ui: &mut Ui, state: &FullState) {
+        ui.horizontal_wrapped(|ui| {
+            if self.clear_seen_asked {
+                ui.label("Forget every application heard before? Rules stay as they are.");
+                if ui.button("Forget them").clicked() {
+                    self.actions.push(Request::ClearSeenApps);
+                    self.clear_seen_asked = false;
+                }
+                if ui.button("Keep them").clicked() {
+                    self.clear_seen_asked = false;
+                }
+                return;
+            }
+            ui.label(
+                RichText::new(format!(
+                    "Applications heard in the last {SEEN_APPS_DAYS} days are kept on this \
+                     computer only."
+                ))
+                .color(theme::p().text_dim),
+            );
+            // Applications playing now stay on the list, so there is
+            // nothing to clear without others.
+            let any = state.seen_apps.iter().any(|s| {
+                !state
+                    .apps
+                    .iter()
+                    .any(|a| a.name.eq_ignore_ascii_case(&s.name))
+            });
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.button("Close").clicked() {
+                    self.show_rules = false;
+                }
+                if ui
+                    .add_enabled(any, egui::Button::new("Clear history…"))
+                    .on_hover_text("Forget every application heard before")
+                    .clicked()
+                {
+                    self.clear_seen_asked = true;
+                }
+            });
+        });
+    }
+}
+
+/// The first virtual strip, by name: where a new rule puts an application
+/// until another is picked.
+fn first_strip(state: &FullState) -> Option<String> {
+    virtual_strips(state).first().map(|s| s.name.clone())
+}
+
+/// A box around part of the window.
+fn card(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
+    egui::Frame::new()
+        .fill(theme::p().section_fill)
+        .corner_radius(6)
+        .inner_margin(egui::Margin::symmetric(12, 10))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            add(ui);
+        });
+}
+
+/// What was clicked in an application's row.
+#[derive(PartialEq, Eq)]
+enum RowClick {
+    Nothing,
+    Rule,
+    Forget,
+}
+
+/// One application: a dot (filled while it plays), its name and `detail`
+/// below, "has a rule" or a button to make one, and, when `forgettable`,
+/// a button to forget it.
+fn app_row(
+    ui: &mut Ui,
+    playing: bool,
+    name: &str,
+    binary: Option<&str>,
+    detail: &str,
+    rule: Option<&AppRule>,
+    forgettable: bool,
+) -> RowClick {
+    let mut click = RowClick::Nothing;
+    ui.horizontal(|ui| {
+        ui.set_min_height(34.0);
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if forgettable
+                && ui
+                    .small_button("×")
+                    .on_hover_text(format!("Forget {name}"))
+                    .clicked()
+            {
+                click = RowClick::Forget;
+            }
+            match rule {
+                Some(r) => {
+                    let to = r.strip.as_deref().unwrap_or("where it goes by itself");
+                    ui.label(RichText::new("has a rule").color(theme::p().text_dim))
+                        .on_hover_text(format!("It plays into {to}"));
+                }
+                None => {
+                    if ui
+                        .button("+ Rule")
+                        .on_hover_text(format!("Always play {name} into the same strip"))
+                        .clicked()
+                    {
+                        click = RowClick::Rule;
+                    }
+                }
+            }
+            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                let (rect, _) = ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
+                let p = theme::p();
+                if playing {
+                    ui.painter()
+                        .circle_filled(rect.center(), 3.5, p.meter_green);
+                } else {
+                    ui.painter().circle_stroke(
+                        rect.center(),
+                        3.0,
+                        egui::Stroke::new(1.0_f32, p.text_dim),
+                    );
+                }
+                ui.vertical(|ui| {
+                    ui.spacing_mut().item_spacing.y = 1.0;
+                    let r = ui.add(egui::Label::new(name).truncate());
+                    match binary.filter(|b| !b.eq_ignore_ascii_case(name)) {
+                        Some(b) => r.on_hover_text(format!("{name}, played by the program {b}")),
+                        None => r.on_hover_text(name),
+                    };
+                    ui.add(
+                        egui::Label::new(RichText::new(detail).size(11.0).color(p.text_dim))
+                            .truncate(),
+                    );
+                });
+            });
+        });
+    });
+    click
+}
+
+/// The applications playing now, one row each however many streams they
+/// play. Returns whether a rule was made.
+fn playing_list(ui: &mut Ui, state: &FullState, rules: &mut Vec<AppRule>) -> bool {
+    let mut changed = false;
+    // As tall as the other list's heading, which holds a search box.
+    ui.horizontal(|ui| {
+        ui.set_min_height(ui.spacing().interact_size.y);
+        ui.label(RichText::new("Playing now").strong().size(15.0));
+    });
+    ui.add_space(2.0);
+    let mut apps: Vec<&AppStream> = Vec::new();
+    for a in &state.apps {
+        if !apps.iter().any(|x| x.name.eq_ignore_ascii_case(&a.name)) {
+            apps.push(a);
+        }
+    }
+    card(ui, |ui| {
+        if apps.is_empty() {
+            ui.label(RichText::new("No application is playing now.").color(theme::p().text_dim));
+        }
+        for a in apps {
+            let rule = rule_for(rules, a);
+            let detail = where_playing(state, a);
+            if app_row(ui, true, &a.name, a.binary.as_deref(), &detail, rule, false)
+                == RowClick::Rule
+            {
+                let on = a.strip.and_then(|id| state.mixer.strip(id));
+                rules.push(AppRule {
+                    app: a.name.clone(),
+                    strip: on.map(|s| s.name.clone()).or_else(|| first_strip(state)),
+                });
+                changed = true;
+            }
+        }
+    });
+    changed
+}
+
+/// Where an application plays, in words: "in Music".
+fn where_playing(state: &FullState, a: &AppStream) -> String {
+    match a.strip.and_then(|id| state.mixer.strip(id)) {
+        // Worded, not an arrow: the fonts do not all have one.
+        Some(s) => format!("in {}", s.name),
+        None => match &a.target {
+            Some(t) => match crate::effects::return_device(state, t) {
+                Some(device) => format!("in {device}"),
+                // A device's own name rather than PipeWire's for it.
+                None => match state.devices.iter().find(|d| &d.name == t) {
+                    Some(d) => format!("in {}", d.description),
+                    None => format!("in {t}"),
+                },
+            },
+            None => "(not playing anywhere)".into(),
+        },
+    }
+}
+
+/// Now, in milliseconds since the Unix epoch.
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as u64)
 }
 
 /// The rules, one row each: the application, the strip it plays into, and

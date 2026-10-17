@@ -253,7 +253,9 @@ pub enum Topic {
     /// device appeared or vanished, the system volume of one of Weir's
     /// devices changed, or external effects were connected or disconnected.
     Devices,
-    /// `apps_changed`: an application stream appeared, vanished or moved.
+    /// `apps_changed` and `seen_apps_changed`: an application stream
+    /// appeared, vanished or moved, or the list of applications heard
+    /// lately changed.
     Apps,
     /// `engine_changed`: engine connection state, sample rate or quantum.
     Engine,
@@ -1024,7 +1026,8 @@ pub struct SettingsPatch {
     pub skipped_version: Option<Option<String>>,
 }
 
-/// Parameters naming a scene, a setup or an equalizer preset.
+/// Parameters naming a scene, a setup, an equalizer preset, a sound or an
+/// application.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct NameParams {
     /// Its name. Scene and setup names keep to letters, digits, spaces and
@@ -1108,6 +1111,15 @@ pub enum Request {
     ListDevices,
     /// Returns `Vec<AppStream>`.
     ListApps,
+    /// Returns `Vec<SeenApp>`: applications heard playing lately, most
+    /// recently heard first.
+    ListSeenApps,
+    /// Takes an application off the list of those heard lately, by its
+    /// name; not one playing now. Returns `Vec<SeenApp>`.
+    ForgetSeenApp(NameParams),
+    /// Takes every application off the list of those heard lately, but
+    /// those playing now. Returns `Vec<SeenApp>`.
+    ClearSeenApps,
     /// Returns the updated [`Strip`].
     SetStrip(StripPatch),
     /// Returns the updated [`Bus`].
@@ -1324,6 +1336,9 @@ pub enum Notification {
     DevicesChanged(Vec<DeviceInfo>),
     /// An application started or stopped playing, or moved.
     AppsChanged(Vec<AppStream>),
+    /// The applications heard lately changed: one played for the first
+    /// time, stopped, moved, or was forgotten.
+    SeenAppsChanged(Vec<SeenApp>),
     /// The engine's status changed.
     EngineChanged(EngineStatus),
     /// The daemon's settings changed.
@@ -1371,7 +1386,7 @@ impl Notification {
             Self::DevicesChanged(_) | Self::SystemVolumesChanged(_) | Self::InsertsChanged(_) => {
                 Topic::Devices
             }
-            Self::AppsChanged(_) => Topic::Apps,
+            Self::AppsChanged(_) | Self::SeenAppsChanged(_) => Topic::Apps,
             Self::EngineChanged(_) => Topic::Engine,
             Self::SettingsChanged(_) | Self::UpdateChanged(_) => Topic::Settings,
             Self::Spectrum(_) => Topic::Spectrum,

@@ -94,12 +94,21 @@ output device. There are three ways:
   strip, clicking an application's name does the same.
 * Let a **rule** do it every time. In the **Apps** menu, pick an application
   and **Always play … into** a strip; or open **Rules…** from the same menu
-  to see and change them all, or add one for an application that is not
-  playing right now. A rule moves an application as soon as it starts
-  playing. Move it by hand afterwards and it stays where you put it. A rule
-  set to **leave alone** keeps Weir's hands off it. Rules remember the
-  strip's name, so they work in every setup: in a setup without that strip
-  the rule waits, shown as "(not in this setup)".
+  to see and change them all. A rule moves an application as soon as it
+  starts playing. Move it by hand afterwards and it stays where you put it.
+  A rule set to **leave alone** keeps Weir's hands off it. Rules remember
+  the strip's name, so they work in every setup: in a setup without that
+  strip the rule waits, shown as "(not in this setup)".
+
+The **App rules** window also lists the applications **playing now** and
+those **seen before**: everything Weir heard play in the last 90 days, with
+when and the strip it last played into. **+ Rule** beside one makes a rule
+for it, on that strip, so an application you use only now and then (a
+game, a video call) need not be started first. **Find an app** narrows the
+list. **×** forgets one application, and **Clear history…** forgets them
+all; rules stay either way. The list stays on this computer and is not
+part of an export. For an application Weir has never heard, type its name
+under the rules and use **+ Rule by name**.
 
 Each virtual strip lists the applications playing into it. Under each name
 is a slider for that application's own volume, with its own mute: the same
@@ -975,6 +984,7 @@ Your settings, which are kept when Weir is uninstalled:
 | `~/.config/weir/eq-presets.toml` | Your equalizer presets. |
 | `~/.config/weir/hotkeys.json` | Your hotkeys. |
 | `~/.config/weir/sounds/` | Sounds you added for hotkeys, one file each, named after the sound. |
+| `~/.config/weir/seen-apps.json` | The applications heard playing in the last 90 days, for the App rules window. |
 | `~/.config/weir/gui.toml` | The window's own preferences, and the names of your devices, for showing them while they are unplugged. |
 | `~/.config/weir/backups/` | Copies of `config.toml` from the last ten times Weir started with a changed one. To go back to one, quit Weir and copy it over `config.toml`. Also, in `import-` folders, copies of what each import replaced, and in `setups-before-scenes`, your setups as they were before Weir 1.2.0. |
 | `~/.local/state/weir/daemon.log` | What the service said, when the window started it. |

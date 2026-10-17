@@ -299,6 +299,7 @@ fn read_loop(
                 }
                 Notification::DevicesChanged(d) => sh.state.devices = d,
                 Notification::AppsChanged(a) => sh.state.apps = a,
+                Notification::SeenAppsChanged(s) => sh.state.seen_apps = s,
                 Notification::EngineChanged(e) => sh.state.engine = e,
                 Notification::SettingsChanged(s) => sh.state.settings = s,
                 Notification::UpdateChanged(u) => sh.state.update = u,

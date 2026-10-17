@@ -546,6 +546,70 @@ fn app_rules_keep_their_strip_by_name() {
 }
 
 #[test]
+fn applications_heard_are_kept_saved_and_forgotten() {
+    let mut r = Rig::new("seen-apps");
+    let mut rx = r.c.subscribe();
+    let spotify = AppStream {
+        id: 40,
+        name: "Spotify".into(),
+        binary: Some("spotify".into()),
+        media_name: None,
+        target: Some("weir.input.2".into()),
+        strip: Some(2),
+        volume_db: None,
+        mute: false,
+    };
+    r.c.on_engine_event(EngineEvent::Apps(vec![spotify.clone()]));
+    let seen = |rx: &mut broadcast::Receiver<Notification>| loop {
+        match rx.try_recv() {
+            Ok(Notification::SeenAppsChanged(list)) => break Some(list),
+            Ok(_) => continue,
+            Err(_) => break None,
+        }
+    };
+    let list = seen(&mut rx).expect("told");
+    assert_eq!(list[0].strip.as_deref(), Some("Music"));
+    // The same apps again, a volume change, say nothing.
+    r.c.on_engine_event(EngineEvent::Apps(vec![spotify.clone()]));
+    assert_eq!(seen(&mut rx), None);
+
+    // Renaming the strip renames where it last played.
+    r.ok("set_strip", json!({"id": "Music", "name": "Tunes"}));
+    let state = r.ok("get_state", json!({}));
+    assert_eq!(state["seen_apps"][0]["strip"], json!("Tunes"));
+
+    // Kept on disk when saved, and read back by a new daemon.
+    r.c.on_engine_event(EngineEvent::Apps(Vec::new()));
+    r.c.save_if_dirty();
+    let paths = Paths::resolve(Some(r.dir.join("config.toml")));
+    let again = Controller::new(mixer(), None, paths, Settings::default(), Vec::new());
+    assert_eq!(again.seen_apps()[0].name, "Spotify");
+
+    assert_eq!(
+        r.code("forget_seen_app", json!({"name": "Firefox"})),
+        RpcError::APPLICATION
+    );
+    assert_eq!(
+        r.ok("forget_seen_app", json!({"name": "spotify"})),
+        json!([])
+    );
+    // One playing now stays.
+    r.c.on_engine_event(EngineEvent::Apps(vec![spotify]));
+    assert_eq!(
+        r.ok("list_seen_apps", json!({})).as_array().unwrap().len(),
+        1
+    );
+    assert_eq!(
+        r.code("forget_seen_app", json!({"name": "spotify"})),
+        RpcError::APPLICATION
+    );
+    assert_eq!(r.ok("clear_seen_apps", json!({}))[0]["name"], "Spotify");
+    r.c.on_engine_event(EngineEvent::Apps(Vec::new()));
+    assert_eq!(r.ok("clear_seen_apps", json!({})), json!([]));
+    assert_eq!(r.ok("get_state", json!({})).get("seen_apps"), None);
+}
+
+#[test]
 fn equalizer_presets() {
     let mut r = Rig::new("eq");
     let both = json!({"name": "Bass boost", "strip": 2, "bus": 1});

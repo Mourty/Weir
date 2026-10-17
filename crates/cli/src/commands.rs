@@ -425,6 +425,31 @@ pub fn unrule(c: &mut Client, app: &str, json: bool) -> Result<()> {
     set_rules(c, rules, json)
 }
 
+pub fn seen_apps(c: &mut Client, json: bool) -> Result<()> {
+    if json {
+        return print_json(&c.call(&Request::ListSeenApps)?);
+    }
+    // The whole state, to mark the ones playing and the ones with a rule.
+    show::seen_apps(&c.state()?);
+    Ok(())
+}
+
+/// Forget `app` among the applications heard lately, or every one.
+pub fn forget_app(c: &mut Client, app: Option<String>, all: bool, json: bool) -> Result<()> {
+    let v = match app.clone().filter(|_| !all) {
+        Some(name) => c.call(&Request::ForgetSeenApp(NameParams { name }))?,
+        None => c.call(&Request::ClearSeenApps)?,
+    };
+    if json {
+        return print_json(&v);
+    }
+    match app.filter(|_| !all) {
+        Some(name) => println!("forgot {name}"),
+        None => println!("forgot every application heard but those playing now"),
+    }
+    Ok(())
+}
+
 fn set_rules(c: &mut Client, rules: Vec<AppRule>, json: bool) -> Result<()> {
     let v = c.call(&Request::SetAppRules(AppRulesParams { rules }))?;
     if json {

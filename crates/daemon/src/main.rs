@@ -19,6 +19,7 @@ mod display;
 mod history;
 mod hotkeys;
 mod login;
+mod seen_apps;
 mod server;
 mod sounds;
 mod transfer;
@@ -499,6 +500,7 @@ async fn shut_down(
     while controller.window_attached() && tokio::time::Instant::now() < deadline {
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
+    controller.stop_hearing_apps();
     controller.save_if_dirty();
     if let Some(engine) = controller.engine() {
         engine.shutdown(Duration::from_secs(2));

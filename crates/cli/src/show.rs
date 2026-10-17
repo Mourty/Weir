@@ -466,6 +466,41 @@ pub fn rules(st: &FullState) {
     }
 }
 
+/// The applications heard lately, newest first, with when, where they
+/// last played, and whether they have a rule.
+pub fn seen_apps(st: &FullState) {
+    if st.seen_apps.is_empty() {
+        println!("(no application heard lately)");
+        return;
+    }
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as u64);
+    let mut t = Table::new(&["Application", "Program", "Heard", "Last in", "Rule"], &[]);
+    for s in &st.seen_apps {
+        let playing = st.apps.iter().any(|a| a.name.eq_ignore_ascii_case(&s.name));
+        let rule = st
+            .app_rules
+            .iter()
+            .find(|r| r.matches_app(&s.name, s.binary.as_deref()));
+        t.row(vec![
+            s.name.clone(),
+            s.binary.clone().unwrap_or_else(|| "-".into()),
+            if playing {
+                "playing now".into()
+            } else {
+                heard_ago(now, s.last_seen_ms)
+            },
+            s.strip.clone().unwrap_or_else(|| "-".into()),
+            match rule {
+                Some(r) => r.strip.clone().unwrap_or_else(|| "leave alone".into()),
+                None => "-".into(),
+            },
+        ]);
+    }
+    t.print();
+}
+
 /// The daemon's settings, in words.
 pub fn settings(settings: &Settings, st: &FullState) {
     let held = |v: Option<u32>, unit: &str| {

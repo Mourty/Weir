@@ -20,7 +20,7 @@ weirctl scene load Streaming           # everything as saved for streaming
 * [Buses](#buses): `bus`
 * [Routing](#routing): `route`
 * [Adding, removing and moving](#adding-removing-and-moving)
-* [Applications](#applications): `move-app`, `app-volume`, `rules`, `rule`, `unrule`
+* [Applications](#applications): `move-app`, `app-volume`, `rules`, `rule`, `unrule`, `seen-apps`, `forget-app`
 * [Equalizer presets](#equalizer-presets): `eq`
 * [Scenes and setups](#scenes-and-setups): `scene`, `setup`
 * [Undo](#undo): `undo`, `redo`, `history`
@@ -231,6 +231,9 @@ weirctl move-bus Speakers 1
 | `weirctl rules` | List where applications go when they start playing. |
 | `weirctl rule APP STRIP` | Always put an application on a strip when it starts playing, by the name `weirctl apps` shows or its program's name. `leave` in place of a strip leaves it alone. The strip may be one only a saved setup has: the rule waits for that setup. |
 | `weirctl unrule APP` | Remove its rule. |
+| `weirctl seen-apps` | List the applications heard playing in the last 90 days, newest first: when, the strip each last played into, and its rule. For making rules for applications that are not playing now. |
+| `weirctl forget-app APP` | Take an application off that list; not one playing now. |
+| `weirctl forget-app --all` | Forget every application heard, but those playing now. |
 
 ```sh
 weirctl apps
@@ -240,11 +243,15 @@ weirctl app-volume 87 --mute toggle
 weirctl rule Spotify Music
 weirctl rules
 weirctl unrule Spotify
+weirctl seen-apps
+weirctl forget-app Spotify
+weirctl forget-app --all
 ```
 
 Application ids come from PipeWire and change each time an application
 starts, so look them up with `weirctl apps` first. For an application that
-should always go to the same strip, a rule is simpler.
+should always go to the same strip, a rule is simpler. The list of
+applications heard stays on this computer; exports leave it out.
 
 ## Equalizer presets
 

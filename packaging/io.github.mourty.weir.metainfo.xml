@@ -33,6 +33,7 @@
       <li>External effects: send a strip or bus through another program, such as Carla, and back</li>
       <li>Hotkeys for anything the mixer does, such as push to talk</li>
       <li>Scenes, setups, rules for where applications go, and undo</li>
+      <li>A recorder that puts each strip and bus on its own track</li>
       <li>Export your settings to a file, to keep or to move to another computer</li>
       <li>A command line and a documented protocol, for scripts and stream decks</li>
     </ul>
@@ -69,6 +70,21 @@
   </provides>
 
   <releases>
+    <release version="1.3.0" date="2026-10-17">
+      <description>
+        <p>A recorder for strips and buses, meters you can read and color, and help when something goes wrong.</p>
+        <ul>
+          <li>Record strips and buses as heard in the mix, each on its own track: in WAV, FLAC, MP3, Opus or Ogg Vorbis, as a folder of files or one Matroska file, with names from a pattern and new files every so many minutes if you like. Start it in the Recorder window, from the tray or with a hotkey; the mixer marks what is recording.</li>
+          <li>A dB scale beside each meter and a number above it, showing the level now or the highest peak.</li>
+          <li>Meters in colors of your choosing, in as many bands as you like, kept as sets you can export and import.</li>
+          <li>App rules list the applications heard before, not only those playing now, so rules can be made for them. Asked for by NeonLightning.</li>
+          <li>Weir can tell you when a new version is out, if you want it to. It only tells; it never installs anything.</li>
+          <li>The About window shows the details a bug report needs, copies them, and opens a new report with them filled in. Licenses… shows the licenses of everything built into Weir.</li>
+          <li>Preferences has a window of its own, with pages.</li>
+          <li>The tray icon shows in color on KDE Plasma too, unless you choose the one-color icon.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.2.0" date="2026-10-11">
       <description>
         <p>Hotkeys, settings you can take to another computer, and setups and scenes that each do one thing.</p>

@@ -826,49 +826,60 @@ or its own volume, is not part of it. It lasts until Weir stops.
 
 ## Preferences
 
-**Preferences…** is in the **…** menu at the top right.
+**Preferences…** is in the **…** menu at the top right. It opens a window
+of its own, with its pages down the left side.
 
-* **Appearance**: follow the desktop's light or dark setting, or stay dark
-  or light. Optionally use the desktop's accent color in place of Weir's
-  teal, and its font. Weir switches along with the desktop, even while it
-  is open. (This works through the desktop portal, which KDE Plasma and
-  GNOME provide; on a desktop without one, Weir stays dark.)
-* **Audio**:
-  * **Sample rate**: leave it to PipeWire, or hold PipeWire at a rate while
-    Weir runs. 48 kHz is recommended: noise suppression only works there.
-  * **Buffer size**: how many frames PipeWire works on at a time. Smaller
-    means less delay, which you notice when listening to your own
-    microphone, but costs more CPU and may crackle on a busy system.
-  * The hold ends as soon as Weir stops.
-* **Solo**: silence every strip that is not soloed, in every mix; or
-  **Cue** on one bus, so soloing only changes what you hear there.
-* **Hotkeys**:
-  * What a hotkey shows when pressed: **The desktop's popup**, the small
-    one your volume keys show, over everything, even a full-screen game
-    (KDE Plasma has one; elsewhere Weir shows a notification instead), **A
-    notification**, which goes away by itself and does not stay in your
-    list of notifications, or **Nothing**.
-  * **Sounds play on**: the device hotkeys' sounds play on.
-    **Automatic** is the device of your first bus, usually your
-    headphones; pick another, such as speakers, if you like. If the one you
-    pick is unplugged, sounds play on the first bus's device until it is
-    back.
-  * **Sound volume**, with **Test** to hear a click.
-  * **Your sounds**: the sounds you added, to **Play** or **Remove…**
-    (it says which hotkeys play one first), and **Add a sound…**.
-* **Buses**: how much of the list of strips feeding each bus to show:
-  hidden, as many as fit, or the full list, scrolling.
-* **Applications**: whether each application under a strip gets a volume
-  slider.
+**General**
+
 * **Starting Weir**: **Start Weir when I log in**, and what Weir does
   when it starts: open the mixer window, start it minimized, or run in the
   tray without a window.
 * **Tray icon**: in color, or in one color that matches the panel like the
   desktop's own tray icons.
 
+**Audio**
+
+* **Sample rate**: leave it to PipeWire, or hold PipeWire at a rate while
+  Weir runs. 48 kHz is recommended: noise suppression only works there.
+* **Buffer size**: how many frames PipeWire works on at a time. Smaller
+  means less delay, which you notice when listening to your own
+  microphone, but costs more CPU and may crackle on a busy system.
+* The hold ends as soon as Weir stops.
+
+**Mixer**
+
+* **Look**: follow the desktop's light or dark setting, or stay dark
+  or light. Optionally use the desktop's accent color in place of Weir's
+  teal, and its font. Weir switches along with the desktop, even while it
+  is open. (This works through the desktop portal, which KDE Plasma and
+  GNOME provide; on a desktop without one, Weir stays dark.)
+* **Solo**: silence every strip that is not soloed, in every mix; or
+  **Cue** on one bus, so soloing only changes what you hear there.
+* **Under each bus**: how much of the list of strips feeding each bus to
+  show: hidden, as many as fit, or the full list, scrolling.
+* **Applications**: whether each application under a strip gets a volume
+  slider.
+
+**Hotkeys and sounds**
+
+* **When a hotkey is pressed**: what it shows. **The desktop's popup**,
+  the small one your volume keys show, over everything, even a full-screen
+  game (KDE Plasma has one; elsewhere Weir shows a notification instead),
+  **A notification**, which goes away by itself and does not stay in your
+  list of notifications, or **Nothing**.
+* **Hotkeys' sounds**:
+  * **Sounds play on**: the device hotkeys' sounds play on.
+    **Automatic** is the device of your first bus, usually your
+    headphones; pick another, such as speakers, if you like. If the one you
+    pick is unplugged, sounds play on the first bus's device until it is
+    back.
+  * **Sound volume**, with **Test** to hear a click.
+* **Your sounds**: the sounds you added, to **Play** or **Remove…** (it
+  says which hotkeys play one first), and **Add a sound…**.
+
 Audio, solo, hotkeys, startup and the tray icon are kept by the Weir
-service, so they apply however Weir starts, including at login. The rest belongs to the
-window.
+service, so they apply however Weir starts, including at login. The rest
+belongs to the window.
 
 ## Weir in the background
 
@@ -881,7 +892,7 @@ sound keeps flowing. Opening the window again picks up where it was.
 if needed. Its menu has **Show the mixer**, **When Weir starts**, **Restart
 Weir** and **Quit Weir**.
 
-**Starting at login.** Tick **Start Weir when I log in** in Preferences.
+**Starting at login.** Tick **Start Weir when I log in** in Preferences › General.
 From your next login, the service starts on its own, so its devices are
 there before any application looks for them. Together with **Tray only,
 no window** just below it, Weir is ready at login without a window in the

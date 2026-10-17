@@ -1,6 +1,7 @@
 //! The Preferences window and the About window.
 //!
-//! Preferences mixes two kinds of setting. Appearance, the bus source lists
+//! Preferences is a window of its own, its settings in pages down the
+//! side. It mixes two kinds of setting. Appearance, the bus source lists
 //! and the application sliders belong to this window and are saved in its
 //! own file ([`Prefs`]). Sample rate, buffer size, solo, hotkeys' popups
 //! and sounds, what happens at startup and the tray icon belong to the
@@ -10,12 +11,50 @@ use super::{bus_title, fmt_rate, frames_ms, App};
 use crate::appearance;
 use crate::prefs::{Appearance, BusSources, Prefs};
 use crate::theme;
-use egui::{RichText, Ui};
+use egui::{vec2, RichText, Ui};
 use weir_protocol::*;
 
 /// A line of small dim text explaining the setting above it.
 fn explain(ui: &mut Ui, text: &str) {
     ui.label(RichText::new(text).size(11.0).color(theme::p().text_dim));
+}
+
+/// A group of settings in a box, under its title.
+fn card(ui: &mut Ui, title: &str, add: impl FnOnce(&mut Ui)) {
+    egui::Frame::new()
+        .fill(theme::p().strip_bg)
+        .corner_radius(6)
+        .inner_margin(egui::Margin::symmetric(14, 12))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.label(RichText::new(title).size(15.0).strong());
+            ui.add_space(6.0);
+            add(ui);
+        });
+    ui.add_space(12.0);
+}
+
+/// The pages of Preferences, down the side of its window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(super) enum PrefsPage {
+    #[default]
+    General,
+    Audio,
+    Mixer,
+    Hotkeys,
+}
+
+impl PrefsPage {
+    const ALL: [PrefsPage; 4] = [Self::General, Self::Audio, Self::Mixer, Self::Hotkeys];
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::General => "General",
+            Self::Audio => "Audio",
+            Self::Mixer => "Mixer",
+            Self::Hotkeys => "Hotkeys and sounds",
+        }
+    }
 }
 
 impl App {
@@ -25,55 +64,151 @@ impl App {
         self.about_window(ctx);
     }
 
+    /// Open Preferences, or bring it forward, at `page` or where it was.
+    pub(super) fn open_prefs(&mut self, page: Option<PrefsPage>) {
+        self.show_prefs = true;
+        self.raise_prefs = true;
+        if let Some(page) = page {
+            self.prefs_page = page;
+        }
+    }
+
     fn prefs_window(&mut self, ctx: &egui::Context, state: &FullState) {
         if !self.show_prefs {
             return;
         }
-        let mut open = true;
         let before = self.prefs.clone();
-        egui::Window::new("Preferences")
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(false)
-            .show(ctx, |ui| {
-                // Taller than a small mixer window, so it scrolls.
-                let max_height = ctx.content_rect().height() - 60.0;
-                egui::ScrollArea::vertical()
-                    .max_height(max_height)
-                    .show(ui, |ui| {
-                        self.appearance_prefs(ui);
-                        ui.add_space(10.0);
-                        self.audio_prefs(ui, state);
-                        ui.add_space(10.0);
-                        self.solo_prefs(ui, state);
-                        ui.add_space(10.0);
-                        self.hotkey_prefs(ui, state);
-                        ui.add_space(10.0);
-                        self.layout_prefs(ui);
-                        ui.add_space(10.0);
-                        self.startup_prefs(ui, state);
-                        ui.add_space(10.0);
-                        ui.label(
-                            RichText::new(format!(
-                                "Window preferences are saved in {}",
-                                Prefs::path().display()
-                            ))
-                            .size(10.0)
-                            .color(theme::p().text_dim),
-                        );
+        let id = egui::ViewportId::from_hash_of("preferences");
+        if std::mem::take(&mut self.raise_prefs) {
+            ctx.send_viewport_cmd_to(id, egui::ViewportCommand::Minimized(false));
+            ctx.send_viewport_cmd_to(id, egui::ViewportCommand::Focus);
+        }
+        let builder = egui::ViewportBuilder::default()
+            .with_title("Preferences · Weir")
+            .with_app_id("weir")
+            .with_icon(crate::icon())
+            .with_inner_size([820.0, 600.0])
+            .with_min_inner_size([620.0, 400.0]);
+        let mut closed = false;
+        ctx.show_viewport_immediate(id, builder, |ctx, class| {
+            if class == egui::ViewportClass::Embedded {
+                // Inside the mixer window where the system gives no
+                // separate windows.
+                let mut open = true;
+                egui::Window::new("Preferences")
+                    .id(egui::Id::new("preferences_embedded"))
+                    .open(&mut open)
+                    .default_size([760.0, 540.0])
+                    .show(ctx, |ui| {
+                        ui.horizontal_top(|ui| {
+                            ui.vertical(|ui| {
+                                ui.set_width(170.0);
+                                self.prefs_nav(ui);
+                            });
+                            ui.separator();
+                            ui.vertical(|ui| {
+                                egui::ScrollArea::vertical()
+                                    .max_height(ctx.content_rect().height() - 120.0)
+                                    .show(ui, |ui| self.prefs_page_contents(ui, state));
+                            });
+                        });
                     });
-            });
+                if !open {
+                    closed = true;
+                }
+                return;
+            }
+            egui::SidePanel::left("prefs_nav")
+                .resizable(false)
+                .exact_width(190.0)
+                .frame(
+                    egui::Frame::new()
+                        .fill(theme::p().top_bar)
+                        .inner_margin(egui::Margin::symmetric(10, 14)),
+                )
+                .show(ctx, |ui| self.prefs_nav(ui));
+            egui::CentralPanel::default()
+                .frame(
+                    egui::Frame::new()
+                        .fill(theme::p().bg)
+                        .inner_margin(egui::Margin::symmetric(22, 16)),
+                )
+                .show(ctx, |ui| {
+                    egui::ScrollArea::vertical()
+                        .auto_shrink(false)
+                        .show(ui, |ui| self.prefs_page_contents(ui, state));
+                });
+            if ctx.input(|i| i.viewport().close_requested()) {
+                closed = true;
+            }
+        });
         if self.prefs != before {
             self.prefs.save();
         }
-        self.show_prefs = open;
+        if closed {
+            self.show_prefs = false;
+        }
+    }
+
+    /// The list of pages: one wide button each, the open one lit.
+    fn prefs_nav(&mut self, ui: &mut Ui) {
+        ui.spacing_mut().item_spacing.y = 2.0;
+        for page in PrefsPage::ALL {
+            let size = vec2(ui.available_width(), 30.0);
+            let label = RichText::new(page.label()).size(14.0);
+            let button =
+                egui::Button::selectable(self.prefs_page == page, (label, egui::Atom::grow()))
+                    .min_size(size);
+            if ui.add(button).clicked() {
+                self.prefs_page = page;
+            }
+        }
+    }
+
+    /// The open page: its title, then its settings in boxes.
+    fn prefs_page_contents(&mut self, ui: &mut Ui, state: &FullState) {
+        ui.label(RichText::new(self.prefs_page.label()).size(20.0).strong());
+        ui.add_space(12.0);
+        match self.prefs_page {
+            PrefsPage::General => {
+                card(ui, "Starting Weir", |ui| self.startup_prefs(ui, state));
+                if state.settings.tray {
+                    card(ui, "Tray icon", |ui| self.tray_prefs(ui, state));
+                }
+            }
+            PrefsPage::Audio => {
+                card(ui, "Sample rate and buffer size", |ui| {
+                    self.audio_prefs(ui, state)
+                });
+            }
+            PrefsPage::Mixer => {
+                card(ui, "Look", |ui| self.appearance_prefs(ui));
+                card(ui, "Solo", |ui| self.solo_prefs(ui, state));
+                card(ui, "Under each bus", |ui| self.bus_list_prefs(ui));
+                card(ui, "Applications", |ui| self.app_prefs(ui));
+                explain(
+                    ui,
+                    &format!(
+                        "The window's own preferences are saved in {}",
+                        Prefs::path().display()
+                    ),
+                );
+            }
+            PrefsPage::Hotkeys => {
+                card(ui, "When a hotkey is pressed", |ui| {
+                    self.popup_prefs(ui, state)
+                });
+                card(ui, "Hotkeys' sounds", |ui| self.sound_prefs(ui, state));
+                card(ui, "Your sounds", |ui| self.own_sounds(ui, state));
+            }
+        }
     }
 
     /// Light or dark, and whether to take the desktop's accent color and
     /// font.
     fn appearance_prefs(&mut self, ui: &mut Ui) {
-        ui.label(RichText::new("Appearance").strong());
         ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 16.0;
             for mode in Appearance::ALL {
                 let r = ui.radio_value(&mut self.prefs.appearance, mode, mode.label());
                 if mode == Appearance::System {
@@ -115,7 +250,6 @@ impl App {
     fn audio_prefs(&mut self, ui: &mut Ui, state: &FullState) {
         let s = &state.settings;
         let running = state.engine.sample_rate;
-        ui.label(RichText::new("Audio").strong());
         explain(
             ui,
             "Weir holds PipeWire at these only while it runs; PipeWire goes back to deciding \
@@ -200,7 +334,6 @@ impl App {
     /// one bus's mix.
     fn solo_prefs(&mut self, ui: &mut Ui, state: &FullState) {
         let s = &state.settings;
-        ui.label(RichText::new("Solo").strong());
         let exclusive = s.solo == SoloMode::Exclusive;
         if ui
             .radio(exclusive, "Silence every other strip, in every mix")
@@ -254,13 +387,11 @@ impl App {
         });
     }
 
-    /// What hotkeys show when pressed, and where and how loud their sounds
-    /// play, and the sounds of the person's own.
-    fn hotkey_prefs(&mut self, ui: &mut Ui, state: &FullState) {
+    /// What hotkeys show when pressed.
+    fn popup_prefs(&mut self, ui: &mut Ui, state: &FullState) {
         let s = &state.settings;
-        let set = |patch: SettingsPatch| Request::SetSettings(patch);
-        ui.label(RichText::new("Hotkeys").strong());
-        explain(ui, "When a hotkey is pressed, show what it did in:");
+        explain(ui, "Show what it did in:");
+        ui.spacing_mut().item_spacing.x = 16.0;
         let mut popup = s.hotkey_popup;
         let choices = [
             (
@@ -285,14 +416,19 @@ impl App {
                     .clicked()
                     && popup != s.hotkey_popup
                 {
-                    self.actions.push(set(SettingsPatch {
+                    self.actions.push(Request::SetSettings(SettingsPatch {
                         hotkey_popup: Some(popup),
                         ..Default::default()
                     }));
                 }
             }
         });
-        ui.add_space(4.0);
+    }
+
+    /// Where and how loud hotkeys' sounds play.
+    fn sound_prefs(&mut self, ui: &mut Ui, state: &FullState) {
+        let s = &state.settings;
+        let set = |patch: SettingsPatch| Request::SetSettings(patch);
         // Where sounds play: a device of the person's choosing, or the first
         // bus's.
         // A device that is not plugged in goes by the name it had when it
@@ -399,14 +535,11 @@ impl App {
             "Hotkeys' sounds go straight to this device, past every bus, so your stream and \
              recordings never hear them. Each hotkey picks its own sounds.",
         );
-        ui.add_space(6.0);
-        self.own_sounds(ui, state);
     }
 
     /// The sounds of the person's own, to hear or remove, and a button to
     /// add one.
     fn own_sounds(&mut self, ui: &mut Ui, state: &FullState) {
-        ui.label("Your sounds");
         let own: Vec<&SoundInfo> = state.hotkeys.sounds.iter().filter(|s| !s.builtin).collect();
         if own.is_empty() {
             explain(
@@ -462,10 +595,8 @@ impl App {
         }
     }
 
-    /// How much the mixer shows: the strips under each bus, and a volume
-    /// slider for each application.
-    fn layout_prefs(&mut self, ui: &mut Ui) {
-        ui.label(RichText::new("Buses").strong());
+    /// How much of the list of strips feeding it each bus shows.
+    fn bus_list_prefs(&mut self, ui: &mut Ui) {
         explain(
             ui,
             "Each bus can list the strips that feed it. The routing buttons on the strips \
@@ -476,8 +607,10 @@ impl App {
             ui.radio_value(&mut self.prefs.bus_sources, mode, mode.label())
                 .on_hover_text(mode.description());
         }
-        ui.add_space(10.0);
-        ui.label(RichText::new("Applications").strong());
+    }
+
+    /// A volume slider for each application.
+    fn app_prefs(&mut self, ui: &mut Ui) {
         ui.checkbox(
             &mut self.prefs.show_app_volume,
             "Show a volume slider for each application",
@@ -488,11 +621,10 @@ impl App {
         );
     }
 
-    /// Whether Weir starts at login, what the daemon does about the window
-    /// when it starts, and how its tray icon looks.
+    /// Whether Weir starts at login, and what the daemon does about the
+    /// window when it starts.
     fn startup_prefs(&mut self, ui: &mut Ui, state: &FullState) {
         let settings = &state.settings;
-        ui.label(RichText::new("Starting Weir").strong());
         // systemd keeps this, so the box shows what the daemon read back
         // from it, and cannot be ticked where there is no service to start.
         let mut at_login = settings.start_at_login.unwrap_or(false);
@@ -533,11 +665,11 @@ impl App {
                 }));
             }
         }
-        if !settings.tray {
-            return;
-        }
-        ui.add_space(10.0);
-        ui.label(RichText::new("Tray icon").strong());
+    }
+
+    /// How the tray icon looks.
+    fn tray_prefs(&mut self, ui: &mut Ui, state: &FullState) {
+        let settings = &state.settings;
         let mut icon = settings.tray_icon;
         for style in TrayIcon::ALL {
             if ui.radio_value(&mut icon, style, style.label()).clicked()

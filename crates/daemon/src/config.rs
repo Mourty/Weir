@@ -208,6 +208,8 @@ pub struct Paths {
     /// Sounds of the user's own for hotkeys, one file each, named after
     /// the sound.
     pub sounds_dir: PathBuf,
+    /// Applications heard lately, as JSON.
+    pub seen_apps_file: PathBuf,
 }
 
 impl Paths {
@@ -231,6 +233,7 @@ impl Paths {
             backups_dir: base.join("backups"),
             hotkeys_file: base.join("hotkeys.json"),
             sounds_dir: base.join("sounds"),
+            seen_apps_file: base.join("seen-apps.json"),
         }
     }
 }

@@ -29,7 +29,7 @@ Python and Node.js are in [`examples/`](../examples/).
   * [Strips](#strips): `set_strip`, `add_strip`, `remove_strip`, `move_strip`
   * [Buses](#buses): `set_bus`, `add_bus`, `remove_bus`, `move_bus`
   * [Routing](#routing): `set_route`
-  * [Devices and applications](#devices-and-applications): `list_devices`, `list_apps`, `move_app`, `set_app_volume`, `set_app_rules`
+  * [Devices and applications](#devices-and-applications): `list_devices`, `list_apps`, `move_app`, `set_app_volume`, `set_app_rules`, `list_seen_apps`, `forget_seen_app`, `clear_seen_apps`
   * [Equalizer presets and the analyzer](#equalizer-presets-and-the-analyzer): `list_eq_presets`, `apply_eq_preset`, `save_eq_preset`, `delete_eq_preset`, `watch_spectrum`
   * [Scenes and setups](#scenes-and-setups): `save_scene`, `load_scene`, `list_scenes`, `delete_scene` and the same for setups
   * [Undo](#undo): `undo`, `redo`, `history`
@@ -284,7 +284,7 @@ Returns `{"protocol_version", "daemon_version", "capabilities"}`:
   "daemon_version": "1.0.0",
   "capabilities": ["meters", "apps", "eq", "gate", "denoise", "compressor", "ducking",
                    "limiter", "bus_delay", "sends", "upmix", "downmix", "spectrum", "history",
-                   "scenes", "setups", "app_rules", "system_volumes",
+                   "scenes", "setups", "app_rules", "seen_apps", "system_volumes",
                    "external_effects", "hotkeys", "toggle", "deltas", "names",
                    "batch", "describe"]
 }
@@ -909,6 +909,73 @@ mixer.call("set_app_rules", rules=rules)
 ```js
 const { app_rules } = await mixer.call("get_state");
 await mixer.call("set_app_rules", { rules: [...app_rules, { app: "Spotify", strip: "Music" }] });
+```
+
+#### `list_seen_apps`
+
+The applications Weir has heard playing in the last 90 days, the ones
+playing now included, most recently heard first: for making rules for
+applications that play only now and then, while they are not playing.
+Weir keeps 200 at most. Takes no parameters.
+
+Returns a list of [SeenApp](#seenapp). The list stays on this computer:
+it is not part of an [export](#export_settings).
+
+```sh
+weirctl raw list_seen_apps
+```
+
+```python
+playing = {app["name"] for app in mixer.call("list_apps")}
+for app in mixer.call("list_seen_apps"):
+    if app["name"] not in playing:
+        print(app["name"], "last played into", app.get("strip", "a device"))
+```
+
+```js
+const names = (await mixer.call("list_seen_apps")).map((app) => app.name);
+```
+
+#### `forget_seen_app`
+
+Take an application off the list of those heard lately. One playing now
+cannot be: it stays until it stops.
+
+| Parameter | Type | |
+|---|---|---|
+| `name` | string | The application's name, as [`list_seen_apps`](#list_seen_apps) gives it. Case does not matter. |
+
+Returns the list left, as [`list_seen_apps`](#list_seen_apps) does.
+
+```sh
+weirctl raw forget_seen_app '{"name": "Spotify"}'
+```
+
+```python
+mixer.call("forget_seen_app", name="Spotify")
+```
+
+```js
+await mixer.call("forget_seen_app", { name: "Spotify" });
+```
+
+#### `clear_seen_apps`
+
+Forget every application heard lately, but those playing now. Rules stay
+as they are. Takes no parameters.
+
+Returns the list left: the applications playing now.
+
+```sh
+weirctl raw clear_seen_apps
+```
+
+```python
+mixer.call("clear_seen_apps")
+```
+
+```js
+await mixer.call("clear_seen_apps");
 ```
 
 ### Equalizer presets and the analyzer
@@ -1922,6 +1989,7 @@ replace its copy.
 | `system_volumes_changed` | `devices` | [SystemVolumes](#systemvolumes) | The system's volume on one of Weir's devices changed. |
 | `inserts_changed` | `devices` | list of [InsertStatus](#insertstatus) | A program started or stopped playing into a "from effects" device, or external effects were switched on or off. |
 | `apps_changed` | `apps` | list of [AppStream](#appstream) | An application started or stopped playing, moved, or its volume changed. |
+| `seen_apps_changed` | `apps` | list of [SeenApp](#seenapp) | An application played for the first time, started or stopped playing, or moved, or applications were forgotten. |
 | `engine_changed` | `engine` | [EngineStatus](#enginestatus) | The engine connected, stopped, or changed rate or buffer size. |
 | `settings_changed` | `settings` | [Settings](#settings) | A setting changed. |
 | `hotkeys_changed` | `hotkeys` | [HotkeysInfo](#hotkeysinfo) | A hotkey was added, changed or removed, the desktop gave them other keys, or something went wrong with one, or came right. |
@@ -1965,6 +2033,7 @@ What [`get_state`](#get_state) returns.
 | `system_volumes` | [SystemVolumes](#systemvolumes) | The system's volume on Weir's devices. |
 | `inserts` | list of [InsertStatus](#insertstatus) | Whether each strip's and bus's external effects are connected, for those that have them on. Left out when none do. |
 | `hotkeys` | [HotkeysInfo](#hotkeysinfo) | The hotkeys, and how keys reach Weir. |
+| `seen_apps` | list of [SeenApp](#seenapp) | The applications heard lately, as [`list_seen_apps`](#list_seen_apps) gives them. Left out when there are none. |
 
 ### MixerState
 
@@ -2282,6 +2351,19 @@ or `binary` is `app` (ignoring case) starts playing, move it to the strip
 called Music. A rule without `strip` leaves the application wherever it
 goes by itself. When setting rules, `strip` takes an id as well as a
 name; the daemon keeps the name.
+
+### SeenApp
+
+```json
+{"name": "Spotify", "binary": "spotify", "last_seen_ms": 1792219684005, "strip": "Music"}
+```
+
+| Field | |
+|---|---|
+| `name` | The application's name, as [AppStream](#appstream) has it. One entry per name, however many streams it plays. |
+| `binary` | The program, when PipeWire knew it. |
+| `last_seen_ms` | When it last stopped playing, in milliseconds since 1970 (UTC); for one playing now, when it started. |
+| `strip` | The strip it last played into, by name, when that was one of Weir's. Left out when it last played straight to a device. Renaming the strip renames it here too. |
 
 ### Settings
 
@@ -2653,6 +2735,9 @@ Music and a browser into Browser, whatever device they last used.
 ```sh
 weirctl raw set_app_rules '{"rules": [{"app": "spotify", "strip": "Music"}, {"app": "firefox", "strip": "Browser"}]}'
 ```
+
+For an application that is not playing now, its name is in
+[`list_seen_apps`](#list_seen_apps) if it played in the last 90 days.
 
 ### A scene per moment
 

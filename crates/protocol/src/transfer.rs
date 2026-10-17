@@ -31,6 +31,7 @@ pub const WINDOW_LOOK_KEYS: &[&str] = &[
     "spectrum",
     "meter_scale",
     "meter_peak",
+    "meter_number",
     "meter_colors",
 ];
 

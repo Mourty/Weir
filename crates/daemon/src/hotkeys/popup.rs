@@ -145,9 +145,19 @@ fn patch_lines(step: &HotkeyStep, obj: &Value, name: &str, mic: bool, out: &mut 
     }
 }
 
-/// What `step` did, read from `m`, the mixer after it. Steps whose strip
-/// or bus is gone show nothing.
-fn step_lines(step: &HotkeyStep, m: &MixerState, out: &mut Vec<Line>) {
+/// The recorder after the steps, for steps that start it or pick what it
+/// records.
+#[derive(Debug, Clone, Copy)]
+pub struct RecorderAfter<'a> {
+    /// What it records.
+    pub settings: &'a RecorderSettings,
+    /// Whether it is recording.
+    pub recording: bool,
+}
+
+/// What `step` did, read from `m`, the mixer after it, and `rec`. Steps
+/// whose strip or bus is gone show nothing.
+fn step_lines(step: &HotkeyStep, m: &MixerState, rec: RecorderAfter, out: &mut Vec<Line>) {
     let p = &step.params;
     let id = |k: &str| p.get(k).and_then(Value::as_u64).map(|v| v as u32);
     let s = |k: &str| p.get(k).and_then(Value::as_str).unwrap_or("?").to_string();
@@ -202,17 +212,40 @@ fn step_lines(step: &HotkeyStep, m: &MixerState, out: &mut Vec<Line>) {
             };
             out.push(Line::Text("weir", text));
         }
+        "set_recording" => out.push(if rec.recording {
+            Line::Text("media-record", "Recording".into())
+        } else {
+            Line::Text("media-playback-stop", "Recording stopped".into())
+        }),
+        "set_record_track" => {
+            let source = match (id("strip"), id("bus")) {
+                (Some(i), _) => m.strip(i).map(|s| TrackSource::Strip(s.name.clone())),
+                (None, Some(i)) => m.bus(i).map(|b| TrackSource::Bus(b.name.clone())),
+                _ => None,
+            };
+            if let Some(source) = source {
+                let on = if rec.settings.records(&source) {
+                    "on"
+                } else {
+                    "off"
+                };
+                out.push(Line::Text(
+                    "media-record",
+                    format!("{}: record {on}", source.name()),
+                ));
+            }
+        }
         "play_sound" => {}
         _ => out.push(Line::Text("weir", describe_step(step, m))),
     }
 }
 
 /// What to show for `steps`, with their strips and buses by id, done to
-/// make `m`; `None` when there is nothing to say.
-pub fn popup_for(steps: &[HotkeyStep], m: &MixerState) -> Option<Popup> {
+/// make `m` and `rec`; `None` when there is nothing to say.
+pub fn popup_for(steps: &[HotkeyStep], m: &MixerState, rec: RecorderAfter) -> Option<Popup> {
     let mut lines = Vec::new();
     for step in steps {
-        step_lines(step, m, &mut lines);
+        step_lines(step, m, rec, &mut lines);
     }
     // A strip's mute and its volume in one step read best as a bar that
     // says muted: keep the volume, which says both.
@@ -408,7 +441,15 @@ mod tests {
             .iter()
             .map(|(m, p)| HotkeyStep::new(*m, p.clone()))
             .collect();
-        popup_for(&steps, &mixer())
+        let settings = RecorderSettings::default();
+        popup_for(&steps, &mixer(), idle(&settings))
+    }
+
+    fn idle(settings: &RecorderSettings) -> RecorderAfter<'_> {
+        RecorderAfter {
+            settings,
+            recording: false,
+        }
     }
 
     #[test]
@@ -446,7 +487,7 @@ mod tests {
         let mut fade = HotkeyStep::new("set_strip", json!({"id": 2, "gain_db": -60}));
         fade.over_ms = Some(500);
         assert_eq!(
-            popup_for(&[fade], &mixer()),
+            popup_for(&[fade], &mixer(), idle(&RecorderSettings::default())),
             Some(Popup::Level {
                 icon: "audio-volume-low",
                 percent: 1,
@@ -472,5 +513,47 @@ mod tests {
             "read from the mixer after; a strip that is gone shows nothing"
         );
         assert_eq!(popup(&[("play_sound", json!({"name": "Click"}))]), None);
+    }
+
+    #[test]
+    fn recording_says_whether_it_is_on() {
+        let settings = RecorderSettings {
+            tracks: vec![TrackSource::Bus("Stream".into())],
+            ..Default::default()
+        };
+        let start = HotkeyStep::new("set_recording", json!({"on": "toggle"}));
+        let after = RecorderAfter {
+            settings: &settings,
+            recording: true,
+        };
+        assert_eq!(
+            popup_for(std::slice::from_ref(&start), &mixer(), after),
+            Some(Popup::Text {
+                icon: "media-record",
+                text: "Recording".into()
+            })
+        );
+        assert_eq!(
+            popup_for(&[start], &mixer(), idle(&settings)),
+            Some(Popup::Text {
+                icon: "media-playback-stop",
+                text: "Recording stopped".into()
+            })
+        );
+        let tick = |p: Value| HotkeyStep::new("set_record_track", p);
+        assert_eq!(
+            popup_for(
+                &[
+                    tick(json!({"bus": 3, "on": true})),
+                    tick(json!({"strip": 2, "on": "toggle"}))
+                ],
+                &mixer(),
+                idle(&settings)
+            ),
+            Some(Popup::Text {
+                icon: "media-record",
+                text: "Stream: record on · Music: record off".into()
+            })
+        );
     }
 }

@@ -675,6 +675,23 @@ pub fn describe_step(step: &HotkeyStep, m: &MixerState) -> String {
                 format!("{verb} {n} changes")
             }
         }
+        "set_recording" => match p.get("on") {
+            Some(Value::Bool(true)) => "Start recording".into(),
+            Some(Value::Bool(false)) => "Stop recording".into(),
+            _ => "Start or stop recording".into(),
+        },
+        "set_record_track" => {
+            let name = if p.get("bus").is_some() {
+                bus_name(m, p.get("bus"))
+            } else {
+                strip_name(m, p.get("strip"))
+            };
+            let v = p.get("on").unwrap_or(&Value::Null);
+            format!(
+                "{name}: {}",
+                switch(v, "record", "don't record", "recording")
+            )
+        }
         "set_app_volume" => "An application's volume".into(),
         "move_app" => format!("Move an application to {}", strip_name(m, p.get("strip"))),
         "set_settings" => "Change Weir's settings".into(),
@@ -771,6 +788,18 @@ mod tests {
         assert_eq!(
             d("set_bus", json!({"id": 3, "delay_ms": 0})),
             "Stream Mic: delay off"
+        );
+        assert_eq!(
+            d("set_recording", json!({"on": "toggle"})),
+            "Start or stop recording"
+        );
+        assert_eq!(
+            d("set_record_track", json!({"bus": 3, "on": "toggle"})),
+            "Stream Mic: switch recording on or off"
+        );
+        assert_eq!(
+            d("set_record_track", json!({"strip": 2, "on": false})),
+            "Music: don't record"
         );
         assert_eq!(
             d(

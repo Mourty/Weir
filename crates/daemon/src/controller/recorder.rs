@@ -160,7 +160,7 @@ impl Controller {
     }
 
     /// Whether a recording is under way.
-    fn recording_now(&self) -> bool {
+    pub(super) fn recording_now(&self) -> bool {
         self.recording
             .lock()
             .unwrap()

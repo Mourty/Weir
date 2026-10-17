@@ -15,14 +15,21 @@ pub(super) struct Metrics {
     pub fader_h: f32,
     /// Routing buttons in each column beside a strip's fader.
     pub per_col: usize,
-    /// Columns of routing buttons.
-    pub route_cols: usize,
-    pub strip_w: f32,
-    pub bus_w: f32,
+    /// The dB scale and its gap, when there is one.
+    scale_w: f32,
+    /// The routing buttons beside a strip's fader.
+    routes_w: f32,
+    /// A dB scale beside each meter.
+    pub scale: bool,
+    /// The highest peak as a number above each meter.
+    pub peak: bool,
 }
 
 impl Metrics {
-    pub(super) fn compute(avail_h: f32, mixer: &MixerState) -> Self {
+    /// The sizes for a mixer area `avail_h` tall showing `mixer`, with a
+    /// dB `scale` beside each meter and the `peak` number above it, as the
+    /// preferences say.
+    pub(super) fn compute(avail_h: f32, mixer: &MixerState, scale: bool, peak: bool) -> Self {
         let strip_h = (avail_h - 8.0).max(300.0);
         // Everything in a strip except the fader row itself.
         let chrome = 14.0            // caption
@@ -32,8 +39,14 @@ impl Metrics {
             + theme::FX_ROW_H        // effect buttons
             + 26.0                   // mute and solo row
             + 6.0 * 6.0              // spacing between those
-            + 12.0; // frame margin
+            + 12.0 // frame margin
+            + if peak { theme::PEAK_H + theme::PEAK_GAP } else { 0.0 };
         let fader_h = (strip_h - chrome).max(80.0);
+        let scale_w = if scale {
+            theme::METER_SCALE_W + theme::SCALE_GAP
+        } else {
+            0.0
+        };
         let step = theme::ROUTE_BTN_H + theme::ROUTE_GAP;
         let fit = (((fader_h + theme::ROUTE_GAP) / step).floor() as usize).max(1);
         let n_buses = mixer.buses.len();
@@ -46,29 +59,70 @@ impl Metrics {
         } else {
             fit
         };
-        let widest = |counts: &mut dyn Iterator<Item = usize>| counts.max().unwrap_or(2);
-        let strip_ch = widest(&mut mixer.strips.iter().map(|s| s.layout.channel_count()));
-        let bus_ch = widest(&mut mixer.buses.iter().map(|b| b.layout.channel_count()));
-        let routes_w = route_cols as f32 * (theme::ROUTE_BTN_W + theme::ROUTE_GAP);
-        let strip_w = (widgets::meter_width(strip_ch) + 8.0 + theme::FADER_W + routes_w + 12.0)
-            .max(theme::STRIP_MIN_WIDTH);
-        let bus_w =
-            (theme::CEILING_W + 4.0 + widgets::meter_width(bus_ch) + 8.0 + theme::FADER_W + 12.0)
-                .max(theme::BUS_MIN_WIDTH);
+        let routes_w = routes_width(route_cols);
         Self {
             strip_h,
             fader_h,
             per_col,
-            route_cols,
-            strip_w,
-            bus_w,
+            scale_w,
+            routes_w,
+            scale,
+            peak,
         }
     }
+
+    /// How wide a strip with `channels` channels is. Each strip is as wide
+    /// as its own meter needs, rather than all as wide as the widest, so
+    /// the scale, meter and fader sit the same distance apart on a mono
+    /// strip as on a 7.1 one.
+    pub(super) fn strip_w(&self, channels: usize) -> f32 {
+        (self.strip_row_w(channels) + FRAME_MARGINS).max(theme::STRIP_MIN_WIDTH)
+    }
+
+    /// How wide a bus with `channels` channels is, likewise.
+    pub(super) fn bus_w(&self, channels: usize) -> f32 {
+        (self.bus_row_w(channels) + FRAME_MARGINS).max(theme::BUS_MIN_WIDTH)
+    }
+
+    /// The width of a strip's fader row: scale, meter, fader and routing
+    /// buttons, with the gaps between them.
+    pub(super) fn strip_row_w(&self, channels: usize) -> f32 {
+        self.scale_w
+            + widgets::meter_width(channels)
+            + theme::METER_GAP
+            + theme::FADER_W
+            + theme::METER_GAP
+            + self.routes_w
+    }
+
+    /// The width of a bus's fader row: scale, ceiling handle, meter and
+    /// fader.
+    pub(super) fn bus_row_w(&self, channels: usize) -> f32 {
+        self.scale_w
+            + theme::CEILING_W
+            + theme::CEILING_GAP
+            + widgets::meter_width(channels)
+            + theme::METER_GAP
+            + theme::FADER_W
+    }
+}
+
+/// The frame's margins either side of a strip or bus.
+const FRAME_MARGINS: f32 = 12.0;
+
+/// The width of `cols` columns of routing buttons.
+fn routes_width(cols: usize) -> f32 {
+    cols as f32 * theme::ROUTE_BTN_W + cols.saturating_sub(1) as f32 * theme::ROUTE_GAP
 }
 
 impl App {
     pub(super) fn mixer_view(&mut self, ui: &mut Ui, state: &FullState) {
-        let lay = Metrics::compute(ui.available_height(), &state.mixer);
+        let lay = Metrics::compute(
+            ui.available_height(),
+            &state.mixer,
+            self.prefs.meter_scale,
+            self.prefs.meter_peak,
+        );
         egui::ScrollArea::horizontal()
             .auto_shrink([false, false])
             .show(ui, |ui| {
@@ -154,11 +208,45 @@ mod tests {
 
     #[test]
     fn faders_get_what_the_rest_of_a_strip_leaves() {
-        let tall = Metrics::compute(900.0, &MixerState::default());
-        let short = Metrics::compute(500.0, &MixerState::default());
+        let none = MixerState::default();
+        let tall = Metrics::compute(900.0, &none, false, false);
+        let short = Metrics::compute(500.0, &none, false, false);
         assert!(tall.fader_h > short.fader_h);
-        assert_eq!(tall.route_cols, 0, "no buses, no buttons");
-        let tiny = Metrics::compute(10.0, &MixerState::default());
+        assert_eq!(tall.routes_w, 0.0, "no buses, no buttons");
+        let tiny = Metrics::compute(10.0, &none, false, false);
         assert!(tiny.fader_h >= 80.0, "a fader never gets too short to use");
+        // The peak number takes its height from the fader.
+        let peaked = Metrics::compute(900.0, &none, true, true);
+        assert_eq!(
+            peaked.fader_h,
+            tall.fader_h - theme::PEAK_H - theme::PEAK_GAP
+        );
+    }
+
+    #[test]
+    fn each_strip_is_as_wide_as_its_own_meter_needs() {
+        let mixer = MixerState {
+            buses: (1..=3)
+                .map(|id| Bus::new(id, "Bus", BusKind::Virtual, ChannelLayout::Stereo))
+                .collect(),
+            ..Default::default()
+        };
+        let lay = Metrics::compute(900.0, &mixer, true, true);
+        // A row with more channels is wider by just its meter: the gaps
+        // either side of it stay the same.
+        let (stereo, surround) = (lay.strip_w(2), lay.strip_w(6));
+        assert_eq!(
+            surround - stereo,
+            widgets::meter_width(6) - widgets::meter_width(2)
+        );
+        assert_eq!(surround, lay.strip_row_w(6) + FRAME_MARGINS);
+        assert_eq!(
+            lay.bus_w(8) - lay.bus_w(6),
+            widgets::meter_width(8) - widgets::meter_width(6)
+        );
+        // Narrow ones keep room for the name and buttons.
+        let bare = Metrics::compute(900.0, &mixer, false, false);
+        assert_eq!(bare.strip_w(1), theme::STRIP_MIN_WIDTH);
+        assert_eq!(bare.bus_w(2), theme::BUS_MIN_WIDTH);
     }
 }

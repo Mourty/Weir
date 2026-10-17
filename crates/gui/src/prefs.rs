@@ -45,6 +45,43 @@ impl BusSources {
     }
 }
 
+/// What the number above each meter says.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MeterNumber {
+    /// How loud it is now, steadied a little so it can be read.
+    #[default]
+    Live,
+    /// The loudest it has been since the number was last clicked.
+    Peak,
+}
+
+impl MeterNumber {
+    /// Every choice, in the order Preferences lists them.
+    pub const ALL: [MeterNumber; 2] = [Self::Live, Self::Peak];
+
+    /// Its name in Preferences.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Live => "How loud it is now",
+            Self::Peak => "The highest peak",
+        }
+    }
+
+    /// What it shows, in a line under its name.
+    pub fn description(self) -> &'static str {
+        match self {
+            Self::Live => {
+                "Follows the meter, steadied a little so it can be read, red at 0 dB and over."
+            }
+            Self::Peak => {
+                "The loudest it has been since you last clicked the number, red once it \
+                 reached 0 dB. Click it to start again."
+            }
+        }
+    }
+}
+
 /// Light or dark.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -112,6 +149,12 @@ pub struct Prefs {
     pub bus_sources: BusSources,
     /// Show a volume slider for each application under the virtual strips.
     pub show_app_volume: bool,
+    /// A dB scale beside each meter.
+    pub meter_scale: bool,
+    /// A number above each meter.
+    pub meter_peak: bool,
+    /// What that number says.
+    pub meter_number: MeterNumber,
     /// The live spectrum behind the equalizer curve.
     pub spectrum: SpectrumView,
     /// Size of a strip's settings window, as last left.
@@ -136,6 +179,9 @@ impl Default for Prefs {
             system_font: false,
             bus_sources: BusSources::default(),
             show_app_volume: true,
+            meter_scale: true,
+            meter_peak: true,
+            meter_number: MeterNumber::default(),
             spectrum: SpectrumView::default(),
             strip_fx_size: None,
             bus_settings_size: None,

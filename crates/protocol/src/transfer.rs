@@ -29,6 +29,9 @@ pub const WINDOW_LOOK_KEYS: &[&str] = &[
     "bus_sources",
     "show_app_volume",
     "spectrum",
+    "meter_scale",
+    "meter_peak",
+    "meter_number",
 ];
 
 fn is_false(b: &bool) -> bool {

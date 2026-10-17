@@ -26,7 +26,7 @@ impl App {
         b: &Bus,
         lay: &Metrics,
     ) -> egui::Response {
-        let inner_w = lay.bus_w - 12.0;
+        let inner_w = lay.bus_w(b.layout.channel_count()) - 12.0;
         let target = StripOrBus::Bus(b.id);
         let frame = Frame::new()
             .fill(theme::p().bus_bg)
@@ -131,9 +131,17 @@ impl App {
         inner_w: f32,
     ) {
         let n_ch = b.layout.channel_count();
-        let row_w = theme::CEILING_W + 4.0 + widgets::meter_width(n_ch) + 8.0 + theme::FADER_W;
+        let row_w = lay.bus_row_w(n_ch);
+        let peak_area = lay.peak.then(|| self.peak_area(ui, inner_w));
+        let mut meter_rect = None;
         ui.horizontal(|ui| {
+            // The gaps are the row's own, as the bus's width counts them.
+            ui.spacing_mut().item_spacing.x = 0.0;
             ui.add_space(((inner_w - row_w) / 2.0).max(0.0));
+            if lay.scale {
+                widgets::meter_scale(ui, lay.fader_h);
+                ui.add_space(theme::SCALE_GAP);
+            }
             let (lv, pk) = self
                 .meters
                 .entry(StripOrBus::Bus(b.id))
@@ -152,11 +160,13 @@ impl App {
                 self.set_value(Key::BusCeiling(b.id), ceiling);
             }
             widgets::field_context_menu(&handle, |ui| self.limiter_menu(ui, b));
+            ui.add_space(theme::CEILING_GAP);
             let meter = widgets::meter(ui, &lv, &pk, lay.fader_h);
             if b.limiter.enabled {
                 widgets::ceiling_line(ui, meter.rect, ceiling);
             }
-            ui.add_space(4.0);
+            meter_rect = Some(meter.rect);
+            ui.add_space(theme::METER_GAP);
             let key = Key::Gain(StripOrBus::Bus(b.id));
             let mut gain = self.value(key, b.gain_db);
             let fill = own_color(b.color.as_deref()).unwrap_or(theme::p().fader);
@@ -170,6 +180,9 @@ impl App {
                 self.hotkey_items(ui, state, start.with(Action::VolumeBy));
             });
         });
+        if let (Some(area), Some(meter)) = (peak_area, meter_rect) {
+            self.peak_number(ui, StripOrBus::Bus(b.id), area, meter, Some(0.0));
+        }
     }
 
     /// The equalizer switch of a bus and the button that opens its settings.

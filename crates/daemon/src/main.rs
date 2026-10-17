@@ -342,6 +342,7 @@ async fn start_tray(
     let mut tray = MixerTray::new(tx, settings.startup, settings.tray_icon);
     let mixer = controller.mixer();
     (tray.strips, tray.buses) = (mixer.strips.len(), mixer.buses.len());
+    tray.can_record = controller.can_record();
     match tray.assume_sni_available(true).spawn().await {
         Ok(h) => {
             info!("tray icon started");
@@ -394,7 +395,7 @@ impl StopSignals {
 /// The daemon's life: serve clients, act on the tray, keep the tray up to
 /// date, until something says to stop or restart.
 async fn run(
-    controller: &Controller,
+    controller: &Arc<Controller>,
     socket_path: &Path,
     signals: &mut StopSignals,
     mut serve: tokio::task::JoinHandle<()>,
@@ -441,8 +442,31 @@ async fn run(
                             .ok()
                             .flatten()
                             .unwrap_or_default();
-                        spawn_window(socket_path, false, &env);
+                        spawn_window(socket_path, Opening::Mixer, &env);
                     }
+                }
+                Some(TrayCommand::ShowRecorder) => {
+                    if controller.window_attached() {
+                        controller.show_recorder();
+                    } else {
+                        let env = tokio::task::spawn_blocking(display::window_env)
+                            .await
+                            .ok()
+                            .flatten()
+                            .unwrap_or_default();
+                        spawn_window(socket_path, Opening::Recorder, &env);
+                    }
+                }
+                Some(TrayCommand::StartRecording | TrayCommand::StopRecording) => {
+                    let on = command == Some(TrayCommand::StartRecording);
+                    // Stopping waits for the files to be finished.
+                    let c = controller.clone();
+                    tokio::task::spawn_blocking(move || {
+                        if let Err(e) = c.record(on) {
+                            warn!("the tray could not {} recording: {e}",
+                                if on { "start" } else { "stop" });
+                        }
+                    });
                 }
                 Some(TrayCommand::SetStartup(mode)) => set_startup(controller, mode),
                 Some(TrayCommand::Restart) => {
@@ -468,6 +492,14 @@ async fn run(
                     Ok(Notification::StateChanged(m)) => {
                         let counts = (m.strips.len(), m.buses.len());
                         handle.update(|t| (t.strips, t.buses) = counts).await;
+                    }
+                    Ok(Notification::RecordingChanged(r)) => {
+                        let now = r.recording.then_some((r.seconds, r.tracks.len()));
+                        handle.update(|t| t.recording = now).await;
+                    }
+                    Ok(Notification::RecorderChanged(r)) => {
+                        let can = !r.tracks.is_empty();
+                        handle.update(|t| t.can_record = can).await;
                     }
                     Ok(_) | Err(RecvError::Lagged(_)) => {}
                     Err(RecvError::Closed) => notes_open = false,
@@ -557,7 +589,12 @@ fn open_window_when_ready(controller: &Arc<Controller>, socket: PathBuf, minimiz
                 return;
             }
             if let Some(env) = env {
-                spawn_window(&socket, minimized, &env);
+                let opening = if minimized {
+                    Opening::Minimized
+                } else {
+                    Opening::Mixer
+                };
+                spawn_window(&socket, opening, &env);
                 return;
             }
             if tokio::time::Instant::now() >= deadline {
@@ -576,7 +613,16 @@ fn open_window_when_ready(controller: &Arc<Controller>, socket: PathBuf, minimiz
 /// Start the mixer window, with `env` added to its environment. Returns
 /// false when the binary cannot be found, which is not fatal: the daemon is
 /// perfectly usable without it.
-fn spawn_window(socket: &Path, minimized: bool, env: &[(String, String)]) -> bool {
+/// How the mixer window opens when the daemon starts it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Opening {
+    Mixer,
+    Minimized,
+    /// With the recorder's window open too.
+    Recorder,
+}
+
+fn spawn_window(socket: &Path, opening: Opening, env: &[(String, String)]) -> bool {
     let mut candidates: Vec<PathBuf> = Vec::new();
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
@@ -594,8 +640,14 @@ fn spawn_window(socket: &Path, minimized: bool, env: &[(String, String)]) -> boo
         if socket != weir_protocol::default_socket_path() {
             cmd.arg("--socket").arg(socket);
         }
-        if minimized {
-            cmd.arg("--minimized");
+        match opening {
+            Opening::Mixer => {}
+            Opening::Minimized => {
+                cmd.arg("--minimized");
+            }
+            Opening::Recorder => {
+                cmd.arg("--recorder");
+            }
         }
         cmd.envs(env.iter().map(|(key, value)| (key, value)));
         match cmd

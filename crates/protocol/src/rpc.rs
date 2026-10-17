@@ -1383,6 +1383,9 @@ pub enum Notification {
     /// Come to the front. Sent when the tray's "Show the mixer" is used and a
     /// window is already open.
     ShowWindow,
+    /// Open the recorder's window. Sent when the tray's "Open the recorder"
+    /// is used and a window is already open.
+    ShowRecorder,
     /// Close now. Sent before the daemon restarts or exits, so the window
     /// does not outlive the mixer it is showing.
     Quit,
@@ -1422,7 +1425,9 @@ impl Notification {
             Self::EngineChanged(_) => Topic::Engine,
             Self::SettingsChanged(_) | Self::UpdateChanged(_) => Topic::Settings,
             Self::Spectrum(_) => Topic::Spectrum,
-            Self::ShowWindow | Self::Quit | Self::WindowLook(_) => Topic::Window,
+            Self::ShowWindow | Self::ShowRecorder | Self::Quit | Self::WindowLook(_) => {
+                Topic::Window
+            }
             Self::HotkeysChanged(_) => Topic::Hotkeys,
             Self::RecorderChanged(_) | Self::RecordingChanged(_) => Topic::Recorder,
         }

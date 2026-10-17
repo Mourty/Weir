@@ -9,16 +9,22 @@
 //! run on the tray's own task, so they must not touch the mixer directly.
 
 use ksni::menu::{RadioGroup, RadioItem, StandardItem, SubMenu};
-use ksni::{MenuItem, OfflineReason, Status, ToolTip, Tray};
+use ksni::{Icon, MenuItem, OfflineReason, Status, ToolTip, Tray};
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::{debug, info};
-use weir_protocol::{Startup, TrayIcon};
+use weir_protocol::{clock, Startup, TrayIcon};
 
 /// What the user picked from the tray.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrayCommand {
     /// Bring the mixer window up, starting it if it is not running.
     Show,
+    /// Open the recorder's window, starting the mixer window if need be.
+    ShowRecorder,
+    /// Start recording what is ticked for it.
+    StartRecording,
+    /// Stop recording.
+    StopRecording,
     /// Stop everything and start again.
     Restart,
     /// Stop everything.
@@ -41,6 +47,10 @@ pub struct MixerTray {
     pub strips: usize,
     /// How many buses there are, for the tooltip.
     pub buses: usize,
+    /// While recording: for how long, in seconds, and how many tracks.
+    pub recording: Option<(f64, usize)>,
+    /// Whether any strip or bus is ticked for recording.
+    pub can_record: bool,
 }
 
 impl MixerTray {
@@ -53,6 +63,8 @@ impl MixerTray {
             engine_state: "starting".into(),
             strips: 0,
             buses: 0,
+            recording: None,
+            can_record: false,
         }
     }
 
@@ -89,6 +101,14 @@ impl Tray for MixerTray {
         Status::Active
     }
 
+    /// A red dot over the icon while recording.
+    fn overlay_icon_pixmap(&self) -> Vec<Icon> {
+        if self.recording.is_none() {
+            return Vec::new();
+        }
+        [16, 32].into_iter().map(red_dot).collect()
+    }
+
     /// The desktop has no tray right now: at login before the panel is up,
     /// or while the panel restarts. Keep waiting rather than give up, so
     /// the icon shows up with the panel.
@@ -108,8 +128,13 @@ impl Tray for MixerTray {
             icon_pixmap: Vec::new(),
             title: "Weir".into(),
             description: format!(
-                "Engine {}. {} strips, {} buses.",
-                self.engine_state, self.strips, self.buses
+                "Engine {}. {} strips, {} buses.{}",
+                self.engine_state,
+                self.strips,
+                self.buses,
+                self.recording
+                    .map(|r| format!(" {}.", recording_words(r)))
+                    .unwrap_or_default()
             ),
         }
     }
@@ -133,6 +158,10 @@ impl Tray for MixerTray {
             }
             .into(),
             MenuItem::Separator,
+        ]
+        .into_iter()
+        .chain(self.recording_items())
+        .chain([
             SubMenu {
                 label: "When Weir starts".into(),
                 submenu: vec![RadioGroup {
@@ -170,6 +199,106 @@ impl Tray for MixerTray {
                 ..Default::default()
             }
             .into(),
-        ]
+        ])
+        .collect()
+    }
+}
+
+impl MixerTray {
+    /// While recording, how long and a way to stop it; otherwise a way to
+    /// start, when anything is ticked. Then the recorder's window.
+    fn recording_items(&self) -> Vec<MenuItem<Self>> {
+        let mut items: Vec<MenuItem<Self>> = match self.recording {
+            Some(r) => vec![
+                StandardItem {
+                    label: recording_words(r),
+                    icon_name: "media-record".into(),
+                    enabled: false,
+                    ..Default::default()
+                }
+                .into(),
+                StandardItem {
+                    label: "Stop recording".into(),
+                    icon_name: "media-playback-stop".into(),
+                    activate: Box::new(|this: &mut Self| this.send(TrayCommand::StopRecording)),
+                    ..Default::default()
+                }
+                .into(),
+            ],
+            None if self.can_record => vec![StandardItem {
+                label: "Start recording".into(),
+                icon_name: "media-record".into(),
+                activate: Box::new(|this: &mut Self| this.send(TrayCommand::StartRecording)),
+                ..Default::default()
+            }
+            .into()],
+            None => Vec::new(),
+        };
+        items.push(
+            StandardItem {
+                label: "Open the recorder".into(),
+                activate: Box::new(|this: &mut Self| this.send(TrayCommand::ShowRecorder)),
+                ..Default::default()
+            }
+            .into(),
+        );
+        items.push(MenuItem::Separator);
+        items
+    }
+}
+
+/// "Recording · 12:34 · 3 tracks".
+fn recording_words((seconds, tracks): (f64, usize)) -> String {
+    let s = if tracks == 1 { "" } else { "s" };
+    format!("Recording · {} · {tracks} track{s}", clock(seconds))
+}
+
+/// A red dot filling the lower right quarter of a `size` square, the
+/// corner desktops put overlays in, ARGB in network order.
+fn red_dot(size: i32) -> Icon {
+    let r = size as f32 / 4.0;
+    let (cx, cy) = (size as f32 - r - 0.5, size as f32 - r - 0.5);
+    let mut data = Vec::with_capacity((size * size * 4) as usize);
+    for y in 0..size {
+        for x in 0..size {
+            let d = ((x as f32 - cx).powi(2) + (y as f32 - cy).powi(2)).sqrt();
+            // A soft edge, a pixel wide, and a thin dark ring so the dot
+            // shows on a red icon or panel too.
+            let inside = (r - d + 0.5).clamp(0.0, 1.0);
+            let ring = (r + 1.0 - d + 0.5).clamp(0.0, 1.0);
+            let (a, red, green, blue) = if inside > 0.0 {
+                (
+                    inside.max(ring),
+                    235.0 * inside,
+                    75.0 * inside,
+                    65.0 * inside,
+                )
+            } else {
+                (ring * 0.6, 0.0, 0.0, 0.0)
+            };
+            data.extend([(a * 255.0) as u8, red as u8, green as u8, blue as u8]);
+        }
+    }
+    Icon {
+        width: size,
+        height: size,
+        data,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_recording_dot_is_red_in_the_corner_and_clear_elsewhere() {
+        let icon = red_dot(16);
+        assert_eq!(icon.data.len(), 16 * 16 * 4);
+        let at = |x: usize, y: usize| &icon.data[(y * 16 + x) * 4..][..4];
+        assert_eq!(at(0, 0)[0], 0, "clear at the top left");
+        let middle = at(11, 11);
+        assert!(middle[0] > 200 && middle[1] > 200 && middle[2] < 90);
+        assert_eq!(recording_words((754.0, 3)), "Recording · 12:34 · 3 tracks");
+        assert_eq!(recording_words((5.0, 1)), "Recording · 0:05 · 1 track");
     }
 }

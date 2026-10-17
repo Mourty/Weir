@@ -67,8 +67,12 @@ help:
 	@echo "make icons      redraw the window icon (needs rsvg-convert)"
 	@echo "make licenses   gather the libraries' license notices (needs cargo-about)"
 
+# DESTDIR is left out of the build's environment: libopus builds with
+# CMake, whose install step honors it, so `make install DESTDIR=...` run
+# before a build (as `make deb` does) would put the library in the
+# staging folder, where the build cannot find it.
 build:
-	$(CARGO) build $(CARGO_FLAGS)
+	env -u DESTDIR $(CARGO) build $(CARGO_FLAGS)
 
 test:
 	$(CARGO) test --workspace
@@ -105,6 +109,8 @@ install: build
 		$(DESTDIR)$(LICENSEDIR)/nnnoiseless-BSD-3-Clause.txt
 	install -Dm644 packaging/licenses/THIRD-PARTY-LICENSES.txt \
 		$(DESTDIR)$(LICENSEDIR)/THIRD-PARTY-LICENSES.txt
+	install -Dm644 vendor/mp3lame-sys/lame-3.100/COPYING \
+		$(DESTDIR)$(LICENSEDIR)/LAME-COPYING.txt
 	for d in USER_GUIDE CLI API ARCHITECTURE; do \
 		install -Dm644 docs/$$d.md $(DESTDIR)$(DOCDIR)/docs/$$d.md; done
 	install -d $(DESTDIR)$(DOCDIR)/docs/images

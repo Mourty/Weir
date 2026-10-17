@@ -42,6 +42,8 @@ Source0:        %{name}-%{version}.tar.gz
 BuildRequires:  cargo >= 1.88
 BuildRequires:  rust >= 1.88
 BuildRequires:  clang
+# libopus, built into Weir for recording in Opus, builds with CMake.
+BuildRequires:  cmake
 BuildRequires:  make
 BuildRequires:  pkgconfig(libpipewire-0.3)
 BuildRequires:  desktop-file-utils
@@ -82,6 +84,7 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/io.github.mour
 %license %{_datadir}/licenses/weir/LICENSE
 %license %{_datadir}/licenses/weir/nnnoiseless-BSD-3-Clause.txt
 %license %{_datadir}/licenses/weir/THIRD-PARTY-LICENSES.txt
+%license %{_datadir}/licenses/weir/LAME-COPYING.txt
 %{_bindir}/weir
 %{_bindir}/weir-daemon
 %{_bindir}/weirctl

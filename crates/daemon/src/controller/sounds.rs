@@ -2,7 +2,7 @@
 //! the popup that says what a press did.
 
 use super::Controller;
-use crate::hotkeys::popup::{popup_for, Popups};
+use crate::hotkeys::popup::{popup_for, Popups, RecorderAfter};
 use crate::sounds::{decode, sound_extension, sound_file, Library};
 use serde_json::Value;
 use std::path::Path;
@@ -100,11 +100,20 @@ impl Controller {
         let Some(popups) = self.popups.lock().unwrap().clone() else {
             return;
         };
-        let (mixer, how) = {
+        let recording = self.recording_now();
+        let (mixer, recorder, how) = {
             let inner = self.inner.lock().unwrap();
-            (inner.mixer.clone(), inner.settings.hotkey_popup)
+            (
+                inner.mixer.clone(),
+                inner.recorder.clone(),
+                inner.settings.hotkey_popup,
+            )
         };
-        if let Some(popup) = popup_for(steps, &mixer) {
+        let rec = RecorderAfter {
+            settings: &recorder,
+            recording,
+        };
+        if let Some(popup) = popup_for(steps, &mixer, rec) {
             popups.show(popup, how);
         }
     }

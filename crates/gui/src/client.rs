@@ -305,6 +305,8 @@ fn read_loop(
                 Notification::UpdateChanged(u) => sh.state.update = u,
                 Notification::EqPresetsChanged(p) => sh.state.eq_presets = p,
                 Notification::MeterColorsChanged(m) => sh.state.meter_colors = m,
+                Notification::RecorderChanged(r) => sh.state.recorder = r,
+                Notification::RecordingChanged(r) => sh.state.recording = r,
                 Notification::Spectrum(s) => {
                     // A spectrum can still be in flight after its window
                     // closed; do not keep it.

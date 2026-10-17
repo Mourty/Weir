@@ -959,6 +959,105 @@ impl Table {
     }
 }
 
+/// A strip or bus to record, in words.
+fn source_words(t: &TrackSource) -> String {
+    match t {
+        TrackSource::Strip(n) => format!("strip {n}"),
+        TrackSource::Bus(n) => format!("bus {n}"),
+    }
+}
+
+/// What the recorder is doing.
+pub fn recording(r: &RecordingStatus, s: &RecorderSettings) {
+    if r.recording {
+        let part = match r.next_part_in {
+            Some(next) => format!(", part {} (the next in {})", r.part, clock(next)),
+            None if r.part > 1 => format!(", part {}", r.part),
+            None => String::new(),
+        };
+        println!("recording:  {}{part}", clock(r.seconds));
+        println!("in:         {}", r.folder);
+        for t in &r.tracks {
+            let file = std::path::Path::new(&t.file)
+                .file_name()
+                .map(|f| f.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            println!("  {:<24} {file}", source_words(&t.source));
+        }
+        let free = r
+            .free_bytes
+            .map(|f| format!(", {} free", size_words(f)))
+            .unwrap_or_default();
+        println!("written:    {}{free}", size_words(r.bytes));
+        if r.lost_seconds > 0.0 {
+            println!(
+                "lost:       {:.1} s, kept as silence: the computer could not keep up",
+                r.lost_seconds
+            );
+        }
+    } else {
+        println!("not recording");
+        println!("records:    {}", tracks_words(&s.tracks));
+        println!("into:       {}", r.folder);
+        if let Some(at) = r.started_at_ms {
+            println!(
+                "last:       {} long, started {}, {}",
+                clock(r.seconds),
+                utc_time(at),
+                size_words(r.bytes)
+            );
+        }
+    }
+    if !r.missing.is_empty() {
+        let names: Vec<String> = r.missing.iter().map(source_words).collect();
+        println!("not here:   {}", names.join(", "));
+    }
+    if let Some(e) = &r.error {
+        println!("problem:    {e}");
+    }
+}
+
+fn tracks_words(tracks: &[TrackSource]) -> String {
+    if tracks.is_empty() {
+        return "nothing yet: weirctl record strip NAME".into();
+    }
+    tracks
+        .iter()
+        .map(source_words)
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// How recordings are made.
+pub fn recorder(s: &RecorderSettings) {
+    let folder = if s.folder.is_empty() {
+        "Weir recordings in your Music folder".to_string()
+    } else {
+        s.folder.clone()
+    };
+    let layout = match s.layout {
+        RecordLayout::Files => "a file per track",
+        RecordLayout::Multitrack => "one .mka file holding every track",
+    };
+    println!("records:   {}", tracks_words(&s.tracks));
+    println!("folder:    {folder}");
+    println!("names:     {}", s.names);
+    println!(
+        "format:    {}, {}",
+        s.format.label(),
+        s.format.quality_label(s.quality())
+    );
+    println!("as:        {layout}");
+    match s.split_minutes {
+        0 => println!("new files: never"),
+        m => println!("new files: every {m} minutes"),
+    }
+    if s.format == RecordFormat::Wav {
+        println!("bwf:       {}", if s.bwf { "on" } else { "off" });
+    }
+    println!("number:    {:03} next", s.next_number);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

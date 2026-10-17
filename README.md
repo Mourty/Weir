@@ -96,7 +96,7 @@ Open a terminal and follow the steps for yours:
 <summary><b>Fedora and Nobara</b></summary>
 
 ```sh
-sudo dnf install git-core cargo rust clang make pipewire-devel pkgconf-pkg-config rpm-build rpmdevtools desktop-file-utils libappstream-glib
+sudo dnf install git-core cargo rust clang cmake make pipewire-devel pkgconf-pkg-config rpm-build rpmdevtools desktop-file-utils libappstream-glib
 git clone https://github.com/Mourty/Weir
 cd Weir
 make rpm-install
@@ -112,7 +112,7 @@ other.
 
 ```sh
 sudo apt update
-sudo apt install git build-essential clang pkg-config libpipewire-0.3-dev cargo rustc
+sudo apt install git build-essential clang cmake pkg-config libpipewire-0.3-dev cargo rustc
 git clone https://github.com/Mourty/Weir
 cd Weir
 make install
@@ -129,7 +129,7 @@ the build to use it:
 
 ```sh
 sudo apt update
-sudo apt install git build-essential clang pkg-config libpipewire-0.3-dev cargo-1.91 rustc-1.91
+sudo apt install git build-essential clang cmake pkg-config libpipewire-0.3-dev cargo-1.91 rustc-1.91
 git clone https://github.com/Mourty/Weir
 cd Weir
 PATH=/usr/lib/rust-1.91/bin:$PATH make install
@@ -150,7 +150,7 @@ from [rustup](https://rustup.rs), the Rust project's installer, which
 keeps it in your home folder:
 
 ```sh
-sudo apt install git curl build-essential clang pkg-config libpipewire-0.3-dev
+sudo apt install git curl build-essential clang cmake pkg-config libpipewire-0.3-dev
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh     # press Enter to accept the default
 . "$HOME/.cargo/env"
 git clone https://github.com/Mourty/Weir
@@ -164,7 +164,7 @@ make install
 <summary><b>Arch, CachyOS and other Arch-based systems</b></summary>
 
 ```sh
-sudo pacman -Syu --needed base-devel clang rust git
+sudo pacman -Syu --needed base-devel clang cmake rust git
 git clone https://github.com/Mourty/Weir
 cd Weir
 make install
@@ -173,7 +173,7 @@ make install
 </details>
 
 **On another system**, Weir needs PipeWire 0.3.77 or newer with
-WirePlumber. Install Rust 1.88 or newer, clang, a C compiler, `make`,
+WirePlumber. Install Rust 1.88 or newer, clang, a C compiler, `make`, CMake,
 `pkg-config` and PipeWire's development files, then run `make install`
 from the `Weir` folder.
 
@@ -246,4 +246,6 @@ that could route audio in this way, and I used AI to make that happen.
 
 Weir is released under the [MIT license](LICENSE). Its noise suppression
 comes from [nnnoiseless](https://github.com/jneem/nnnoiseless), a Rust port
-of RNNoise, under the BSD 3-clause license.
+of RNNoise, under the BSD 3-clause license. Recordings in MP3 are made
+with [LAME](https://lame.sourceforge.io), built into Weir under the GNU
+LGPL, whose license is installed beside Weir's as `LAME-COPYING.txt`.

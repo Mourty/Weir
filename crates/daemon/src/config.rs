@@ -34,6 +34,8 @@ pub struct Config {
     pub current_scene: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_setup: Option<String>,
+    /// How recordings are made.
+    pub recorder: weir_protocol::RecorderSettings,
 }
 
 impl Default for Config {
@@ -45,6 +47,7 @@ impl Default for Config {
             app_rules: Vec::new(),
             current_scene: None,
             current_setup: None,
+            recorder: Default::default(),
         }
     }
 }
@@ -780,6 +783,15 @@ mod tests {
             ],
             current_scene: Some("Streaming".into()),
             current_setup: None,
+            recorder: weir_protocol::RecorderSettings {
+                tracks: vec![
+                    weir_protocol::TrackSource::Strip("Mic".into()),
+                    weir_protocol::TrackSource::Bus("Stream Mic".into()),
+                ],
+                format: weir_protocol::RecordFormat::Opus,
+                split_minutes: 30,
+                ..Default::default()
+            },
         };
         let dir = scratch_dir("cfg");
         let path = dir.join("config.toml");
@@ -789,6 +801,7 @@ mod tests {
         assert_eq!(back.app_rules, cfg.app_rules);
         assert_eq!(back.current_scene.as_deref(), Some("Streaming"));
         assert_eq!(back.current_setup, None);
+        assert_eq!(back.recorder, cfg.recorder);
         assert!(report.migrated.is_empty() && report.from_newer.is_none());
         // Strips without effects do not grow empty effect sections.
         let text = std::fs::read_to_string(&path).unwrap();

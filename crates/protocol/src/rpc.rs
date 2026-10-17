@@ -272,12 +272,15 @@ pub enum Topic {
     Spectrum,
     /// `hotkeys_changed`: the hotkeys, or how keys reach Weir.
     Hotkeys,
+    /// `recorder_changed` and `recording_changed`: how recordings are made,
+    /// or how the one under way is going, once a second while it runs.
+    Recorder,
 }
 
 impl Topic {
     /// Everything a general-purpose client wants. `Window` is deliberately
     /// excluded: only the mixer window should claim to be one.
-    pub const ALL: [Topic; 7] = [
+    pub const ALL: [Topic; 8] = [
         Topic::State,
         Topic::Meters,
         Topic::Devices,
@@ -285,6 +288,7 @@ impl Topic {
         Topic::Engine,
         Topic::Settings,
         Topic::Hotkeys,
+        Topic::Recorder,
     ];
 }
 
@@ -1187,6 +1191,16 @@ pub enum Request {
     /// Deletes a way of coloring meters of your own. Returns
     /// `Vec<MeterColors>`.
     DeleteMeterColors(NameParams),
+    /// Changes how recordings are made: which strips and buses, where,
+    /// what format. Returns [`crate::recorder::RecorderSettings`].
+    SetRecorder(crate::recorder::RecorderPatch),
+    /// Ticks a strip or bus for recording, or unticks it. Returns
+    /// [`crate::recorder::RecorderSettings`].
+    SetRecordTrack(crate::recorder::SetRecordTrackParams),
+    /// Starts or stops recording. Returns
+    /// [`crate::recorder::RecordingStatus`]: on stopping, once the files
+    /// are finished.
+    SetRecording(crate::recorder::SetRecordingParams),
     /// Returns [`HotkeysInfo`]: every hotkey, and how keys reach Weir.
     ListHotkeys,
     /// Adds a hotkey, or replaces the one with the same `id`. Returns the
@@ -1359,6 +1373,11 @@ pub enum Notification {
     EqPresetsChanged(Vec<EqPreset>),
     /// The ways of coloring meters changed.
     MeterColorsChanged(Vec<crate::meter_colors::MeterColors>),
+    /// How recordings are made changed.
+    RecorderChanged(crate::recorder::RecorderSettings),
+    /// A recording started, stopped, or moved on: once a second while it
+    /// runs.
+    RecordingChanged(crate::recorder::RecordingStatus),
     /// A strip's or bus's equalizer input and output, for an analyzer.
     Spectrum(Spectrum),
     /// Come to the front. Sent when the tray's "Show the mixer" is used and a
@@ -1405,6 +1424,7 @@ impl Notification {
             Self::Spectrum(_) => Topic::Spectrum,
             Self::ShowWindow | Self::Quit | Self::WindowLook(_) => Topic::Window,
             Self::HotkeysChanged(_) => Topic::Hotkeys,
+            Self::RecorderChanged(_) | Self::RecordingChanged(_) => Topic::Recorder,
         }
     }
 

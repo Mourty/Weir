@@ -11,6 +11,7 @@
 //! * [`fx`]: the settings of every effect.
 //! * [`library`]: scenes and setups, the two kinds of saved mix.
 //! * [`meter_colors`]: the colors meters are drawn in.
+//! * [`recorder`]: recording strips and buses to files.
 //! * [`hotkeys`]: keys that do things in the mixer, and their descriptions.
 //! * [`keys`]: key combinations such as `Ctrl+Alt+M`.
 //! * [`sounds`]: what hotkeys show and play when pressed.
@@ -32,6 +33,7 @@ pub mod keys;
 pub mod library;
 pub mod meter_colors;
 pub mod model;
+pub mod recorder;
 pub mod report;
 pub mod rpc;
 pub mod sounds;
@@ -45,6 +47,7 @@ pub use keys::*;
 pub use library::*;
 pub use meter_colors::*;
 pub use model::*;
+pub use recorder::*;
 pub use report::*;
 pub use rpc::*;
 pub use sounds::*;

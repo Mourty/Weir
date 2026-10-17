@@ -1,0 +1,28 @@
+# A copy of mp3lame-sys 0.1.11 (https://github.com/DoumanAsh/mp3lame-sys)
+# that compiles LAME with the cc crate on every platform. The published crate
+# runs LAME's configure script on Linux, and that fails when the folder's
+# path has a space in it. See README.md.
+[package]
+name = "mp3lame-sys"
+version = "0.1.11"
+edition = "2021"
+description = "Bindings to mp3lame library"
+license = "LGPL-3.0"
+repository = "https://github.com/DoumanAsh/mp3lame-sys"
+build = "build.rs"
+publish = false
+
+[features]
+# Not built in this copy; declared so the bindings' cfgs stay known.
+decoder = []
+target_host = []
+
+[lib]
+name = "mp3lame_sys"
+path = "src/lib.rs"
+
+[dependencies]
+libc = { version = "0.2", default-features = false }
+
+[build-dependencies]
+cc = "1.0.77"

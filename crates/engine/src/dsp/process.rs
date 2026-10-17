@@ -10,6 +10,8 @@
 //! 3. Each bus folds to mono if asked, runs its equalizer, applies its
 //!    fader, then its limiter and its delay, and meters what comes out.
 //! 4. Sounds hotkeys play go to the engine's own `hotkey_sounds` output.
+//! 5. Strips and buses being recorded that were not heard this cycle, being
+//!    silent or gone, record silence, so every track keeps time.
 //!
 //! External effects go out and come back wherever they sit in a strip's or
 //! bus's chain.
@@ -56,6 +58,8 @@ pub struct Processor {
     warmed_up: bool,
     /// The sounds playing.
     voices: Voices,
+    /// Cycles run, for telling which recordings were written this cycle.
+    cycle: u64,
 }
 
 impl Default for Processor {
@@ -84,6 +88,7 @@ impl Processor {
             warm_up: fx::new_warm_up_state(),
             warmed_up: false,
             voices: Voices::default(),
+            cycle: 0,
         }
     }
 
@@ -131,6 +136,7 @@ impl Processor {
             return;
         }
         let ramp = ramp_samples.max(1);
+        self.cycle = self.cycle.wrapping_add(1);
 
         self.voices.take_requests(&p.sounds, &p.sound_queue);
 
@@ -163,6 +169,11 @@ impl Processor {
         }
         if self.voices.playing() {
             self.voices.mix_into(&p.sounds, n, rate, left, right);
+        }
+        for tap in &p.record {
+            if !tap.written_in(self.cycle) {
+                tap.write(self.cycle, n, rate, |_| None, &[]);
+            }
         }
     }
 
@@ -280,6 +291,13 @@ impl Processor {
             into_buses(c, inp);
         }
         strip.fx.set_out_peak(out_peak);
+        // Recorded as its meter reads: after its effects and fader.
+        if let Some(tap) = &strip.record {
+            // The tap keeps the channels the strip had when it started.
+            let have = strip.ports.len();
+            let channel = |c: usize| if c < have { channel(c) } else { None };
+            tap.write(self.cycle, n, rate, channel, lvl_buf);
+        }
 
         // The subwoofer feed: the strip's channels mixed together and
         // low-passed, into its row of every send.
@@ -388,6 +406,17 @@ impl Processor {
             let out = std::slice::from_raw_parts(out, n);
             let peak = out.iter().fold(0.0f32, |m, v| m.max(v.abs()));
             meter.fetch_max(peak.to_bits(), Ordering::Relaxed);
+        }
+        if let Some(tap) = &bus.record {
+            let channel = |o: usize| {
+                let out = if o < bus.ports.len() {
+                    output(o)
+                } else {
+                    std::ptr::null_mut()
+                };
+                (!out.is_null()).then(|| std::slice::from_raw_parts(out as *const f32, n))
+            };
+            tap.write(self.cycle, n, rate, channel, &[]);
         }
     }
 }
@@ -1874,5 +1903,106 @@ mod tests {
         rig.settle(&p2);
         assert!(close(rig.outputs[0][0][63], db_to_linear(-6.0)));
         assert!(rig.strip_sends[0][0].iter().all(|&v| v == 0.0));
+    }
+
+    #[test]
+    fn recordings_hear_strips_after_their_fader_and_buses_as_they_play() {
+        use crate::dsp::params::attach_record_taps;
+        use crate::dsp::record::RecordTap;
+        let mut st = state();
+        st.strips[0].mute = true;
+        let taps: Vec<Arc<RecordTap>> = [
+            TrackSource::Strip("Mic".into()),
+            TrackSource::Strip("Music".into()),
+            TrackSource::Bus("Headset".into()),
+            // Removed while it was being recorded.
+            TrackSource::Strip("Game".into()),
+        ]
+        .into_iter()
+        .map(|t| Arc::new(RecordTap::new(t, 2)))
+        .collect();
+        let mut params = build_rt_params(&st, SoloMode::Exclusive, &NoPorts, None);
+        attach_record_taps(Arc::get_mut(&mut params).unwrap(), &st, &taps);
+        let mut rig = Rig::new(&st, 64);
+        rig.inputs[0][0].fill(0.9);
+        rig.inputs[1][0].fill(0.5);
+        rig.inputs[1][1].fill(-0.25);
+        rig.settle(&params);
+        let mut seen: Vec<Vec<f32>> = taps
+            .iter()
+            .map(|t| {
+                let mut out = Vec::new();
+                assert_eq!(t.take(&mut out), 4 * 64, "{:?}", t.source());
+                out
+            })
+            .collect();
+        rig.run(&params, 8);
+        for (t, out) in taps.iter().zip(&mut seen) {
+            out.clear();
+            assert_eq!(t.take(out), 64);
+            assert_eq!(t.rate(), 48_000);
+        }
+        let music = db_to_linear(-6.0);
+        // The muted Mic and the strip that is gone record silence.
+        assert!(seen[0].iter().chain(&seen[3]).all(|v| *v == 0.0));
+        // Music after its fader, and the Headset bus it alone is sent to.
+        for out in [&seen[1], &seen[2]] {
+            assert!(out
+                .chunks(2)
+                .all(|f| close(f[0], 0.5 * music) && close(f[1], -0.25 * music)));
+        }
+    }
+
+    #[test]
+    fn a_recording_follows_its_strip_by_name_not_its_id() {
+        use crate::dsp::params::attach_record_taps;
+        use crate::dsp::record::RecordTap;
+        let taps = vec![Arc::new(RecordTap::new(
+            TrackSource::Strip("Music".into()),
+            2,
+        ))];
+        let attached = |m: &MixerState| {
+            let mut params = build_rt_params(m, SoloMode::Exclusive, &NoPorts, None);
+            attach_record_taps(Arc::get_mut(&mut params).unwrap(), m, &taps);
+            params
+                .strips
+                .iter()
+                .map(|s| s.record.is_some())
+                .collect::<Vec<_>>()
+        };
+        let mut st = state();
+        assert_eq!(attached(&st), [false, true]);
+        // Another setup, where a strip called Game has Music's id.
+        st.strips[1].name = "Game".into();
+        assert_eq!(attached(&st), [false, false]);
+        // Music renamed Game: the controller renames the tap first.
+        taps[0].rename("game");
+        assert_eq!(attached(&st), [false, true]);
+    }
+
+    #[test]
+    fn a_recording_keeps_its_channels_when_the_strip_has_fewer() {
+        use crate::dsp::params::attach_record_taps;
+        use crate::dsp::record::RecordTap;
+        // The mono Mic, recorded as it was when it had two channels.
+        let st = state();
+        let taps = vec![
+            Arc::new(RecordTap::new(TrackSource::Strip("Mic".into()), 2)),
+            Arc::new(RecordTap::new(TrackSource::Bus("Stream".into()), 3)),
+        ];
+        let mut params = build_rt_params(&st, SoloMode::Exclusive, &NoPorts, None);
+        attach_record_taps(Arc::get_mut(&mut params).unwrap(), &st, &taps);
+        let mut rig = Rig::new(&st, 32);
+        rig.inputs[0][0].fill(0.5);
+        rig.settle(&params);
+        let mut out = Vec::new();
+        taps[0].take(&mut out);
+        assert!(out
+            .chunks(2)
+            .last()
+            .is_some_and(|f| close(f[0], 0.5) && f[1] == 0.0));
+        out.clear();
+        taps[1].take(&mut out);
+        assert!(out.chunks(3).last().is_some_and(|f| f[2] == 0.0));
     }
 }

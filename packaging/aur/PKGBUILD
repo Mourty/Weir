@@ -30,7 +30,7 @@ depends=(
   'pipewire'
   'wireplumber'
 )
-makedepends=('cargo' 'clang')
+makedepends=('cargo' 'clang' 'cmake')
 # libspa compiles a little C with cc, and with makepkg's link-time
 # optimization on, those objects do not link into a Rust program. The build
 # keeps no debug info (see _cargo_env), so a debug package would be empty.

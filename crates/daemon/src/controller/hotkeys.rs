@@ -46,6 +46,7 @@ fn allowed_in_hotkey(req: &Request) -> bool {
             | Request::ListMeterColors
             | Request::SaveMeterColors(_)
             | Request::DeleteMeterColors(_)
+            | Request::SetRecorder(_)
             | Request::History
             | Request::Subscribe(_)
             | Request::Unsubscribe(_)

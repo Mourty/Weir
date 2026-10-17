@@ -13,6 +13,10 @@ accepted = [
     # which comes with the HTTPS library the update check uses.
     "CDLA-Permissive-2.0",
     "ISC",
+    # The MP3 encoder's bindings (mp3lame-encoder). LAME itself, built in
+    # from vendor/mp3lame-sys, is LGPL too: its license goes with Weir as
+    # LAME-COPYING.txt. Weir's source is open, so LAME can be swapped.
+    "LGPL-3.0",
     "MIT",
     "MPL-2.0",
     "OFL-1.1",

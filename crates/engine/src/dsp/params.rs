@@ -13,12 +13,13 @@ use std::sync::Arc;
 use weir_protocol::{
     db_to_linear, linear_to_db, Bus, BusId, ChannelPosition, Compressor, CompressorMeter, Denoise,
     Gate, GateMeter, Insert, InsertFallback, InsertPoint, Limiter, MixerState, Side, SoloMode,
-    Strip, StripId, StripOrBus,
+    Strip, StripId, StripOrBus, TrackSource,
 };
 
 use super::fx::{DenoiseBank, EqParams, FxState, RtDuck};
 use super::handoff::Handoff;
 use super::mapping::{channel_matrix, surround_feed_row, wants_surround_feed};
+use super::record::RecordTap;
 use super::sounds::{SoundBank, SoundQueue};
 
 /// Peak levels in dBFS per channel, for strips and buses, keyed by id.
@@ -194,6 +195,8 @@ pub struct RtStrip {
     pub denoise_bank: Option<Arc<DenoiseBank>>,
     /// Its external effects.
     pub insert: RtInsert,
+    /// Where it is recorded to, while it is.
+    pub record: Option<Arc<RecordTap>>,
 }
 
 impl RtStrip {
@@ -242,6 +245,8 @@ pub struct RtBus {
     pub delay_ms: f32,
     /// Its external effects.
     pub insert: RtInsert,
+    /// Where it is recorded to, while it is.
+    pub record: Option<Arc<RecordTap>>,
 }
 
 /// The complete immutable snapshot handed to the real-time thread.
@@ -260,6 +265,9 @@ pub struct RtParams {
     pub sound_ports: [PortPtr; 2],
     /// Per-cycle cache of their buffers.
     pub sound_bufs: [RtCell<*mut f32>; 2],
+    /// Every strip and bus being recorded, including any no longer in the
+    /// mixer, which record silence until the recording stops.
+    pub record: Vec<Arc<RecordTap>>,
 }
 
 // Raw port pointers are only dereferenced by PipeWire on its own thread; the
@@ -420,7 +428,25 @@ pub fn build_rt_params(
         sound_queue,
         sound_ports: [ports.sound_port(0), ports.sound_port(1)],
         sound_bufs: std::array::from_fn(|_| RtCell::new(std::ptr::null_mut())),
+        record: Vec::new(),
     })
+}
+
+/// Have `p`, a snapshot of `m`, record into `taps`: each strip and bus
+/// being recorded finds its own, by name.
+pub fn attach_record_taps(p: &mut RtParams, m: &MixerState, taps: &[Arc<RecordTap>]) {
+    let find = |source: TrackSource| taps.iter().find(|t| t.records(&source)).cloned();
+    for s in &mut p.strips {
+        s.record = m
+            .strip(s.id)
+            .and_then(|strip| find(TrackSource::Strip(strip.name.clone())));
+    }
+    for b in &mut p.buses {
+        b.record = m
+            .bus(b.id)
+            .and_then(|bus| find(TrackSource::Bus(bus.name.clone())));
+    }
+    p.record = taps.to_vec();
 }
 
 /// One bus of a snapshot. `before` is the same bus in the previous one,
@@ -445,6 +471,7 @@ fn build_bus(b: &Bus, ports: &dyn PortResolver, before: Option<&RtBus>) -> RtBus
         limiter: b.limiter,
         delay_ms: b.delay_ms,
         insert: RtInsert::new(StripOrBus::Bus(b.id), &b.insert, n, ports),
+        record: None,
         positions,
     }
 }
@@ -547,6 +574,7 @@ fn build_strip(
         compressor: s.compressor,
         denoise_bank,
         insert: RtInsert::new(StripOrBus::Strip(s.id), &s.insert, n, ports),
+        record: None,
         positions,
     }
 }

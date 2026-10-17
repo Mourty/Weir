@@ -19,6 +19,7 @@ mod display;
 mod history;
 mod hotkeys;
 mod login;
+mod recorder;
 mod seen_apps;
 mod server;
 mod sounds;
@@ -124,6 +125,8 @@ async fn main() -> Result<()> {
         loaded.settings,
         loaded.app_rules,
     ));
+    controller.set_self();
+    controller.set_recorder_settings(loaded.recorder);
     controller.restore_current(loaded.scene, loaded.setup);
     controller.apply_engine_options();
     controller.push_sounds();
@@ -224,6 +227,7 @@ struct Loaded {
     app_rules: Vec<AppRule>,
     scene: Option<String>,
     setup: Option<String>,
+    recorder: weir_protocol::RecorderSettings,
     /// There was no configuration, so this is the default layout.
     first_run: bool,
     /// Saved setups hold whole mixers still; see [`config::split_setups`].
@@ -252,6 +256,7 @@ fn load_config(paths: &config::Paths, reset: bool) -> Result<Loaded> {
                 app_rules: cfg.app_rules,
                 scene: cfg.current_scene,
                 setup: cfg.current_setup,
+                recorder: cfg.recorder,
                 first_run: false,
                 split_setups: report.split_setups,
             }
@@ -264,6 +269,7 @@ fn load_config(paths: &config::Paths, reset: bool) -> Result<Loaded> {
                 app_rules: Vec::new(),
                 scene: None,
                 setup: None,
+                recorder: Default::default(),
                 first_run: true,
                 split_setups: false,
             }
@@ -500,6 +506,8 @@ async fn shut_down(
     while controller.window_attached() && tokio::time::Instant::now() < deadline {
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
+    // A recording finishes its files before the engine goes.
+    tokio::task::block_in_place(|| controller.stop_recording());
     controller.stop_hearing_apps();
     controller.save_if_dirty();
     if let Some(engine) = controller.engine() {

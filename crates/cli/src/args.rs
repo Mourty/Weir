@@ -215,6 +215,14 @@ pub enum Cmd {
         #[command(subcommand)]
         action: Option<MeterColorsCmd>,
     },
+    /// Show what is recording, start or stop recording, or choose the
+    /// strips and buses to record.
+    Record {
+        #[command(subcommand)]
+        action: Option<RecordCmd>,
+    },
+    /// Show how recordings are made, or change it.
+    Recorder(RecorderArgs),
     /// List the hotkeys, and how keys reach Weir on this desktop.
     Hotkeys,
     /// Add, change, remove or press a hotkey.
@@ -567,6 +575,60 @@ pub enum EqCmd {
     },
     /// Delete a preset of your own.
     Delete { name: String },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum RecordCmd {
+    /// Start recording the strips and buses ticked for it.
+    Start,
+    /// Stop recording, and finish the files.
+    Stop,
+    /// Start recording, or stop.
+    Toggle,
+    /// Tick a strip for recording, or untick it: on, off or toggle (on
+    /// when left out).
+    Strip {
+        strip: String,
+        state: Option<String>,
+    },
+    /// Tick a bus for recording, or untick it: on, off or toggle (on when
+    /// left out).
+    Bus { bus: String, state: Option<String> },
+}
+
+/// How recordings are made. Without options, shows it.
+#[derive(clap::Args, Debug)]
+pub struct RecorderArgs {
+    /// wav, flac, mp3, opus or vorbis.
+    #[arg(long)]
+    pub format: Option<String>,
+    /// Bits per sample for WAV and FLAC (16 or 24), kilobits a second for
+    /// a stereo track for the others.
+    #[arg(long)]
+    pub quality: Option<u32>,
+    /// Where recordings go: a whole path, or ~/ and a path. "default" for
+    /// Weir recordings in your Music folder.
+    #[arg(long)]
+    pub folder: Option<String>,
+    /// The file names, such as "{date} {time}/{track}". They can hold
+    /// {date}, {time}, {number}, {track}, {part} and {setup}; a / makes a
+    /// folder.
+    #[arg(long)]
+    pub names: Option<String>,
+    /// "files" for a file per track, "one-file" for one .mka holding them
+    /// all.
+    #[arg(long)]
+    pub layout: Option<String>,
+    /// Start new files every this many minutes; 0 never does.
+    #[arg(long)]
+    pub split: Option<u32>,
+    /// WAV only: write when each file starts into it (Broadcast Wave), on
+    /// or off.
+    #[arg(long)]
+    pub bwf: Option<String>,
+    /// The number {number} gives the next recording.
+    #[arg(long)]
+    pub number: Option<u32>,
 }
 
 #[derive(Subcommand, Debug)]

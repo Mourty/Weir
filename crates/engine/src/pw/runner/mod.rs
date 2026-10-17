@@ -22,6 +22,8 @@ use super::graph::Graph;
 use super::volume::AppVolume;
 use super::{ENGINE_NODE_NAME, RETURN_NODE_NAME};
 use crate::dsp::handoff::Handoff;
+use crate::dsp::params::attach_record_taps;
+use crate::dsp::record::RecordTap;
 use crate::dsp::sounds::SoundBank;
 use crate::dsp::{build_rt_params, PortPtr, PortResolver, RtParams};
 use devices::{DeviceKey, PendingMove, VirtualNode};
@@ -236,6 +238,8 @@ struct Runner {
     sounds: Arc<SoundBank>,
     /// The device they play on, by `node.name`.
     sounds_device: Option<String>,
+    /// Where strips and buses are recorded to, while they are.
+    record_taps: Vec<Arc<RecordTap>>,
     /// What was last reported to the daemon, to report only changes.
     last_devices: Vec<DeviceInfo>,
     last_apps: Vec<AppStream>,
@@ -317,6 +321,7 @@ pub(super) fn run(
         old_params: VecDeque::new(),
         sounds: Arc::default(),
         sounds_device: None,
+        record_taps: Vec::new(),
         last_devices: Vec::new(),
         last_apps: Vec::new(),
         last_status: None,
@@ -471,6 +476,10 @@ impl Runner {
             }
             EngineCommand::SetSounds(bank) => {
                 self.sounds = bank;
+                self.publish_params();
+            }
+            EngineCommand::SetRecordTaps(taps) => {
+                self.record_taps = taps;
                 self.publish_params();
             }
             EngineCommand::SetSoundsDevice(device) => {
@@ -693,6 +702,7 @@ impl Runner {
                 build_rt_params(&self.state, self.options.solo, &ports, Some(&current));
             if let Some(p) = Arc::get_mut(&mut params) {
                 p.sounds = self.sounds.clone();
+                attach_record_taps(p, &self.state, &self.record_taps);
             }
             params
         };

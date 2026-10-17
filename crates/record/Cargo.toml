@@ -1,0 +1,22 @@
+[package]
+name = "weir-record"
+description = "Writing Weir's recordings: WAV, FLAC, MP3, Opus and Ogg Vorbis files, and multi-track Matroska"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+weir-protocol.workspace = true
+flacenc.workspace = true
+mp3lame-encoder.workspace = true
+opus.workspace = true
+ogg.workspace = true
+vorbis_rs.workspace = true
+rubato.workspace = true
+
+[dev-dependencies]
+# Reading recordings back, Matroska included.
+symphonia = { workspace = true, features = ["mkv"] }

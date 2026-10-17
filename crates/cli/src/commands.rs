@@ -5,7 +5,7 @@
 
 use crate::args::{
     BusArgs, EqCmd, EqTarget, HotkeyCmd, HotkeyGroupCmd, HotkeyOpts, LibraryCmd, MeterColorsCmd,
-    SoundCmd, StripArgs,
+    RecordCmd, RecorderArgs, SoundCmd, StripArgs,
 };
 use crate::client::Client;
 use crate::parse::*;
@@ -589,6 +589,114 @@ pub fn update(c: &mut Client, check: bool, json: bool) -> Result<()> {
         return print_json(&st.update);
     }
     show::update(&st.update, &st.settings);
+    Ok(())
+}
+
+/// Show the recording, start or stop it, or tick strips and buses.
+pub fn record(c: &mut Client, action: Option<RecordCmd>, json: bool) -> Result<()> {
+    let state =
+        |s: Option<String>| -> Result<Flag> { Ok(flag(s.as_deref())?.unwrap_or(Flag::Set(true))) };
+    let req = match action {
+        None => {
+            let st = c.state()?;
+            if json {
+                return print_json(&st.recording);
+            }
+            show::recording(&st.recording, &st.recorder);
+            return Ok(());
+        }
+        Some(RecordCmd::Start) => Some(Flag::Set(true)),
+        Some(RecordCmd::Stop) => Some(Flag::Set(false)),
+        Some(RecordCmd::Toggle) => Some(Flag::Toggle),
+        Some(RecordCmd::Strip { strip, state: s }) => {
+            let on = state(s)?;
+            let strip = find_strip(&c.state()?.mixer, &strip)?;
+            c.call(&Request::SetRecordTrack(SetRecordTrackParams {
+                strip: Some(strip),
+                bus: None,
+                on,
+            }))?;
+            None
+        }
+        Some(RecordCmd::Bus { bus, state: s }) => {
+            let on = state(s)?;
+            let bus = find_bus(&c.state()?.mixer, &bus)?;
+            c.call(&Request::SetRecordTrack(SetRecordTrackParams {
+                strip: None,
+                bus: Some(bus),
+                on,
+            }))?;
+            None
+        }
+    };
+    if let Some(on) = req {
+        c.call(&Request::SetRecording(SetRecordingParams { on }))?;
+    }
+    let st = c.state()?;
+    if json {
+        return print_json(&st.recording);
+    }
+    show::recording(&st.recording, &st.recorder);
+    Ok(())
+}
+
+/// Show how recordings are made, or change it.
+pub fn recorder(c: &mut Client, a: RecorderArgs, json: bool) -> Result<()> {
+    let format = a
+        .format
+        .as_deref()
+        .map(|f| match f.to_ascii_lowercase().as_str() {
+            "wav" => Ok(RecordFormat::Wav),
+            "flac" => Ok(RecordFormat::Flac),
+            "mp3" => Ok(RecordFormat::Mp3),
+            "opus" => Ok(RecordFormat::Opus),
+            "vorbis" | "ogg" => Ok(RecordFormat::Vorbis),
+            _ => Err(anyhow!(
+                "expected wav, flac, mp3, opus or vorbis, got '{f}'"
+            )),
+        })
+        .transpose()?;
+    let layout = a
+        .layout
+        .as_deref()
+        .map(|l| match l.to_ascii_lowercase().as_str() {
+            "files" => Ok(RecordLayout::Files),
+            "one-file" | "multitrack" | "mka" => Ok(RecordLayout::Multitrack),
+            _ => Err(anyhow!("expected files or one-file, got '{l}'")),
+        })
+        .transpose()?;
+    let mut patch = RecorderPatch {
+        folder: a
+            .folder
+            .map(|f| if f == "default" { String::new() } else { f }),
+        names: a.names,
+        format,
+        layout,
+        split_minutes: a.split,
+        bwf: flag(a.bwf.as_deref())?,
+        next_number: a.number,
+        ..Default::default()
+    };
+    if let Some(q) = a.quality {
+        let lossless = match format {
+            Some(f) => f.lossless(),
+            None => c.state()?.recorder.format.lossless(),
+        };
+        if lossless {
+            patch.bit_depth = Some(q);
+        } else {
+            patch.kbps = Some(q);
+        }
+    }
+    let settings: RecorderSettings = if patch == RecorderPatch::default() {
+        c.state()?.recorder
+    } else {
+        serde_json::from_value(c.call(&Request::SetRecorder(patch))?)?
+    };
+    if json {
+        return print_json(&settings);
+    }
+    show::recorder(&settings);
     Ok(())
 }
 

@@ -28,12 +28,13 @@ protocol is complete by construction and exercised every time someone moves
 a fader. It also means the audio devices stay put while the window is
 closed, and the tray icon can live in the process that keeps running.
 
-The code is a Cargo workspace of five crates:
+The code is a Cargo workspace of six crates:
 
 | Crate | Builds | What it is |
 |---|---|---|
 | `crates/protocol` | a library | The data model, every request and notification, and the maths clients must agree with the engine on (equalizer curves, the compressor's curve, scenes). No PipeWire, no UI. |
 | `crates/engine` | a library | The PipeWire side and the real-time mixer. `dsp` is pure Rust and testable without PipeWire; `pw` owns the PipeWire connection. |
+| `crates/record` | a library | Writing recordings: WAV, FLAC, MP3, Opus and Ogg Vorbis files, and Matroska (`.mka`) files holding several tracks. |
 | `crates/daemon` | `weir-daemon` | The state, the configuration files, undo, application rules, scenes and setups, the socket server and the tray icon. |
 | `crates/cli` | `weirctl` | The command line client. |
 | `crates/gui` | `weir` | The window, in egui. |
@@ -169,6 +170,16 @@ outputs to "to effects", and replaced by what came back through "from
 effects", taken from the return node's hand-off. After a strip's fader,
 the fader is applied before sending, and what comes back is mixed at
 unity, ducking and send levels still applying.
+
+**Recording** taps a strip after its fader, as its meter reads it, and a
+bus as it plays. Each recorded strip or bus has a `RecordTap`, a ring of
+atomics holding eight seconds, which the real-time thread writes every
+cycle: silence when its strip is quiet, muted or gone, so every track of a
+recording has the same length. If the recorder falls behind and a ring
+fills, that cycle's samples are dropped and counted, and the recorder puts
+as much silence in their place, so the tracks keep time. Taps find their
+strip or bus by name when a snapshot is built, never by id, since another
+setup can give the id to another strip.
 
 **Meters** are atomics the real-time thread raises to each new peak; the
 daemon reads and resets them 30 times a second. The **spectrum** behind
@@ -394,6 +405,25 @@ the usual paths: library files, `edit_eq_presets`, `set_app_rules`,
 look lives in the window's `gui.toml`, so the window hands it in to export
 and takes it back in a `window_look` notification; the file dialogs are the
 desktop's own, through the portal's FileChooser.
+
+**Recordings** (`recorder.rs`, `controller/recorder.rs`) are written by a
+thread of their own, which reads the taps ten times a second and hands the
+samples to `weir-record`. It writes each track up to where the current
+part ends, and starts the next part only when every track has reached it,
+so parts line up to the sample. A new part comes every `split_minutes`,
+before a WAV file reaches 4 GB, and when the sample rate changes. Stopping
+reads what the taps still hold, pads every track to the same length and
+finishes the files before `set_recording` answers. Files are written under
+their real names and kept playable as they grow (a WAV header's sizes are
+brought up to date every five seconds; the other formats play as far as
+they got), so a crash leaves a file that plays up to near where it
+stopped. The `.mka` writer is Weir's own: one
+track per strip or bus, blocks interleaved in clusters of about a second,
+`CodecDelay` and `DiscardPadding` so MP3 and Opus start and end on the
+right sample. MP3 is LAME (built in, `vendor/mp3lame-sys`), FLAC is
+flacenc in Rust, Opus and Vorbis are libopus and libvorbis, built in
+too. The recorder's settings live in the configuration; strips and buses
+are ticked by name and follow renames.
 
 **Update checks** (`updates.rs`) are Weir's only network access, and only
 when the person said yes (`update_check`, asked once by the window):

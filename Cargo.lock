@@ -4838,6 +4838,7 @@ dependencies = [
  "ureq",
  "weir-engine",
  "weir-protocol",
+ "weir-record",
  "x11rb",
  "x11rb-protocol",
  "zip",

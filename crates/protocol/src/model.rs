@@ -1439,6 +1439,12 @@ pub struct FullState {
     /// The ways of coloring meters: Weir's own first, then the user's.
     #[serde(default)]
     pub meter_colors: Vec<crate::meter_colors::MeterColors>,
+    /// How recordings are made.
+    #[serde(default)]
+    pub recorder: crate::recorder::RecorderSettings,
+    /// The recording under way, or the last one.
+    #[serde(default)]
+    pub recording: crate::recorder::RecordingStatus,
     /// Applications heard playing in the last [`SEEN_APPS_DAYS`] days, the
     /// ones playing now included, most recently heard first.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

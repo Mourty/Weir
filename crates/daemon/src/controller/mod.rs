@@ -19,6 +19,7 @@ mod handlers;
 pub mod hotkeys;
 mod meter_colors;
 mod names;
+mod recorder;
 mod rules;
 mod sounds;
 mod transfer;
@@ -35,7 +36,7 @@ use crate::tray::TrayCommand;
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock, Weak};
 use tokio::sync::broadcast;
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::{debug, info, warn};
@@ -108,6 +109,10 @@ struct Inner {
     update: UpdateStatus,
     /// Applications heard lately, for making rules.
     seen_apps: crate::seen_apps::SeenApps,
+    /// How recordings are made.
+    recorder: RecorderSettings,
+    /// The recording under way, or the last one.
+    recording: RecordingStatus,
 }
 
 /// The daemon's state and its request handlers, shared by every
@@ -144,6 +149,10 @@ pub struct Controller {
     /// Asks for a check for Weir's newest release; the update task
     /// listens.
     update_wanted: tokio::sync::Notify,
+    /// The controller itself, for threads that report back to it.
+    me: OnceLock<Weak<Controller>>,
+    /// The recording under way, or the last one until another starts.
+    recording: Mutex<Option<crate::recorder::Recording>>,
     /// The sounds asked to play, by name, for tests to check.
     #[cfg(test)]
     pub(crate) played: Mutex<Vec<String>>,
@@ -213,6 +222,8 @@ impl Controller {
                     &paths.backups_dir,
                     crate::seen_apps::now_ms(),
                 ),
+                recorder: RecorderSettings::default(),
+                recording: RecordingStatus::default(),
             }),
             engine,
             notify,
@@ -227,6 +238,8 @@ impl Controller {
             shortcut_settings: tokio::sync::Notify::new(),
             popups: Mutex::new(None),
             update_wanted: tokio::sync::Notify::new(),
+            me: OnceLock::new(),
+            recording: Mutex::new(None),
             #[cfg(test)]
             played: Mutex::new(Vec::new()),
         }
@@ -361,6 +374,7 @@ impl Controller {
                     app_rules: inner.app_rules.clone(),
                     current_scene: inner.scene.clone(),
                     current_setup: inner.setup.clone(),
+                    recorder: inner.recorder.clone(),
                     ..Default::default()
                 }
             };
@@ -590,6 +604,7 @@ impl Controller {
         };
         self.follow_renames(&renamed);
         self.rules_follow_renames(&renamed);
+        self.recorder_follow_renames(&renamed);
         self.push_state(state);
         if let Some(info) = history {
             self.announce(Notification::HistoryChanged(info));
@@ -644,6 +659,7 @@ impl Controller {
         };
         self.follow_renames(&renamed);
         self.rules_follow_renames(&renamed);
+        self.recorder_follow_renames(&renamed);
         info!(
             "{} {}",
             if back { "undid" } else { "redid" },

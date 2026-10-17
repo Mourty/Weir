@@ -498,6 +498,33 @@ fn clean_name(name: &str) -> String {
         .to_string()
 }
 
+/// A length of time as a clock: `0:42`, `12:34`, `1:02:03`.
+pub fn clock(seconds: f64) -> String {
+    let s = seconds.max(0.0) as u64;
+    let (h, m, s) = (s / 3600, s / 60 % 60, s % 60);
+    if h > 0 {
+        format!("{h}:{m:02}:{s:02}")
+    } else {
+        format!("{m}:{s:02}")
+    }
+}
+
+/// A size in words: `412 MB`, `1.2 GB`.
+pub fn size_words(bytes: u64) -> String {
+    const UNITS: [&str; 5] = ["bytes", "KB", "MB", "GB", "TB"];
+    let mut v = bytes as f64;
+    let mut unit = 0;
+    while v >= 1000.0 && unit < UNITS.len() - 1 {
+        v /= 1000.0;
+        unit += 1;
+    }
+    match unit {
+        0 => format!("{bytes} bytes"),
+        _ if v < 10.0 => format!("{v:.1} {}", UNITS[unit]),
+        _ => format!("{v:.0} {}", UNITS[unit]),
+    }
+}
+
 /// What is wrong with a file name pattern, if anything.
 pub fn record_names_problem(pattern: &str) -> Option<String> {
     if pattern.chars().count() > 200 {
@@ -589,6 +616,16 @@ mod tests {
         assert_eq!(recording_files(&p, &tracks[..1]), ["x/Mic.flac"]);
         let p = parts("{track}", RecordLayout::Multitrack);
         assert_eq!(recording_files(&p, &[]), ["Recording.mka"]);
+    }
+
+    #[test]
+    fn times_and_sizes_in_words() {
+        assert_eq!(clock(42.9), "0:42");
+        assert_eq!(clock(754.0), "12:34");
+        assert_eq!(clock(3723.0), "1:02:03");
+        assert_eq!(size_words(512), "512 bytes");
+        assert_eq!(size_words(412_000_000), "412 MB");
+        assert_eq!(size_words(1_234_000_000), "1.2 GB");
     }
 
     #[test]

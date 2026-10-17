@@ -66,8 +66,9 @@ impl RecordTap {
 
     /// The real-time thread's side: add `n` frames, each channel's from
     /// `channel(c)` times `gain` (when not empty), silence where it gives
-    /// none. `cycle` is the real-time thread's count of cycles.
-    pub(crate) fn write<'a>(
+    /// none. `cycle` is the real-time thread's count of cycles. Only the
+    /// engine writes, and tests standing in for it.
+    pub fn write<'a>(
         &self,
         cycle: u64,
         n: usize,

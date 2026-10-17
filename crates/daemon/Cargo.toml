@@ -15,6 +15,7 @@ path = "src/main.rs"
 [dependencies]
 weir-protocol.workspace = true
 weir-engine.workspace = true
+weir-record.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true

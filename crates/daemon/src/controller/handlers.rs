@@ -53,6 +53,7 @@ const CAPABILITIES: &[&str] = &[
     "diagnostics",
     "updates",
     "meter_colors",
+    "recorder",
 ];
 
 impl Controller {
@@ -124,6 +125,9 @@ impl Controller {
             Request::ListMeterColors => Ok(to_json(&self.meter_colors())),
             Request::SaveMeterColors(c) => self.save_meter_colors(c),
             Request::DeleteMeterColors(p) => self.delete_meter_colors(p),
+            Request::SetRecorder(p) => self.set_recorder(p),
+            Request::SetRecordTrack(p) => self.set_record_track(p),
+            Request::SetRecording(p) => self.set_recording(p),
             Request::ListHotkeys => Ok(to_json(&self.hotkeys_info())),
             Request::SetHotkey(h) => self.set_hotkey(h),
             Request::RemoveHotkey(r) => self.remove_hotkey(r),
@@ -164,6 +168,7 @@ impl Controller {
         let library = self.library();
         let hotkeys = self.hotkeys_info();
         let update = self.update_status();
+        let recording = self.recording_status();
         let inner = self.inner.lock().unwrap();
         FullState {
             mixer: inner.mixer.clone(),
@@ -180,6 +185,8 @@ impl Controller {
             update,
             seen_apps: inner.seen_apps.list().to_vec(),
             meter_colors,
+            recorder: inner.recorder.clone(),
+            recording,
         }
     }
 

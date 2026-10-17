@@ -1707,3 +1707,65 @@ fn meter_colors_are_kept_shared_and_default_stays() {
     let list = a.ok("delete_meter_colors", json!({"name": "WARM"}));
     assert_eq!(list.as_array().unwrap().len(), 1);
 }
+
+#[test]
+fn recorder_settings_keep_names_and_follow_renames() {
+    let mut r = Rig::new("recorder");
+    // Strips and buses are ticked by id or name, and kept by name.
+    r.ok("set_record_track", json!({"strip": "Mic", "on": true}));
+    let s = r.ok("set_record_track", json!({"bus": 3, "on": "toggle"}));
+    assert_eq!(
+        s["tracks"],
+        json!([{"strip": "Mic"}, {"bus": "Stream Mic"}])
+    );
+    assert_eq!(
+        r.code("set_record_track", json!({"strip": "Nobody", "on": true})),
+        RpcError::APPLICATION
+    );
+    // A list given whole may name strips another setup has; ids become
+    // names.
+    let s = r.ok(
+        "set_recorder",
+        json!({"tracks": [{"strip": 2}, {"strip": "Guitar"}], "format": "mp3", "kbps": 300,
+               "layout": "multitrack", "names": "{date}/{number}", "split_minutes": 30}),
+    );
+    assert_eq!(
+        s["tracks"],
+        json!([{"strip": "Music"}, {"strip": "Guitar"}])
+    );
+    assert_eq!(s["kbps"], 300);
+    // Nothing that would leave the folder, or a folder that is not a whole
+    // path.
+    let bad = [
+        json!({"names": "../x"}),
+        json!({"names": "{song}"}),
+        json!({"folder": "recordings"}),
+        json!({"bit_depth": 20}),
+        json!({"split_minutes": 100000}),
+    ];
+    for b in bad {
+        assert_eq!(r.code("set_recorder", b), RpcError::INVALID_PARAMS);
+    }
+    // Renaming a strip renames its track.
+    r.ok("set_strip", json!({"id": "Music", "name": "Songs"}));
+    let state = r.ok("get_state", json!({}));
+    assert_eq!(state["recorder"]["tracks"][0], json!({"strip": "Songs"}));
+    assert_eq!(state["recording"]["recording"], false);
+    assert!(state["recording"]["folder"]
+        .as_str()
+        .unwrap()
+        .ends_with("Weir recordings"));
+    // Without an engine there is nothing to record.
+    assert_eq!(
+        r.code("set_recording", json!({"on": true})),
+        RpcError::APPLICATION
+    );
+    // Kept with the configuration.
+    r.c.save_if_dirty();
+    let text = std::fs::read_to_string(r.dir.join("config.toml")).unwrap();
+    assert!(
+        text.contains("[recorder]") && text.contains("Songs"),
+        "{text}"
+    );
+    let _ = std::fs::remove_dir_all(&r.dir);
+}

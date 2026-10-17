@@ -45,6 +45,43 @@ impl BusSources {
     }
 }
 
+/// What the number above each meter says.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MeterNumber {
+    /// How loud it is now, steadied a little so it can be read.
+    #[default]
+    Live,
+    /// The loudest it has been since the number was last clicked.
+    Peak,
+}
+
+impl MeterNumber {
+    /// Every choice, in the order Preferences lists them.
+    pub const ALL: [MeterNumber; 2] = [Self::Live, Self::Peak];
+
+    /// Its name in Preferences.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Live => "How loud it is now",
+            Self::Peak => "The highest peak",
+        }
+    }
+
+    /// What it shows, in a line under its name.
+    pub fn description(self) -> &'static str {
+        match self {
+            Self::Live => {
+                "Follows the meter, steadied a little so it can be read, red at 0 dB and over."
+            }
+            Self::Peak => {
+                "The loudest it has been since you last clicked the number, red once it \
+                 reached 0 dB. Click it to start again."
+            }
+        }
+    }
+}
+
 /// Light or dark.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -114,8 +151,10 @@ pub struct Prefs {
     pub show_app_volume: bool,
     /// A dB scale beside each meter.
     pub meter_scale: bool,
-    /// The highest peak, as a number above each meter.
+    /// A number above each meter.
     pub meter_peak: bool,
+    /// What that number says.
+    pub meter_number: MeterNumber,
     /// The name of the meter colors meters are drawn in.
     pub meter_colors: String,
     /// The live spectrum behind the equalizer curve.
@@ -144,6 +183,7 @@ impl Default for Prefs {
             show_app_volume: true,
             meter_scale: true,
             meter_peak: true,
+            meter_number: MeterNumber::default(),
             meter_colors: weir_protocol::METER_COLORS_DEFAULT.into(),
             spectrum: SpectrumView::default(),
             strip_fx_size: None,

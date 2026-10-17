@@ -7,7 +7,9 @@ use super::transfer::One;
 use super::App;
 use crate::theme;
 use crate::widgets::{self, MeterPaint};
-use egui::{pos2, vec2, Align2, Color32, CornerRadius, FontId, Rect, RichText, Sense, Stroke, Ui};
+use egui::{
+    pos2, vec2, Align2, Color32, CornerRadius, FontId, Rect, Response, RichText, Sense, Stroke, Ui,
+};
 use std::time::{Duration, Instant};
 use weir_protocol::*;
 
@@ -25,6 +27,8 @@ const TAB_W: f32 = 76.0;
 const TAB_H: f32 = 18.0;
 /// How far a line is dragged sideways off the meter to remove it.
 const DRAG_OFF: f32 = 60.0;
+/// The round button in each band that changes its color.
+const PENCIL_D: f32 = 20.0;
 
 /// What the Meters page is in the middle of, besides editing.
 #[derive(Debug, Clone, PartialEq)]
@@ -149,7 +153,7 @@ impl App {
                         "Drag a line to move it.",
                         "Click the meter to add a line there.",
                         "Drag a line off the meter, or right-click it, to remove it.",
-                        "Click a band's color to change it.",
+                        "Click the pencil in a band to change its color.",
                     ] {
                         explain(ui, &format!("• {tip}"));
                     }
@@ -316,8 +320,8 @@ fn name_problem(state: &FullState, name: &str, keeping: Option<&String>) -> Opti
 }
 
 /// A tall meter showing `c`'s bands, with a scale, a tab for each line and
-/// a color button in each band. Weir's own is only shown; others can be
-/// edited. Returns whether it was.
+/// a pencil in each band to change its color. Weir's own is only shown;
+/// others can be edited. Returns whether it was.
 fn editor(ui: &mut Ui, c: &mut MeterColors, dragging: &mut Option<usize>) -> bool {
     let editable = !c.builtin;
     let size = vec2(EDIT_SCALE_W + 6.0 + EDIT_W + 6.0 + TAB_W, EDIT_H);
@@ -411,38 +415,15 @@ fn editor(ui: &mut Ui, c: &mut MeterColors, dragging: &mut Option<usize>) -> boo
             }
             let at = Rect::from_center_size(
                 pos2(meter.center().x, (top + bottom) / 2.0),
-                vec2(26.0, 18.0),
+                vec2(PENCIL_D, PENCIL_D),
             );
-            let mut child = ui.new_child(egui::UiBuilder::new().max_rect(at));
             let [r, g, b] = parse_hex_color(&c.colors[k]).unwrap_or([128, 128, 128]);
             let mut color = Color32::from_rgb(r, g, b);
-            let button = egui::widgets::color_picker::color_edit_button_srgba(
-                &mut child,
-                &mut color,
-                egui::widgets::color_picker::Alpha::Opaque,
-            )
-            .on_hover_text(format!(
-                "Click to change the color {}",
-                band_words(lo, hi, k == 0, k + 1 == c.colors.len())
-            ));
-            // The button is the band's own color: outline it so it shows.
-            let ring = if button.hovered() {
-                p.accent
-            } else {
-                Color32::WHITE
-            };
-            painter.rect_stroke(
-                button.rect.expand(1.0),
-                CornerRadius::same(4),
-                Stroke::new(1.0_f32, Color32::from_black_alpha(160)),
-                egui::StrokeKind::Outside,
-            );
-            painter.rect_stroke(
-                button.rect,
-                CornerRadius::same(3),
-                Stroke::new(1.5_f32, ring),
-                egui::StrokeKind::Outside,
-            );
+            let button = pencil_color_button(ui, ui.id().with(("band", k)), at, &mut color)
+                .on_hover_text(format!(
+                    "Click to change the color {}",
+                    band_words(lo, hi, k == 0, k + 1 == c.colors.len())
+                ));
             if button.changed() {
                 c.colors[k] = hex_color([color.r(), color.g(), color.b()]);
                 changed = true;
@@ -567,6 +548,62 @@ fn editor(ui: &mut Ui, c: &mut MeterColors, dragging: &mut Option<usize>) -> boo
 
 /// Where a band is, in words: "from -12 to 0 dB", "below -12 dB",
 /// "from 0 dB up".
+/// A round button with a pencil, drawn on a band of `color`, that opens
+/// egui's color picker under it. A swatch of the band's own color would not
+/// show on it, so it is dark and see-through with a white ring.
+fn pencil_color_button(ui: &mut Ui, id: egui::Id, rect: Rect, color: &mut Color32) -> Response {
+    let mut response = ui.interact(rect, id, Sense::click());
+    let popup_id = id.with("popup");
+    let open = egui::Popup::is_id_open(ui.ctx(), popup_id);
+    let ring = if open || response.hovered() {
+        theme::p().accent
+    } else {
+        Color32::WHITE
+    };
+    let painter = ui.painter();
+    let center = rect.center();
+    let radius = rect.width() / 2.0;
+    painter.circle(
+        center,
+        radius - 1.0,
+        Color32::from_rgba_unmultiplied(11, 13, 16, 140),
+        Stroke::new(2.0_f32, ring),
+    );
+    // Dark under light, so the ring shows on a white band too.
+    painter.circle_stroke(
+        center,
+        radius,
+        Stroke::new(1.0_f32, Color32::from_black_alpha(140)),
+    );
+    // A pencil pointing down to the left, drawn in a box 24 units wide.
+    let scale = 10.0 / 24.0;
+    let at = |x: f32, y: f32| center + vec2((x - 12.0) * scale, (y - 12.0) * scale);
+    painter.add(egui::Shape::closed_line(
+        vec![
+            at(4.0, 20.0),
+            at(8.0, 20.0),
+            at(19.0, 9.0),
+            at(15.0, 5.0),
+            at(4.0, 16.0),
+        ],
+        Stroke::new(1.3_f32, Color32::WHITE),
+    ));
+    egui::Popup::menu(&response)
+        .id(popup_id)
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+        .show(|ui| {
+            ui.spacing_mut().slider_width = 275.0;
+            if egui::widgets::color_picker::color_picker_color32(
+                ui,
+                color,
+                egui::widgets::color_picker::Alpha::Opaque,
+            ) {
+                response.mark_changed();
+            }
+        });
+    response
+}
+
 fn band_words(lo: f32, hi: f32, first: bool, last: bool) -> String {
     let db = |v: f32| {
         if v > 0.0 {

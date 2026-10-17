@@ -9,7 +9,7 @@
 
 use super::{bus_title, fmt_rate, frames_ms, App};
 use crate::appearance;
-use crate::prefs::{Appearance, BusSources, Prefs};
+use crate::prefs::{Appearance, BusSources, MeterNumber, Prefs};
 use crate::theme;
 use egui::{vec2, RichText, Ui};
 use weir_protocol::*;
@@ -631,12 +631,15 @@ impl App {
              grow a little wider for it.",
         );
         ui.add_space(4.0);
-        ui.checkbox(&mut self.prefs.meter_peak, "The highest peak, as a number");
-        explain(
-            ui,
-            "Above each meter: the loudest it has been since you last clicked the number, \
-             red once it reached 0 dB. Click it to start again.",
-        );
+        ui.checkbox(&mut self.prefs.meter_peak, "A number above each meter");
+        ui.add_enabled_ui(self.prefs.meter_peak, |ui| {
+            ui.indent("meter-number", |ui| {
+                for mode in MeterNumber::ALL {
+                    ui.radio_value(&mut self.prefs.meter_number, mode, mode.label());
+                    explain(ui, mode.description());
+                }
+            });
+        });
     }
 
     /// A volume slider for each application.

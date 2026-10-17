@@ -171,10 +171,11 @@ From top to bottom:
   effects and fader, one bar per channel, with a mark that holds each peak
   for a moment, and a scale in dB beside it. It is green, yellow from
   -12 dB and red from 0 dB, unless you pick other colors (see
-  [Preferences](#preferences)). Above it, a number says the
-  highest peak so far, in dB, red once it reached 0 dB; click it to start
-  again. Drag the fader, scroll over it for 1 dB steps, or double-click it
-  for 0 dB; hold Shift while dragging for fine control.
+  [Preferences](#preferences)). Above it, a number says how loud it is
+  now, in dB, red at 0 dB and over; Preferences can make it the highest
+  peak instead, which holds until you click it. Drag the fader, scroll
+  over it for 1 dB steps, or double-click it for 0 dB; hold Shift while
+  dragging for fine control.
 * **Routing buttons**, one per bus, beside the fader: lit when the strip is
   sent to that bus. See [Who hears what](#who-hears-what).
 * **CLIP** and the level. The level can be typed into. CLIP lights up, and
@@ -885,7 +886,11 @@ of its own, with its pages down the left side.
 
 * **A scale in dB** beside each meter, from +6 down to -48. Strips grow a
   little wider for it.
-* **The highest peak, as a number** above each meter.
+* **A number above each meter**, saying either:
+  * **How loud it is now**: it follows the meter, steadied a little so the
+    digits can be read. Red at 0 dB and over.
+  * **The highest peak**: the loudest it has been since you last clicked
+    the number, red once it reached 0 dB. Click it to start again.
 * **Meter colors**: the colors meters are drawn in, as bands from the
   bottom up. **Default** is Weir's own: green, yellow from -12 dB, red from
   0 dB. It cannot be changed, so to make your own, pick the colors to start
@@ -897,7 +902,7 @@ of its own, with its pages down the left side.
     second copy of its color, ready to change.
   * **Right-click a tab**, or drag it off sideways, to remove the line. The
     band below it grows to fill the space.
-  * **Click a band's color button** to change its color.
+  * **Click the pencil** in a band to change its color.
 
   Every meter changes as you go, and the small meters beside the editor
   show quiet, middling and too-loud sound. **Rename…**, **Export…** and

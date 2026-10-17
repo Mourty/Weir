@@ -215,6 +215,10 @@ pub enum Cmd {
     /// Bring in settings from a .zip or .json Weir exported. See what it
     /// holds first with --list.
     Import(ImportArgs),
+    /// Print what a bug report needs: versions, the system, the engine,
+    /// the devices in use and the latest problems. Read it over, then
+    /// paste it into the report.
+    Report,
     /// Stream notifications until interrupted.
     Watch {
         /// Include meter updates.

@@ -34,6 +34,7 @@ fn allowed_in_hotkey(req: &Request) -> bool {
         Request::Hello
             | Request::Ping
             | Request::Describe
+            | Request::Diagnostics
             | Request::GetState
             | Request::ListDevices
             | Request::ListApps

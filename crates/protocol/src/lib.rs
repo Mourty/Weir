@@ -15,6 +15,7 @@
 //! * [`sounds`]: what hotkeys show and play when pressed.
 //! * [`targets`]: where requests name strips and buses, and finding them.
 //! * [`transfer`]: exporting settings to files, and importing them.
+//! * [`report`]: what a bug report says, worded alike by every client.
 //! * [`rpc`]: every request, response and notification.
 //!
 //! The doc comments here are also the protocol's documentation: the
@@ -28,6 +29,7 @@ pub mod hotkeys;
 pub mod keys;
 pub mod library;
 pub mod model;
+pub mod report;
 pub mod rpc;
 pub mod sounds;
 pub mod targets;
@@ -38,6 +40,7 @@ pub use hotkeys::*;
 pub use keys::*;
 pub use library::*;
 pub use model::*;
+pub use report::*;
 pub use rpc::*;
 pub use sounds::*;
 pub use targets::*;

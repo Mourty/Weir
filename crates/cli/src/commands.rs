@@ -1079,6 +1079,25 @@ fn save_hotkey(c: &mut Client, h: &Hotkey, done: &str, json: bool) -> Result<()>
     Ok(())
 }
 
+/// Print the details a bug report needs, the home folder written as `~`;
+/// with `json`, what the daemon said as it said it.
+pub fn report(c: &mut Client, json: bool) -> Result<()> {
+    let v = c.call(&Request::Diagnostics)?;
+    if json {
+        return print_json(&v);
+    }
+    let diagnostics: Diagnostics = serde_json::from_value(v)?;
+    let home = std::env::var("HOME").ok();
+    let text = bug_report(
+        &diagnostics,
+        &c.state()?,
+        &Desktop::from_env(),
+        home.as_deref(),
+    );
+    println!("{text}");
+    Ok(())
+}
+
 /// Print notifications until interrupted: as JSON lines with `json`, and
 /// meters as a line of levels otherwise.
 pub fn watch(c: &mut Client, meters: bool, json: bool) -> Result<()> {

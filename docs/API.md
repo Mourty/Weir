@@ -25,7 +25,7 @@ Python and Node.js are in [`examples/`](../examples/).
 * [Talking to the daemon](#talking-to-the-daemon)
 * [Conventions](#conventions)
 * [Methods](#methods)
-  * [The connection](#the-connection): `hello`, `ping`, `get_state`, `subscribe`, `unsubscribe`, `describe`
+  * [The connection](#the-connection): `hello`, `ping`, `get_state`, `subscribe`, `unsubscribe`, `describe`, `diagnostics`
   * [Strips](#strips): `set_strip`, `add_strip`, `remove_strip`, `move_strip`
   * [Buses](#buses): `set_bus`, `add_bus`, `remove_bus`, `move_bus`
   * [Routing](#routing): `set_route`
@@ -286,7 +286,7 @@ Returns `{"protocol_version", "daemon_version", "capabilities"}`:
                    "limiter", "bus_delay", "sends", "upmix", "downmix", "spectrum", "history",
                    "scenes", "setups", "app_rules", "seen_apps", "system_volumes",
                    "external_effects", "hotkeys", "toggle", "deltas", "names",
-                   "batch", "describe"]
+                   "batch", "describe", "diagnostics"]
 }
 ```
 
@@ -435,6 +435,33 @@ methods = [s["properties"]["method"]["const"] for s in schemas["requests"]["oneO
 
 ```js
 const { requests } = await mixer.call("describe");
+```
+
+#### `diagnostics`
+
+What a bug report needs from the daemon: its version, how Weir was
+installed, the system, PipeWire's and WirePlumber's versions, where its
+log goes, and the last 20 warnings and errors it logged. Takes no
+parameters. Nothing is sent anywhere; this only answers the connection
+that asks.
+
+Returns a [Diagnostics](#diagnostics). The window's About window and
+`weirctl report` word it, with the state and the desktop, as the details
+of a bug report.
+
+```sh
+weirctl raw diagnostics
+```
+
+```python
+d = mixer.call("diagnostics")
+print("Weir", d["version"], "on", d["system"])
+for problem in d["problems"]:
+    print(problem["level"], problem["message"])
+```
+
+```js
+const { version, pipewire_server } = await mixer.call("diagnostics");
 ```
 
 ### Strips
@@ -2556,6 +2583,29 @@ keys, media keys, `Pause`, `Print` and `ScrollLock` can be on their own.
 What `undo` and `redo` would take back or bring back, most recent first, up
 to 25 of each: a label for people, and when it happened, in milliseconds
 since 1970.
+
+### Diagnostics
+
+What [`diagnostics`](#diagnostics) returns.
+
+```json
+{"version": "1.3.0", "installed": "package weir-1.3.0-1.fc44 (Fedora Copr - user mourt)",
+ "system": "Nobara Linux 44 (KDE Plasma Desktop Edition) · Linux 6.17.4",
+ "pipewire_library": "1.4.8", "pipewire_server": "1.4.8", "wireplumber": "0.5.10",
+ "log": "the journal (journalctl --user -u weir)",
+ "problems": [{"at_ms": 1792270933000, "level": "warning", "message": "could not move Firefox"}]}
+```
+
+| Field | Type | |
+|---|---|---|
+| `version` | string | The daemon's version. |
+| `installed` | string | How Weir was installed: `package` and the package's name, version and, for an RPM, who built it; `make install` and where; `a build folder` and where; or where the daemon is. |
+| `system` | string | The operating system, from `/etc/os-release`, and the kernel. |
+| `pipewire_library` | string | The PipeWire library the daemon runs with. |
+| `pipewire_server` | string, *optional* | The PipeWire server's version, once the engine has connected. |
+| `wireplumber` | string, *optional* | WirePlumber's version, when `wireplumber --version` says. |
+| `log` | string | Where the daemon's messages go: a file, the journal, a terminal. |
+| `problems` | list | The last 20 warnings and errors the daemon logged, oldest first: `at_ms` (milliseconds since 1970), `level` (`warning` or `error`) and `message`. |
 
 ### ImportInspection
 

@@ -14,6 +14,7 @@
 mod config;
 mod controller;
 mod defaults;
+mod diagnostics;
 mod display;
 mod history;
 mod hotkeys;
@@ -185,16 +186,20 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-/// Log to standard output, at `info` unless `RUST_LOG` says otherwise.
+/// Log to standard output, at `info` unless `RUST_LOG` says otherwise, and
+/// keep the latest warnings and errors for bug reports.
 fn init_logging() {
-    // Colors only on a terminal: in a log file or the journal the codes show
-    // up as clutter.
     use std::io::IsTerminal;
-    tracing_subscriber::fmt()
-        .with_env_filter(
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::util::SubscriberInitExt;
+    tracing_subscriber::registry()
+        .with(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
-        .with_ansi(std::io::stdout().is_terminal())
+        // Colors only on a terminal: in a log file or the journal the codes
+        // show up as clutter.
+        .with(tracing_subscriber::fmt::layer().with_ansi(std::io::stdout().is_terminal()))
+        .with(diagnostics::Problems)
         .init();
 }
 

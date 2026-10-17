@@ -56,6 +56,8 @@ pub struct Shared {
     /// Answers to export and import requests, for the window waiting on
     /// them, in the order they came.
     pub transfers: Vec<(Transfer, Result<Value, String>)>,
+    /// The daemon's answer to `diagnostics`, for the About window to take.
+    pub diagnostics: Option<Diagnostics>,
 }
 
 /// Which export or import request an answer is to.
@@ -245,6 +247,8 @@ enum Answer {
     History,
     /// An export or import, error and all.
     Transfer(Transfer),
+    /// What a bug report needs.
+    Diagnostics,
     Nothing,
 }
 
@@ -256,6 +260,7 @@ impl Answer {
             Request::ExportSettings(_) => Answer::Transfer(Transfer::Export),
             Request::InspectImport(_) => Answer::Transfer(Transfer::Inspect),
             Request::ImportSettings(_) => Answer::Transfer(Transfer::Import),
+            Request::Diagnostics => Answer::Diagnostics,
             _ => Answer::Nothing,
         }
     }
@@ -347,6 +352,11 @@ fn apply_result(sh: &mut Shared, answer: Answer, result: Value) {
             }
         }
         Answer::Transfer(t) => sh.transfers.push((t, Ok(result))),
+        Answer::Diagnostics => {
+            if let Ok(d) = serde_json::from_value::<Diagnostics>(result) {
+                sh.diagnostics = Some(d);
+            }
+        }
         Answer::Nothing => {}
     }
 }

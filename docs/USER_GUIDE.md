@@ -146,6 +146,9 @@ On the right:
   (see [Hotkeys](#hotkeys)).
 * **…** has undo and redo, **Recent changes**, **Export settings…** and
   **Import settings…**, **Preferences**, **About** and **Quit window**.
+  **About** says which version you have, holds **Licenses…**, which opens
+  the folder with Weir's license and those of the libraries it is built
+  from, and helps with [reporting a problem](#when-something-is-wrong).
 
 Under it, **Faders show** chooses what the strip faders set: their own
 level, or their level in one bus's mix (see [Who hears what](#who-hears-what)).
@@ -963,6 +966,16 @@ Your settings, which are kept when Weir is uninstalled:
 To start over completely, quit Weir and delete `~/.config/weir`.
 
 ## When something is wrong
+
+**Reporting a problem.** Open **About** from the **…** menu. Under
+**Something not working?** are the details a bug report needs: Weir's
+version and how it was installed, the system, PipeWire's version, the
+engine, the devices in use and the latest problems Weir noticed. Read them
+over (your home folder's name shows as `~`) and change anything you like.
+**Copy details for a bug report** copies them; **Report a problem…** opens
+GitHub's page for a new issue in your browser with them filled in, for you
+to say what went wrong. Nothing is sent until you send it there, and you
+need a GitHub account. Without the window, `weirctl report` prints the same.
 
 **The window says Weir's service stopped.** It shows what the service said
 about why, with **Copy the message** for a bug report and **Try again**.

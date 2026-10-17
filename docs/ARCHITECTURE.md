@@ -395,6 +395,18 @@ look lives in the window's `gui.toml`, so the window hands it in to export
 and takes it back in a `window_look` notification; the file dialogs are the
 desktop's own, through the portal's FileChooser.
 
+**Bug reports** start with `diagnostics` (`diagnostics.rs`): how Weir was
+installed, told by where the daemon's program is and, under `/usr`, by
+asking rpm, dpkg or pacman once; the system; PipeWire's library and server
+versions (the server's from the core's `info` event); WirePlumber's; where
+the log goes; and the last 20 warnings and errors, which a logging layer
+(`Problems`) keeps as they are logged. Clients add the desktop, which only
+they see, and `report::bug_report` in the protocol words it all, so the
+About window and `weirctl report` say the same, the home folder written as
+`~`. The window's **Report a problem…** opens GitHub's new issue form
+(`.github/ISSUE_TEMPLATE/bug_report.yml`) with the details in its `details`
+field, cut short if the address would grow too long for a browser.
+
 ## The protocol
 
 The protocol crate's types *are* the protocol. `describe` returns JSON

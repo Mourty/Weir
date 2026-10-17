@@ -216,6 +216,11 @@ impl EngineHandle {
         self.shared.status()
     }
 
+    /// The PipeWire server's version, once the engine has connected.
+    pub fn server_version(&self) -> Option<String> {
+        self.shared.server_version.lock().ok()?.clone()
+    }
+
     /// Stop the PipeWire thread and wait for it, but no longer than `limit`.
     /// Returns false if the thread was still running when time ran out.
     ///

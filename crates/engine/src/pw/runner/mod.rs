@@ -330,7 +330,13 @@ pub(super) fn run(
 
     let _core_listener = {
         let ml = mainloop.clone();
+        let shared = shared.clone();
         core.add_listener_local()
+            .info(move |info| {
+                if let Ok(mut v) = shared.server_version.lock() {
+                    *v = Some(info.version().to_string());
+                }
+            })
             .error(move |id, seq, res, message| {
                 if res == -ENOENT && message.contains("unknown resource") {
                     // We asked to destroy an object the server had already

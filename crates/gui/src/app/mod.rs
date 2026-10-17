@@ -24,10 +24,12 @@
 //!   "Add a hotkey…" item of controls' right-click menus.
 //! * `library`: scenes and setups.
 //! * `dialogs`: adding and removing strips and buses.
-//! * `settings`: the Preferences and About windows.
+//! * `settings`: the Preferences window.
+//! * `about`: the About window, and help with reporting a problem.
 //! * `history`: undo, redo, and the messages that report them.
 //! * `status`: what shows while there is no daemon to talk to.
 
+mod about;
 mod apps;
 mod bus;
 mod controls;
@@ -105,6 +107,8 @@ struct Snapshot {
     window_look: Option<serde_json::Value>,
     /// Answers to export and import requests.
     transfers: Vec<(crate::client::Transfer, Result<serde_json::Value, String>)>,
+    /// What a bug report needs, from the daemon.
+    diagnostics: Option<Diagnostics>,
 }
 
 /// The mixer window.
@@ -137,7 +141,8 @@ pub struct App {
     /// A rename waiting for a yes, because it renames external effects'
     /// devices too.
     confirm_rename: Option<dialogs::RenameConfirm>,
-    show_about: bool,
+    /// The About window.
+    about: about::About,
     show_prefs: bool,
     /// Asked to bring Preferences forward, and the page it shows.
     raise_prefs: bool,
@@ -203,9 +208,6 @@ pub struct App {
     reductions: HashMap<BusId, f32>,
     /// Whether the desktop's font is in use, once that has been decided.
     desktop_font: Option<bool>,
-    /// Weir's icon for the About window, made into a texture the first time
-    /// that window opens.
-    about_icon: Option<egui::TextureHandle>,
 }
 
 impl App {
@@ -237,7 +239,7 @@ impl App {
             confirm_library: None,
             confirm_remove: None,
             confirm_rename: None,
-            show_about: false,
+            about: about::About::default(),
             show_prefs: false,
             raise_prefs: false,
             prefs_page: settings::PrefsPage::default(),
@@ -269,7 +271,6 @@ impl App {
             history: HistoryInfo::default(),
             reductions: HashMap::new(),
             desktop_font: None,
-            about_icon: None,
             spectrum_watch: Vec::new(),
         }
     }
@@ -310,6 +311,7 @@ impl App {
             history: sh.history.clone(),
             window_look: sh.window_look.take(),
             transfers: std::mem::take(&mut sh.transfers),
+            diagnostics: sh.diagnostics.take(),
         }
     }
 
@@ -558,8 +560,12 @@ impl eframe::App for App {
             history,
             window_look,
             transfers,
+            diagnostics,
         } = self.snapshot();
         self.history = history;
+        if let Some(d) = diagnostics {
+            self.take_diagnostics(d, &state);
+        }
         if let Some(look) = window_look {
             self.prefs.take_look(&look);
             self.prefs.save();

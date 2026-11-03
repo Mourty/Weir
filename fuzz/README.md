@@ -73,7 +73,8 @@ cargo +nightly fuzz run -O import fuzz/artifacts/import/crash-...
 - Asking for more than 4200 MB at once, using more than 2 GB, or taking
   more than ten seconds over one input is a crash too.
 - Memory never freed is reported at the end of a run, except for `mixer`
-  (`-detect_leaks=0`, which `make fuzz` adds): the noise suppressor's FFT
+  (`ASAN_OPTIONS=detect_leaks=0` and `-detect_leaks=0`, which `make fuzz`
+  adds): the noise suppressor's FFT
   library keeps a cache for each thread for good, 22 KB once, which the
   check would report every time. Memory that grows with each input still
   shows, as the 2 GB limit.

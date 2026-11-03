@@ -97,14 +97,16 @@ licenses:
 
 # Fuzzing, by hand: TARGET is one of fuzz/fuzz_targets, SECONDS how long.
 # The noise suppressor keeps an FFT cache for good, which the leak check
-# would report at the end of every mixer run.
+# would report at the end of every mixer run, during it and at the exit.
 TARGET ?= import
 SECONDS ?= 600
+NO_LEAKS = $(if $(filter mixer,$(TARGET)),yes)
 fuzz:
 	mkdir -p fuzz/corpus/$(TARGET)
+	$(if $(NO_LEAKS),ASAN_OPTIONS=detect_leaks=0) \
 	cargo +nightly fuzz run -O $(TARGET) fuzz/corpus/$(TARGET) fuzz/seeds/$(TARGET) -- \
 		-max_total_time=$(SECONDS) -timeout=10 -rss_limit_mb=2048 -malloc_limit_mb=4200 \
-		$(if $(filter mixer,$(TARGET)),-detect_leaks=0)
+		$(if $(NO_LEAKS),-detect_leaks=0)
 
 install: build
 	install -d $(DESTDIR)$(BINDIR)

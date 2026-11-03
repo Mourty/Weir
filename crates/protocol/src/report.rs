@@ -245,7 +245,7 @@ pub fn new_issue_url(repository: &str, details: &str) -> String {
 
 /// `text` with everything but letters, digits and `-._~` as `%XX`, byte by
 /// byte, for a query string.
-fn percent_encode(text: &str) -> String {
+pub(crate) fn percent_encode(text: &str) -> String {
     let mut out = String::with_capacity(text.len() * 3);
     for b in text.bytes() {
         if b.is_ascii_alphanumeric() || b"-._~".contains(&b) {

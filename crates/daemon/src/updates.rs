@@ -130,7 +130,7 @@ pub fn fetch(url: &str) -> Result<Option<Release>, String> {
 /// The release in GitHub's answer `body`, or `None` while its packages
 /// are not up: a release is published first and its packages are built
 /// and attached after, and until they are there is nothing to install.
-fn parse(body: &str) -> Result<Option<Release>, String> {
+pub fn parse(body: &str) -> Result<Option<Release>, String> {
     let r: GitHubRelease = serde_json::from_str(body)
         .map_err(|e| format!("GitHub's answer could not be read ({e})"))?;
     if r.draft || r.prerelease || r.assets.is_empty() {

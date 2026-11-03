@@ -8,6 +8,11 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+[features]
+# The fuzz targets' way in to the mixing code (fuzz/), never in a build of
+# Weir itself.
+fuzzing = []
+
 [dependencies]
 weir-protocol.workspace = true
 arc-swap.workspace = true

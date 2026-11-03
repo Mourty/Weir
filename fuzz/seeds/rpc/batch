@@ -1,0 +1,1 @@
+[{"jsonrpc": "2.0", "id": 1, "method": "add_strip", "params": {"name": "New", "kind": "virtual", "layout": "5.1"}}, {"jsonrpc": "2.0", "id": 2, "method": "set_route", "params": {"strip": "New", "bus": "Headset", "enabled": true, "level_db": -3}}, {"jsonrpc": "2.0", "id": 3, "method": "undo"}]

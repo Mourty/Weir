@@ -355,7 +355,7 @@ impl LoginStart for FakeLogin {
 
 impl Rig {
     fn with_login(mut self, login: &FakeLogin) -> Self {
-        self.c.login = Box::new(login.clone());
+        self.c.set_login(Box::new(login.clone()));
         self.c.refresh_start_at_login();
         self
     }

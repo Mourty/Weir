@@ -1,0 +1,1 @@
+	{"name": "Mute", "keys": ["Ctrl+M"], "steps": [{"method": "set_strip", "params": {"id": "Mic", "mute": "toggle"}}]}

@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "apps": [
+    {
+      "name": "音楽プレーヤー ✓ → ▸ ★",
+      "last_seen_ms": 1793723872963,
+      "strip": "Music"
+    },
+    {
+      "name": "Firefox",
+      "last_seen_ms": 1793723858380,
+      "strip": "Browser"
+    }
+  ]
+}

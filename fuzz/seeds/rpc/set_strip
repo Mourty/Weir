@@ -1,0 +1,23 @@
+{"jsonrpc": "2.0", "id": 1, "method": "set_strip", "params": {"id": "Mic", "mute": "toggle"}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_strip", "params": {"id": "Music", "gain_db": -6}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_strip", "params": {"id": "Music", "gain_delta_db": 1}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_strip", "params": {"id": "Music", "pan": -0.5}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_strip", "params": {"id": "Music", "pan_delta": 0.1}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_strip", "params": {"id": "Mic", "mute": "toggle"}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_strip", "params": {"id": "Mic", "solo": true}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_strip", "params": {"id": "Browser", "name": "Chat"}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_strip", "params": {"id": "Music", "color": null}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_strip", "params": {"id": "Music", "sends": {"B1": -12}}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_strip", "params": {"id": "Music", "layout": "surround_5_1"}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_strip", "params": {"id": "Music", "upmix": "all_channel_stereo", "subwoofer": true}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_strip", "params": {"id": "Mic", "device": "alsa_input.usb-Blue_Yeti-00.analog-stereo"}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_strip", "params": {"id": "Mic", "device": null}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_strip", "params": {"id": "Mic", "denoise": {"enabled": true}}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_strip", "params": {"id": "Mic", "gate": {"enabled": true, "threshold_db": -40}}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_strip", "params": {"id": "Mic", "compressor": {"enabled": true, "threshold_db": -20, "ratio": 3}}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_strip", "params": {"id": "Mic", "eq": {"enabled": true, "bands": [{"kind": "high_pass", "freq_hz": 80, "q": 0.707}]}}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_strip", "params": {"id": "Music", "ducking": {"enabled": true, "triggers": ["Mic"], "amount_db": 15}}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_strip", "params": {"id": "Mic", "gate": {"enabled": "toggle"}}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_strip", "params": {"id": "Mic", "insert": {"enabled": true, "position": "before_compressor"}}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_strip", "params": {"id": "Music", "gain_db": -20}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_strip", "params": {"id": "Music", "ducking": {"enabled": true, "triggers": ["Mic"], "amount_db": 15, "buses": ["B1"]}}}

@@ -1,0 +1,2 @@
+{"jsonrpc": "2.0", "id": 1, "method": "set_app_volume", "params": {"app": 87, "volume_db": -6}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_app_volume", "params": {"app": 87, "mute": "toggle"}}

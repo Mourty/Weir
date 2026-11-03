@@ -1,31 +1,11 @@
 //! `weir-daemon`: owns the audio engine, the configuration and the control
 //! socket. The window, `weirctl` and any other client talk to it over
-//! JSON-RPC.
-//!
-//! * [`config`]: the files under `~/.config/weir`.
-//! * [`controller`]: the mixer state and every request handler.
-//! * [`server`]: the control socket.
-//! * [`history`]: undo and redo.
-//! * [`tray`]: the system tray icon.
-//! * [`defaults`]: the mixer a first run starts with.
-//! * [`display`]: finding the desktop to show the window on.
-//! * [`hotkeys`]: doing what hotkeys say, and getting their keys.
+//! JSON-RPC. Its parts are in the library beside it (`lib.rs`); this puts
+//! them together and runs them.
 
-mod config;
-mod controller;
-mod defaults;
-mod diagnostics;
-mod display;
-mod history;
-mod hotkeys;
-mod login;
-mod recorder;
-mod seen_apps;
-mod server;
-mod sounds;
-mod transfer;
-mod tray;
-mod updates;
+use weir_daemon::{
+    config, controller, defaults, diagnostics, display, hotkeys, server, tray, updates,
+};
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -81,15 +61,7 @@ enum Outcome {
     },
 }
 
-/// Set to `service`, `part`, `audio` or `request`, the service crashes on
-/// purpose, to try crash reports: the whole service, a part of its own, the
-/// audio thread (each a few seconds after it starts), or a `ping`.
-const CRASH_TEST_ENV: &str = "WEIR_CRASH_TEST";
-
-/// What `WEIR_CRASH_TEST` asks for, if anything.
-pub fn crash_test() -> Option<String> {
-    std::env::var(CRASH_TEST_ENV).ok().filter(|t| !t.is_empty())
-}
+use weir_daemon::{crash_test, CRASH_TEST_ENV};
 
 /// Set for the restarted service when it is to open the mixer window
 /// whatever its startup setting says.

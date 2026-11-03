@@ -1,0 +1,3 @@
+{"jsonrpc": "2.0", "id": 1, "method": "set_recorder", "params": {"tracks": [{"strip": "Mic"}, {"bus": "Stream Mic"}]}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_recorder", "params": {"format": "wav", "bit_depth": 24, "bwf": true}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_recorder", "params": {"layout": "multitrack", "names": "{setup} {number}", "split_minutes": 60}}

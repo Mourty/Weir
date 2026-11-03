@@ -1,0 +1,4 @@
+{"jsonrpc": "2.0", "id": 1, "method": "export_settings", "params": {"path": "/tmp/weir-settings.zip", "all": true}}
+{"jsonrpc": "2.0", "id": 1, "method": "export_settings", "params": {"path": "/tmp/mute.json", "hotkeys": ["Mute mic"]}}
+{"jsonrpc": "2.0", "id": 1, "method": "export_settings", "params": {"path": "/tmp/weir-settings.zip", "all": true}}
+{"jsonrpc": "2.0", "id": 1, "method": "export_settings", "params": {"path": "/tmp/weir-settings.zip", "hotkeys": ["Mute mic"]}}

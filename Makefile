@@ -4,6 +4,7 @@
 #   make install      install for the current user (no root needed)
 #   make uninstall    remove every file install put down
 #   make test         run the unit tests
+#   make fuzz         hand made-up input to one reader for ten minutes (fuzz/README.md)
 #   make icons        redraw the window icon from packaging/weir.svg
 #   make licenses     gather the libraries' license notices (cargo-about)
 #   make rpm          build an RPM package (Fedora, Nobara)
@@ -51,7 +52,7 @@ CARGO ?= cargo
 CARGO_FLAGS ?= --release
 BINARIES := weir-daemon weir weirctl
 
-.PHONY: all build test install uninstall clean help rpm rpm-install deb icons licenses
+.PHONY: all build test fuzz install uninstall clean help rpm rpm-install deb icons licenses
 
 all: build
 
@@ -60,6 +61,7 @@ help:
 	@echo "make install    install for the current user into $(PREFIX)"
 	@echo "make uninstall  remove every installed file"
 	@echo "make test       run the unit tests"
+	@echo "make fuzz TARGET=import  fuzz one reader (needs nightly and cargo-fuzz)"
 	@echo "make clean      delete the build directory"
 	@echo "make rpm        build an RPM package into $(RPMTOP)/RPMS"
 	@echo "make rpm-install  build the RPM and install it with dnf"
@@ -92,6 +94,17 @@ licenses:
 	cargo about generate --workspace --locked --fail \
 		-c packaging/licenses/about.toml packaging/licenses/about.hbs \
 		-o packaging/licenses/THIRD-PARTY-LICENSES.txt
+
+# Fuzzing, by hand: TARGET is one of fuzz/fuzz_targets, SECONDS how long.
+# The noise suppressor keeps an FFT cache for good, which the leak check
+# would report at the end of every mixer run.
+TARGET ?= import
+SECONDS ?= 600
+fuzz:
+	mkdir -p fuzz/corpus/$(TARGET)
+	cargo +nightly fuzz run -O $(TARGET) fuzz/corpus/$(TARGET) fuzz/seeds/$(TARGET) -- \
+		-max_total_time=$(SECONDS) -timeout=10 -rss_limit_mb=2048 -malloc_limit_mb=4200 \
+		$(if $(filter mixer,$(TARGET)),-detect_leaks=0)
 
 install: build
 	install -d $(DESTDIR)$(BINDIR)

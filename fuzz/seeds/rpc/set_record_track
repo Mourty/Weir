@@ -1,0 +1,3 @@
+{"jsonrpc": "2.0", "id": 1, "method": "set_record_track", "params": {"strip": "Music", "on": true}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_record_track", "params": {"bus": "B1", "on": "toggle"}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_record_track", "params": {"strip": "Mic", "on": true}}

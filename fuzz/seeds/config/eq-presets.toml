@@ -1,0 +1,10 @@
+# Weir equalizer presets. Edited by weir-daemon.
+[[preset]]
+name = "Warm"
+
+[[preset.band]]
+kind = "low_shelf"
+freq_hz = 120.0
+gain_db = 3.0
+q = 0.7
+enabled = true

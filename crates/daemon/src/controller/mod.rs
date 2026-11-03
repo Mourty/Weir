@@ -286,6 +286,13 @@ impl Controller {
         }
     }
 
+    /// Keep whether Weir starts at login with `login` rather than systemd:
+    /// for tests and fuzzing, which must not change the machine they run
+    /// on.
+    pub fn set_login(&mut self, login: Box<dyn LoginStart>) {
+        self.login = login;
+    }
+
     /// Read whether Weir starts at login back from where it is kept, into
     /// the settings. Done at startup rather than in [`Controller::new`], so
     /// tests do not ask the machine they run on.

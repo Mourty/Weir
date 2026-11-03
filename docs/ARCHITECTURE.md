@@ -505,6 +505,20 @@ bus, and takes Weir's own look, plain meters and no lists while those are
 held back. Nothing held back is written differently: the files never know
 about safe mode.
 
+**Input from outside** is read as if made to break Weir. Files a person
+names (a sound to add, settings to import) are read only when they are
+ordinary files of a bounded size (`config::read_limited`); an export may
+unpack to 256 MB at most, counted as it is read; a control socket line may
+be 16 MB. Other people's parsers of such files run inside
+`crash::guarded`, so a damaged sound file is an error about that file
+rather than a crash, at startup too. `normalize` makes every strip's and
+bus's id and name its own, since a damaged file can repeat them and
+everything else finds them by one or the other. `fuzz/` (cargo-fuzz, run by
+hand) hands all of this made-up input: socket lines run on a controller of
+its own, imports, Weir's own files, sounds, other text, and mixers played by
+the mixing code through the `fuzzing` feature of `weir-engine`, which the
+daemon's library half (`lib.rs`) and that feature exist for.
+
 ## The protocol
 
 The protocol crate's types *are* the protocol. `describe` returns JSON

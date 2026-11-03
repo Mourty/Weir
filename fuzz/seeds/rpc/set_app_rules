@@ -1,0 +1,3 @@
+{"jsonrpc": "2.0", "id": 1, "method": "set_app_rules", "params": {"rules": [{"app": "Spotify", "strip": "Music"}, {"app": "Discord", "strip": "Browser"}]}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_app_rules", "params": {"rules": []}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_app_rules", "params": {"rules": [{"app": "spotify", "strip": "Music"}, {"app": "firefox", "strip": "Browser"}]}}

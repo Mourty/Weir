@@ -53,6 +53,15 @@ async fn check(c: &Arc<Controller>) -> bool {
     c.update_checked(found)
 }
 
+/// Weir's releases on GitHub, for a release whose own page is not given
+/// as a web address.
+fn releases_page() -> String {
+    format!(
+        "{}/releases",
+        env!("CARGO_PKG_REPOSITORY").trim_end_matches('/')
+    )
+}
+
 /// Where the newest release is listed: Weir's repository on GitHub, or
 /// `WEIR_UPDATE_URL`, for testing.
 fn releases_url() -> String {
@@ -136,7 +145,12 @@ fn parse(body: &str) -> Result<Option<Release>, String> {
             .unwrap_or_else(|| format!("Weir {version}")),
         version,
         notes: r.body.unwrap_or_default().replace("\r\n", "\n"),
-        url: r.html_url,
+        // Opened in a browser when clicked, so only a web page.
+        url: if r.html_url.starts_with("https://") {
+            r.html_url
+        } else {
+            releases_page()
+        },
         published_at: r.published_at.unwrap_or_default(),
     }))
 }
@@ -151,6 +165,16 @@ mod tests {
         "body": "New:\r\n- A recorder", "html_url": "https://github.com/Mourty/Weir/releases/tag/v1.3.0",
         "published_at": "2026-10-20T18:04:11Z", "assets": [{"name": "weir-1.3.0-1.x86_64.rpm"}]
     }"#;
+
+    #[test]
+    fn a_release_page_must_be_a_web_page() {
+        let odd = ANSWER.replace(
+            "https://github.com/Mourty/Weir/releases/tag/v1.3.0",
+            "file:///etc/passwd",
+        );
+        let r = parse(&odd).unwrap().unwrap();
+        assert_eq!(r.url, "https://github.com/Mourty/Weir/releases");
+    }
 
     #[test]
     fn a_release_is_read_once_its_packages_are_up() {

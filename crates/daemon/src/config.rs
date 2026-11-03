@@ -335,14 +335,55 @@ pub fn write_atomic(path: &Path, text: &str) -> Result<()> {
 /// Write `bytes` to `path` through a temporary file, so that a crash never
 /// leaves half a file.
 pub fn write_atomic_bytes(path: &Path, bytes: &[u8]) -> Result<()> {
+    use std::io::Write;
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
     }
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
     let tmp = path.with_extension(format!("{ext}.tmp"));
-    std::fs::write(&tmp, bytes).with_context(|| format!("writing {}", tmp.display()))?;
+    // On disk before it takes the old one's place: a power cut just after
+    // the rename could otherwise leave an empty file, the settings gone.
+    let mut file =
+        std::fs::File::create(&tmp).with_context(|| format!("writing {}", tmp.display()))?;
+    file.write_all(bytes)
+        .and_then(|()| file.sync_all())
+        .with_context(|| format!("writing {}", tmp.display()))?;
+    drop(file);
     std::fs::rename(&tmp, path).with_context(|| format!("renaming to {}", path.display()))?;
+    // And the rename itself, which lives in the folder.
+    if let Some(dir) = path.parent() {
+        if let Ok(dir) = std::fs::File::open(dir) {
+            let _ = dir.sync_all();
+        }
+    }
     Ok(())
+}
+
+/// The bytes of the file at `path`, someone else's to name, if it is an
+/// ordinary file of at most `max` bytes. A device such as `/dev/zero`
+/// says it is empty and never ends, and a pipe can wait for ever, so
+/// neither is read.
+pub fn read_limited(path: &Path, max: u64) -> Result<Vec<u8>> {
+    use std::io::Read;
+    let shown = path.display();
+    let file = std::fs::File::open(path).with_context(|| format!("could not read {shown}"))?;
+    let meta = file
+        .metadata()
+        .with_context(|| format!("could not read {shown}"))?;
+    if !meta.is_file() {
+        anyhow::bail!("{shown} is not a file");
+    }
+    if meta.len() > max {
+        anyhow::bail!("{shown} is too big: {} MB at most", max >> 20);
+    }
+    let mut bytes = Vec::new();
+    file.take(max + 1)
+        .read_to_end(&mut bytes)
+        .with_context(|| format!("could not read {shown}"))?;
+    if bytes.len() as u64 > max {
+        anyhow::bail!("{shown} is too big: {} MB at most", max >> 20);
+    }
+    Ok(bytes)
 }
 
 /// Write `cfg` to `path`, as the current format.
@@ -686,6 +727,21 @@ pub fn save_meter_colors(path: &Path, schemes: &[MeterColors]) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn files_from_outside_are_read_only_when_ordinary_and_small() {
+        use super::read_limited;
+        let dir = std::env::temp_dir().join(format!("weir-read-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("x.bin");
+        std::fs::write(&file, [7u8; 100]).unwrap();
+        assert_eq!(read_limited(&file, 100).unwrap().len(), 100);
+        assert!(read_limited(&file, 99).is_err(), "too big");
+        let e = read_limited(std::path::Path::new("/dev/zero"), 100).unwrap_err();
+        assert!(format!("{e:#}").contains("not a file"), "{e:#}");
+        assert!(read_limited(&dir, 100).is_err(), "a folder");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     use super::*;
     use weir_protocol::{ChannelLayout, EqBandKind, Gate, Strip, StripKind};
 

@@ -68,22 +68,20 @@ pub fn own_files(dir: &Path) -> Vec<(String, PathBuf)> {
 /// more). Says what is wrong in words for the person who picked the file.
 pub fn decode(path: &Path) -> Result<SoundData> {
     let ext = sound_extension(path).context("Weir plays .wav, .mp3, .ogg and .flac files")?;
-    let size = std::fs::metadata(path)
-        .with_context(|| format!("could not read {}", path.display()))?
-        .len();
-    if size > SOUND_FILE_MAX {
-        bail!(
-            "the file is too big: {} MB at most",
-            SOUND_FILE_MAX / 1024 / 1024
-        );
-    }
-    let bytes =
-        std::fs::read(path).with_context(|| format!("could not read {}", path.display()))?;
+    let bytes = crate::config::read_limited(path, SOUND_FILE_MAX)?;
     decode_bytes(bytes, &ext)
 }
 
-/// Decode a sound file's bytes, of the kind `ext` says.
+/// Decode a sound file's bytes, of the kind `ext` says. The decoder is
+/// other people's code, and a damaged file can make it panic: that is
+/// only this file's problem, so it is caught and said so.
 pub fn decode_bytes(bytes: Vec<u8>, ext: &str) -> Result<SoundData> {
+    weir_protocol::crash::guarded(|| decode_unguarded(bytes, ext)).unwrap_or_else(|why| {
+        bail!("Weir could not read this {ext} file: it seems damaged ({why})")
+    })
+}
+
+fn decode_unguarded(bytes: Vec<u8>, ext: &str) -> Result<SoundData> {
     let unreadable = || format!("Weir could not read this {ext} file");
     let source = MediaSourceStream::new(Box::new(std::io::Cursor::new(bytes)), Default::default());
     let mut hint = Hint::new();
@@ -283,6 +281,25 @@ pub mod tests {
             .iter()
             .fold(0f32, |m, x| m.max(x.abs()));
         assert!(start > 0.3, "{start}");
+    }
+
+    /// Files that once made a decoder panic, found by fuzzing
+    /// (`fuzz/`): each must be refused in words, never crash Weir.
+    #[test]
+    fn damaged_files_found_by_fuzzing_are_refused() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("testdata/bad");
+        let mut seen = 0;
+        for entry in std::fs::read_dir(&dir).unwrap() {
+            let path = entry.unwrap().path();
+            let e = decode(&path).unwrap_err();
+            assert!(
+                format!("{e:#}").contains("could not read"),
+                "{}: {e:#}",
+                path.display()
+            );
+            seen += 1;
+        }
+        assert!(seen > 0, "no files in {}", dir.display());
     }
 
     #[test]

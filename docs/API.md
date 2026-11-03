@@ -119,6 +119,8 @@ every change, whoever made it.
 
 Each message is one line of JSON, UTF-8, ending in a newline, in both
 directions. They follow [JSON-RPC 2.0](https://www.jsonrpc.org/specification).
+A line to the daemon may be 16 MB at most: past that it answers with an
+error (`-32600`) and closes the connection.
 
 A **request** names a method, carries its parameters, and has an `id` of
 your choosing, a number or a string:

@@ -901,6 +901,58 @@ pub fn import_result(r: &ImportResult, saved_look: bool) {
     }
 }
 
+/// What safe mode holds back, how to bring each back, and what came back.
+pub fn safe_mode(safe: &SafeMode) {
+    if !safe.on {
+        println!("Weir is not in safe mode.");
+        return;
+    }
+    println!("{}", safe.reason());
+    if safe.held.is_empty() {
+        println!("Everything is back. Leave safe mode with: weirctl safe-mode leave");
+    } else {
+        println!();
+        let mut t = Table::new(&["Held back", "Bring back with", "Meanwhile"], &[]);
+        for item in &safe.held {
+            t.row(vec![
+                item.label(),
+                safe_item_word(item),
+                item.held_note(safe.audio).to_string(),
+            ]);
+        }
+        t.print();
+    }
+    if !safe.brought_back.is_empty() {
+        let back: Vec<String> = safe
+            .brought_back
+            .iter()
+            .map(SafeItem::in_sentence)
+            .collect();
+        println!("\nBrought back, the latest last: {}.", back.join(", "));
+    }
+}
+
+/// How `weirctl safe-mode bring-back` names `item`.
+fn safe_item_word(item: &SafeItem) -> String {
+    match item {
+        SafeItem::Strip(n) => format!("--strip {}", quoted(n)),
+        SafeItem::Bus(n) => format!("--bus {}", quoted(n)),
+        other => serde_json::to_value(other)
+            .ok()
+            .and_then(|v| v.as_str().map(|s| s.replace('_', "-")))
+            .unwrap_or_default(),
+    }
+}
+
+/// `name` as typed in a shell: in quotes when it has a space.
+fn quoted(name: &str) -> String {
+    if name.contains(|c: char| c.is_whitespace() || "'\"$`\\".contains(c)) {
+        format!("'{}'", name.replace('\'', "'\\''"))
+    } else {
+        name.to_string()
+    }
+}
+
 /// Columns lined up to their widest entry, for the listings.
 struct Table {
     rows: Vec<Vec<String>>,

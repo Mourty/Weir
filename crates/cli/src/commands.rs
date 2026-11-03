@@ -5,7 +5,7 @@
 
 use crate::args::{
     BusArgs, EqCmd, EqTarget, HotkeyCmd, HotkeyGroupCmd, HotkeyOpts, LibraryCmd, MeterColorsCmd,
-    RecordCmd, RecorderArgs, SoundCmd, StripArgs,
+    RecordCmd, RecorderArgs, SafeItemArg, SafeModeCmd, SoundCmd, StripArgs,
 };
 use crate::client::Client;
 use crate::parse::*;
@@ -382,13 +382,67 @@ pub fn show_window(c: &mut Client) -> Result<()> {
     Ok(())
 }
 
-pub fn restart(c: &mut Client, window: bool) -> Result<()> {
-    c.call(&Request::Restart(RestartParams {
-        window,
-        safe: false,
-    }))?;
-    println!("restarting Weir");
+pub fn restart(c: &mut Client, window: bool, safe: bool) -> Result<()> {
+    c.call(&Request::Restart(RestartParams { window, safe }))?;
+    if safe {
+        println!("restarting Weir in safe mode");
+    } else {
+        println!("restarting Weir");
+    }
     Ok(())
+}
+
+/// Show safe mode, bring things back from it, or enter or leave it.
+pub fn safe_mode(c: &mut Client, action: Option<SafeModeCmd>, json: bool) -> Result<()> {
+    let req = match action.unwrap_or(SafeModeCmd::Show) {
+        SafeModeCmd::Show => {
+            let safe = c.state()?.safe_mode;
+            if json {
+                return print_json(&safe);
+            }
+            show::safe_mode(&safe);
+            return Ok(());
+        }
+        SafeModeCmd::BringBack {
+            items,
+            strips,
+            buses,
+            all,
+        } => {
+            let mut wanted: Vec<SafeItem> = items.into_iter().map(safe_item).collect();
+            wanted.extend(strips.into_iter().map(SafeItem::Strip));
+            wanted.extend(buses.into_iter().map(SafeItem::Bus));
+            if wanted.is_empty() && !all {
+                bail!("say what to bring back, or --all");
+            }
+            Request::BringBack(BringBackParams { items: wanted, all })
+        }
+        SafeModeCmd::Enter => Request::EnterSafeMode(EnterSafeModeParams::default()),
+        SafeModeCmd::Leave => {
+            c.call(&Request::LeaveSafeMode)?;
+            println!("left safe mode: everything is back");
+            return Ok(());
+        }
+    };
+    call(c, &req, json, |safe: SafeMode| {
+        show::safe_mode(&safe);
+        Ok(())
+    })
+}
+
+/// The protocol's name for what `weirctl safe-mode bring-back` names.
+fn safe_item(a: SafeItemArg) -> SafeItem {
+    match a {
+        SafeItemArg::Look => SafeItem::Look,
+        SafeItemArg::Meters => SafeItem::Meters,
+        SafeItemArg::Lists => SafeItem::Lists,
+        SafeItemArg::Hotkeys => SafeItem::Hotkeys,
+        SafeItemArg::HotkeySounds => SafeItem::HotkeySounds,
+        SafeItemArg::ExternalEffects => SafeItem::ExternalEffects,
+        SafeItemArg::Recorder => SafeItem::Recorder,
+        SafeItemArg::AppRules => SafeItem::AppRules,
+        SafeItemArg::UpdateCheck => SafeItem::UpdateCheck,
+    }
 }
 
 pub fn rules(c: &mut Client, json: bool) -> Result<()> {

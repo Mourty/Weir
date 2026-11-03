@@ -131,6 +131,15 @@ pub enum Cmd {
         /// Open the mixer window once it is back.
         #[arg(long)]
         window: bool,
+        /// Start again in safe mode, with strips, buses and the parts most
+        /// likely to make Weir crash held back. See `weirctl safe-mode`.
+        #[arg(long)]
+        safe: bool,
+    },
+    /// Show what safe mode holds back, bring things back, or leave it.
+    SafeMode {
+        #[command(subcommand)]
+        action: Option<SafeModeCmd>,
     },
     /// Take back the most recent change to the mixer, or several.
     Undo {
@@ -635,6 +644,48 @@ pub struct RecorderArgs {
     /// The number {number} gives the next recording.
     #[arg(long)]
     pub number: Option<u32>,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum SafeModeCmd {
+    /// Show what safe mode holds back, and what it brought back.
+    Show,
+    /// Bring back what safe mode holds back: some of it, or all.
+    BringBack {
+        /// What to bring back, by the name `weirctl safe-mode` shows.
+        #[arg(value_enum)]
+        items: Vec<SafeItemArg>,
+        /// A strip to bring back, by name. Give it again for each.
+        #[arg(long = "strip", value_name = "NAME")]
+        strips: Vec<String>,
+        /// A bus to bring back, by name. Give it again for each.
+        #[arg(long = "bus", value_name = "NAME")]
+        buses: Vec<String>,
+        /// Everything safe mode holds back.
+        #[arg(long)]
+        all: bool,
+    },
+    /// Hold back what the window draws, as the window does after it closed
+    /// because of a bug: its look, meters and lists, and every strip and
+    /// bus, which play on. For everything, restart with `weirctl restart
+    /// --safe`.
+    Enter,
+    /// Bring everything back and leave safe mode.
+    Leave,
+}
+
+/// Something safe mode holds back, other than a strip or bus.
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SafeItemArg {
+    Look,
+    Meters,
+    Lists,
+    Hotkeys,
+    HotkeySounds,
+    ExternalEffects,
+    Recorder,
+    AppRules,
+    UpdateCheck,
 }
 
 #[derive(Subcommand, Debug)]

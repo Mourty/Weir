@@ -27,6 +27,7 @@ look up when you need it.
 * [Mouse and keyboard](#mouse-and-keyboard)
 * [Where Weir keeps things](#where-weir-keeps-things)
 * [When something is wrong](#when-something-is-wrong)
+* [Safe mode](#safe-mode)
 
 ## The idea
 
@@ -1139,6 +1140,11 @@ Weir's log and the few settings that most often matter:
 * **Restart Weir**, when part of it stopped, starts it again: the safest
   way to get everything working again. When the part that mixes the sound
   stopped, Weir stays silent until it restarts.
+* **Restart in safe mode**, when part of the service stopped, starts it
+  again in [safe mode](#safe-mode).
+
+If Weir crashed soon after starting, it starts in safe mode the next time,
+and the crash window says so.
 
 A request from `weirctl` or a plugin that runs into a bug is answered with
 an error saying so, and Weir carries on. The same bug happening again in
@@ -1189,3 +1195,48 @@ connected, the strip stays silent until it does.
   Applications playing into it are put back, after a short gap. The same
   goes for the devices of external effects, and the programs connected to
   them.
+
+## Safe mode
+
+Weir runs on many different computers, and a bug may show only with one
+setup: a device with an unusual channel layout, say, or a desktop font. In
+safe mode, Weir starts with the parts most likely to be to blame held
+back, so that it works, and you can bring them back one at a time to find
+the one that makes it crash.
+
+**When it starts.** By itself, when Weir's window or service crashed in
+its first 30 seconds, or while in safe mode, the time before. Or when you
+ask: **Restart in safe mode** in the tray menu, in the window's **…** menu,
+or in the crash window; `weir --safe` from a terminal; or `weirctl restart
+--safe`. Each crash leads to safe mode once: the start after that is a
+normal one again.
+
+**What it holds back**, each on its own:
+
+* the window's look (it is dark, in Weir's own font and colors);
+* meter scales, the numbers above meters, and meter colors;
+* the lists under strips and buses (application volumes, and the strips
+  each bus hears);
+* each strip and each bus: the window shows a slim card with its name
+  instead. After the service crashed, they are not set up either, so they
+  make no sound; after only the window crashed, they play on;
+* hotkeys, your own hotkey sounds, external effects, the recorder, app
+  rules, and the check for a new version.
+
+**Bringing things back.** A bar under the top bar says that Weir is in
+safe mode and why. **What's held back…** opens the Safe mode window, which
+lists everything with a **Bring back** button for each; a strip's or bus's
+card has one too. Bring things back one at a time, and use Weir a little
+after each. If it crashes again, the crash report says what came back
+last, and safe mode then keeps that one back and says so, with **Bring
+back all but** it in the bar. **Bring back all** brings everything back;
+**Leave safe mode** does that and ends safe mode. The next time Weir
+starts, it starts normally.
+
+**Nothing is lost.** What safe mode holds back stays saved as it was, and
+comes back as it was. Changes you make in safe mode are saved as usual,
+held-back things included: a setting changed in Preferences while safe
+mode holds it back shows once it comes back.
+
+If you found what makes Weir crash, please report it from the crash
+window: it is a bug, and the report says where.

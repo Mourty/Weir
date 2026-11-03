@@ -112,6 +112,9 @@ Things that trip this up:
   real-time thread) or `request` (answering `ping`) for the daemon, a few
   seconds after it starts; `window` or `window-part` for the window. Point
   `XDG_STATE_HOME` somewhere else to keep the reports out of your own.
+  `service`, `audio` and `window` count as crashes at startup, so the next
+  start is in safe mode; `weirctl safe-mode leave` or a plain restart ends
+  it.
 
 ## Checking the documentation's examples
 

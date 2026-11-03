@@ -30,6 +30,7 @@ weirctl scene load Streaming           # everything as saved for streaming
 * [Recording](#recording): `record`, `recorder`
 * [Export and import](#export-and-import): `export`, `import`
 * [Settings and the window](#settings-and-the-window): `settings`, `update`, `show`, `restart`
+* [Safe mode](#safe-mode): `safe-mode`
 * [Watching and anything else](#watching-and-anything-else): `watch`, `report`, `raw`
 * [A mute key for any desktop](#a-mute-key-for-any-desktop)
 
@@ -585,15 +586,81 @@ Brings the mixer window to the front, or opens it.
 weirctl show
 ```
 
-### `weirctl restart [--window]`
+### `weirctl restart [--window] [--safe]`
 
 Restarts Weir's service, as the tray's **Restart Weir** does: the safest
 way to get everything working again after part of Weir stopped because of
-a bug. With `--window`, the mixer window opens once it is back.
+a bug. With `--window`, the mixer window opens once it is back. With
+`--safe`, it starts in [safe mode](#safe-mode); without, it starts
+normally, even if it is in safe mode now.
 
 <!-- not tested: restarts the service -->
 ```sh
 weirctl restart --window
+weirctl restart --window --safe
+```
+
+## Safe mode
+
+In safe mode, Weir runs with strips, buses and the parts most likely to
+make it crash held back, so that a setup that makes it crash can still be
+used, and the part to blame found by bringing the others back one at a
+time. Weir starts in it after it crashed soon after starting, or with
+`weirctl restart --safe` or `weir --safe`. Nothing held back is lost or
+changed. The [user guide](USER_GUIDE.md#safe-mode) has more.
+
+### `weirctl safe-mode`
+
+Shows why Weir is in safe mode, what it holds back with how to bring each
+back, and what it brought back.
+
+```sh
+weirctl safe-mode enter > /dev/null
+weirctl safe-mode
+```
+
+```
+Weir is in safe mode, as asked.
+
+Held back                         Bring back with     Meanwhile
+The window's look                 look                Dark, in Weir's own font and colors.
+Meter scales, numbers and colors  meters              Plain meters in Weir's own colors.
+Lists under strips and buses      lists               No app volumes under strips, no strip lists under buses.
+Strip "Mic"                       --strip Mic         Not drawn. It still plays.
+Strip "Music"                     --strip Music       Not drawn. It still plays.
+Strip "Browser"                   --strip Browser     Not drawn. It still plays.
+Strip "Soundboard"                --strip Soundboard  Not drawn. It still plays.
+Bus "Headset"                     --bus Headset       Not drawn. It still plays.
+Bus "Speakers"                    --bus Speakers      Not drawn. It still plays.
+Bus "Stream Mic"                  --bus 'Stream Mic'  Not drawn. It still plays.
+```
+
+### `weirctl safe-mode bring-back [ITEM ...] [--strip NAME] [--bus NAME] [--all]`
+
+Brings things back: `look`, `meters`, `lists`, `hotkeys`,
+`hotkey-sounds`, `external-effects`, `recorder`, `app-rules`,
+`update-check`, strips and buses by name, or everything with `--all`.
+Safe mode stays on, so that a crash still says what came back last.
+
+```sh
+weirctl safe-mode enter > /dev/null
+weirctl safe-mode bring-back look --strip Mic --bus 'Stream Mic'
+weirctl safe-mode bring-back --all
+```
+
+### `weirctl safe-mode enter`
+
+Holds back what the window draws, as the window does after it crashed:
+its look, meters and lists, and every strip and bus, which play on. To
+hold back everything, restart with `weirctl restart --safe`.
+
+### `weirctl safe-mode leave`
+
+Brings everything back and leaves safe mode.
+
+```sh
+weirctl safe-mode enter > /dev/null
+weirctl safe-mode leave
 ```
 
 ## Watching and anything else

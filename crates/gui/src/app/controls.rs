@@ -470,3 +470,18 @@ pub(super) fn system_volume_note(ui: &mut Ui, v: &SystemVolume, explain: &str) -
          control if you want it back at 100%."
         ))
 }
+
+/// The band under a strip's or bus's name, exactly [`theme::BAND_H`] tall
+/// whatever it holds, so every column's fader lines up. What does not fit
+/// (a long note about an unplugged device in a large desktop font, say)
+/// is cut off at its edge rather than pushed over the meter below.
+pub(super) fn band<R>(ui: &mut Ui, w: f32, add: impl FnOnce(&mut Ui) -> R) -> R {
+    let (rect, _) = ui.allocate_exact_size(vec2(w, theme::BAND_H), egui::Sense::hover());
+    let mut inside = ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(rect)
+            .layout(Layout::top_down(Align::Min)),
+    );
+    inside.set_clip_rect(rect.intersect(ui.clip_rect()));
+    add(&mut inside)
+}

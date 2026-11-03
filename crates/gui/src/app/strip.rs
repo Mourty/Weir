@@ -68,8 +68,7 @@ impl App {
     /// applications playing into the strip, then the pan control. Buses
     /// reserve the same height so all the faders line up.
     fn strip_source_band(&mut self, ui: &mut Ui, state: &FullState, s: &Strip, inner_w: f32) {
-        ui.allocate_ui(vec2(inner_w, theme::BAND_H), |ui| {
-            ui.set_min_height(theme::BAND_H);
+        super::controls::band(ui, inner_w, |ui| {
             ui.vertical(|ui| {
                 let list_h = theme::BAND_H - 20.0;
                 ui.allocate_ui(vec2(inner_w, list_h), |ui| {

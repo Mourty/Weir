@@ -1,6 +1,7 @@
 use super::names::resolve_names;
 use super::*;
 use serde_json::json;
+use weir_protocol::crash::Locked;
 
 fn mixer() -> MixerState {
     MixerState {
@@ -336,14 +337,14 @@ impl FakeLogin {
 
 impl LoginStart for FakeLogin {
     fn get(&self) -> Option<bool> {
-        *self.enabled.lock().unwrap()
+        *self.enabled.locked()
     }
 
     fn set(&self, on: bool) -> Result<(), String> {
         if self.refuse {
             return Err("systemctl could not enable Weir's service: Access denied".into());
         }
-        *self.enabled.lock().unwrap() = Some(on);
+        *self.enabled.locked() = Some(on);
         Ok(())
     }
 }
@@ -1400,7 +1401,7 @@ fn sounds_of_your_own_are_checked_kept_and_taken_out_of_hotkeys() {
         .call("play_sound", json!({"name": "airhorn"}))
         .unwrap_err();
     assert!(e.message.contains("Preferences"), "{}", e.message);
-    assert_eq!(*r.c.played.lock().unwrap(), ["Airhorn"]);
+    assert_eq!(*r.c.played.locked(), ["Airhorn"]);
     assert_eq!(
         r.code("remove_sound", json!({"name": "Click"})),
         RpcError::APPLICATION
@@ -1452,7 +1453,7 @@ fn sounds_play_on_the_device_chosen_while_it_is_plugged_in() {
         kind: DeviceKind::Sink,
         channels: vec![ChannelPosition::FL, ChannelPosition::FR],
     };
-    let now = |r: &Rig| r.c.inner.lock().unwrap().sounds_device.clone().flatten();
+    let now = |r: &Rig| r.c.inner.locked().sounds_device.clone().flatten();
     r.ok("set_bus", json!({"id": "Headset", "device": "headset"}));
     assert_eq!(now(&r), None, "not plugged in");
     r.c.on_engine_event(EngineEvent::Devices(vec![sink("headset")]));

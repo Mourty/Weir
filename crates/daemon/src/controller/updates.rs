@@ -5,6 +5,7 @@ use super::Controller;
 use crate::diagnostics::Install;
 use serde_json::Value;
 use tracing::{info, warn};
+use weir_protocol::crash::Locked;
 use weir_protocol::*;
 
 impl Controller {
@@ -16,7 +17,7 @@ impl Controller {
 
     /// What is known about Weir's newest release, with how to update here.
     pub(super) fn update_status(&self) -> UpdateStatus {
-        let mut status = self.inner.lock().unwrap().update.clone();
+        let mut status = self.inner.locked().update.clone();
         status.how_to_update = Install::here().how_to_update();
         status
     }
@@ -31,7 +32,7 @@ impl Controller {
 
     /// A check started.
     pub fn update_checking(&self) {
-        self.inner.lock().unwrap().update.checking = true;
+        self.inner.locked().update.checking = true;
         self.announce(Notification::UpdateChanged(self.update_status()));
     }
 
@@ -40,7 +41,7 @@ impl Controller {
     pub fn update_checked(&self, found: Result<Option<Release>, String>) -> bool {
         let ok = found.is_ok();
         {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.locked();
             let u = &mut inner.update;
             u.checking = false;
             u.checked_at_ms = Some(crate::history::now_ms());

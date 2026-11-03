@@ -271,6 +271,7 @@ fn log_place() -> String {
 mod tests {
     use super::*;
     use tracing_subscriber::layer::SubscriberExt;
+    use weir_protocol::crash::Locked;
 
     #[test]
     fn warnings_and_errors_are_kept_and_the_rest_is_not() {
@@ -282,18 +283,18 @@ mod tests {
                 tracing::error!("problem {k}");
             }
         });
-        let problems = PROBLEMS.lock().unwrap().clone();
+        let problems = PROBLEMS.locked().clone();
         assert_eq!(problems.len(), PROBLEMS_KEPT, "the oldest went");
         assert_eq!(problems[0].message, "problem 0");
         assert_eq!(problems[0].level, ProblemLevel::Error);
         assert!(problems.iter().all(|p| !p.message.contains("all is well")));
 
-        PROBLEMS.lock().unwrap().clear();
+        PROBLEMS.locked().clear();
         let subscriber = tracing_subscriber::registry().with(Problems);
         tracing::subscriber::with_default(subscriber, || {
             tracing::warn!(app = "Firefox", "could not move it");
         });
-        let problems = PROBLEMS.lock().unwrap().clone();
+        let problems = PROBLEMS.locked().clone();
         assert_eq!(problems[0].message, "could not move it app=Firefox");
         assert_eq!(problems[0].level, ProblemLevel::Warning);
     }

@@ -17,6 +17,7 @@ use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tracing::{info, warn};
+use weir_protocol::crash::Locked;
 use weir_protocol::*;
 
 /// What the connection knows, shared with the window.
@@ -109,7 +110,7 @@ impl Client {
     /// Watch these strips' and buses' spectra, and only these.
     pub fn watch_spectrum(&self, targets: Vec<StripOrBus>) {
         {
-            let mut sh = self.shared.lock().unwrap();
+            let mut sh = self.shared.locked();
             sh.spectra.retain(|t, _| targets.contains(t));
             sh.watching = targets.clone();
         }
@@ -132,15 +133,15 @@ fn connection_loop(
             Ok(s) => s,
             Err(e) => {
                 {
-                    let mut sh = shared.lock().unwrap();
+                    let mut sh = shared.locked();
                     sh.connected = false;
                     sh.connect_error = Some(format!("{}: {e}", socket.display()));
                 }
-                let retry = std::mem::take(&mut shared.lock().unwrap().retry_spawn);
+                let retry = std::mem::take(&mut shared.locked().retry_spawn);
                 if allow_spawn && (!tried_spawn || retry) {
                     tried_spawn = true;
                     if spawn_daemon(&socket, &shared, &ctx) {
-                        let mut sh = shared.lock().unwrap();
+                        let mut sh = shared.locked();
                         sh.spawned_daemon = true;
                         sh.daemon_exit = None;
                     }
@@ -163,7 +164,7 @@ fn connection_loop(
             }
         };
         {
-            let mut sh = shared.lock().unwrap();
+            let mut sh = shared.locked();
             sh.connected = true;
             sh.connect_error = None;
             // A daemon that stopped because another was already running
@@ -185,7 +186,7 @@ fn connection_loop(
         let send = |req: &Request, writer: &mut UnixStream, next_id: &mut u64| -> bool {
             let id = *next_id;
             *next_id += 1;
-            pending.lock().unwrap().insert(id, Answer::to(req));
+            pending.locked().insert(id, Answer::to(req));
             let env = RpcRequest::new(id, req);
             let mut line = serde_json::to_string(&env).unwrap();
             line.push('\n');
@@ -196,7 +197,7 @@ fn connection_loop(
         // tray can raise an open window instead of starting a second one.
         let mut topics = Topic::ALL.to_vec();
         topics.push(Topic::Window);
-        let watching = shared.lock().unwrap().watching.clone();
+        let watching = shared.locked().watching.clone();
         let initial = [
             Request::Hello,
             Request::Subscribe(SubscribeParams {
@@ -229,7 +230,7 @@ fn connection_loop(
         let _ = writer.shutdown(std::net::Shutdown::Both);
         let _ = reader.join();
         {
-            let mut sh = shared.lock().unwrap();
+            let mut sh = shared.locked();
             sh.connected = false;
             sh.connect_error = Some("connection to the Weir daemon lost".into());
         }
@@ -291,7 +292,7 @@ fn read_loop(
                 continue;
             }
         };
-        let mut sh = shared.lock().unwrap();
+        let mut sh = shared.locked();
         match msg {
             ServerMessage::Notification(n) => match n {
                 Notification::StateChanged(m) => sh.state.mixer = m,
@@ -330,7 +331,7 @@ fn read_loop(
             ServerMessage::Response(r) => {
                 let answer =
                     r.id.as_u64()
-                        .and_then(|id| pending.lock().unwrap().remove(&id))
+                        .and_then(|id| pending.locked().remove(&id))
                         .unwrap_or(Answer::Nothing);
                 if let (Answer::Transfer(t), Some(e)) = (answer, &r.error) {
                     sh.transfers.push((t, Err(e.message.clone())));
@@ -443,7 +444,7 @@ fn watch_daemon(mut child: Child, log: PathBuf, shared: Arc<Mutex<Shared>>, ctx:
             let text = std::fs::read_to_string(&log).unwrap_or_default();
             let reason = exit_reason(&text, &status.to_string());
             warn!("weir-daemon stopped ({status}): {reason}");
-            shared.lock().unwrap().daemon_exit = Some(DaemonExit { reason, log });
+            shared.locked().daemon_exit = Some(DaemonExit { reason, log });
             ctx.request_repaint();
         });
     if let Err(e) = spawned {

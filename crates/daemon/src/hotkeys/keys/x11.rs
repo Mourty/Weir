@@ -17,6 +17,7 @@ use std::time::Duration;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::{watch, Notify};
 use tracing::{debug, info, warn};
+use weir_protocol::crash::Locked;
 use weir_protocol::*;
 use x11rb::connection::Connection;
 use x11rb::errors::ReplyError;
@@ -205,7 +206,7 @@ fn listen(
         match conn.wait_for_event() {
             Ok(Event::KeyPress(e)) => {
                 let mods = u16::from(e.state) & MODIFIERS;
-                let id = grabs.lock().unwrap().get(&(e.detail, mods)).copied();
+                let id = grabs.locked().get(&(e.detail, mods)).copied();
                 if let Some(id) = id {
                     if down.insert(e.detail, id).is_none() && held.down(id, e.detail) {
                         let _ = tx.send(Command::Press(id));
@@ -283,14 +284,14 @@ pub async fn run(
     info!("hotkeys come straight from X11");
     loop {
         let current = regs.borrow_and_update().clone();
-        let old = grabs.lock().unwrap().clone();
+        let old = grabs.locked().clone();
         let (new, problems) = {
             let conn = conn.clone();
             tokio::task::spawn_blocking(move || regrab(&conn, root, &old, &current))
                 .await
                 .map_err(|e| e.to_string())?
         };
-        *grabs.lock().unwrap() = new;
+        *grabs.locked() = new;
         let _ = conn.flush();
         // Keys another program has may come free when it closes.
         let retry = !problems.is_empty();

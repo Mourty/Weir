@@ -68,6 +68,7 @@ use meters::MeterDisplay;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
+use weir_protocol::crash::Locked;
 use weir_protocol::*;
 
 /// Minimum interval between two updates sent for the same control.
@@ -296,7 +297,7 @@ impl App {
     }
 
     fn snapshot(&self) -> Snapshot {
-        let mut sh: std::sync::MutexGuard<'_, Shared> = self.client.shared.lock().unwrap();
+        let mut sh: std::sync::MutexGuard<'_, Shared> = self.client.shared.locked();
         let err = sh
             .last_error
             .as_ref()

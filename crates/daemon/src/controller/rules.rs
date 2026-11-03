@@ -8,6 +8,7 @@ use serde_json::Value;
 use std::collections::HashSet;
 use std::sync::atomic::Ordering;
 use tracing::warn;
+use weir_protocol::crash::Locked;
 use weir_protocol::{
     find_named, rule_for, to_json, Notification, RpcError, SeenApp, StripId, TargetKind,
 };
@@ -63,7 +64,7 @@ impl super::Controller {
     /// does where applications heard lately last played.
     pub(super) fn rules_follow_renames(&self, renamed: &[Rename]) {
         let seen = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.locked();
             inner
                 .seen_apps
                 .follow_renames(renamed)
@@ -73,7 +74,7 @@ impl super::Controller {
             self.seen_apps_changed(list);
         }
         let changed = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.locked();
             let mut changed = false;
             for r in &mut inner.app_rules {
                 let Some(strip) = &mut r.strip else { continue };
@@ -95,13 +96,13 @@ impl super::Controller {
 
     /// The applications heard lately, most recently heard first.
     pub(super) fn seen_apps(&self) -> Vec<SeenApp> {
-        self.inner.lock().unwrap().seen_apps.list().to_vec()
+        self.inner.locked().seen_apps.list().to_vec()
     }
 
     /// Take one application off the list of those heard lately.
     pub(super) fn forget_seen_app(&self, name: &str) -> Result<Value, RpcError> {
         let list = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.locked();
             let inner = &mut *inner;
             inner
                 .seen_apps
@@ -116,7 +117,7 @@ impl super::Controller {
     /// Forget every application heard lately but those playing now.
     pub(super) fn clear_seen_apps(&self) -> Result<Value, RpcError> {
         let (cleared, list) = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.locked();
             let inner = &mut *inner;
             let cleared = inner.seen_apps.clear(&inner.apps);
             (cleared, inner.seen_apps.list().to_vec())
@@ -129,7 +130,7 @@ impl super::Controller {
 
     /// The daemon is stopping: what plays now stops being heard.
     pub fn stop_hearing_apps(&self) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.locked();
         let inner = &mut *inner;
         if !inner.apps.is_empty() {
             inner

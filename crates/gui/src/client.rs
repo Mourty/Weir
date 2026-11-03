@@ -54,6 +54,9 @@ pub struct Shared {
     pub daemon_exit: Option<DaemonExit>,
     /// Start the daemon again: set by the window's Try again button.
     pub retry_spawn: bool,
+    /// Start the daemon even though this window was told not to: set by
+    /// the crash window's Restart Weir, after the whole service crashed.
+    pub start_service: bool,
     /// A window look imported, for the window to take once.
     pub window_look: Option<Value>,
     /// Answers to export and import requests, for the window waiting on
@@ -141,7 +144,8 @@ fn connection_loop(
                     sh.connect_error = Some(format!("{}: {e}", socket.display()));
                 }
                 let retry = std::mem::take(&mut shared.locked().retry_spawn);
-                if allow_spawn && (!tried_spawn || retry) {
+                let asked = std::mem::take(&mut shared.locked().start_service);
+                if (allow_spawn && (!tried_spawn || retry)) || asked {
                     tried_spawn = true;
                     if spawn_daemon(&socket, &shared, &ctx) {
                         let mut sh = shared.locked();

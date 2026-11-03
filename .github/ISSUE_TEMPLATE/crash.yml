@@ -1,0 +1,35 @@
+name: Crash report
+description: Weir crashed, or part of it stopped. Weir's crash window fills this in for you.
+title: "Crash: "
+labels: [crash]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for sending this. The report below came from Weir's crash window. Personal details are hidden unless you chose to show them; change anything you would rather not share before pressing Create.
+  - type: textarea
+    id: doing
+    attributes:
+      label: What were you doing when it crashed?
+      description: Anything you remember helps, even "it was just running".
+    validations:
+      required: false
+  - type: dropdown
+    id: again
+    attributes:
+      label: Can you make it happen again?
+      options:
+        - Not tried yet
+        - Yes, every time
+        - Sometimes
+        - "No"
+    validations:
+      required: false
+  - type: textarea
+    id: report
+    attributes:
+      label: Crash report
+      description: Filled in by Weir. If it says to paste, the report is on your clipboard.
+      render: text
+    validations:
+      required: true

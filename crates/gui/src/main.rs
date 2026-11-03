@@ -52,11 +52,15 @@ struct Args {
 
 fn main() -> eframe::Result {
     use std::io::IsTerminal;
-    tracing_subscriber::fmt()
-        .with_env_filter(
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::util::SubscriberInitExt;
+    weir_protocol::crash::install("window");
+    tracing_subscriber::registry()
+        .with(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
-        .with_ansi(std::io::stdout().is_terminal())
+        .with(tracing_subscriber::fmt::layer().with_ansi(std::io::stdout().is_terminal()))
+        .with(app::LogLines)
         .init();
     let args = Args::parse();
     // Ask the desktop whether it is light or dark before the window opens,

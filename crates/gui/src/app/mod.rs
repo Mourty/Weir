@@ -36,6 +36,7 @@ mod about;
 mod apps;
 mod bus;
 mod controls;
+mod crash;
 mod dialogs;
 mod history;
 mod hotkeys;
@@ -60,6 +61,7 @@ use crate::fx_window::{CompView, FxTarget, FxWindow, GateView, Section, WindowMe
 use crate::patch::CommonPatch;
 use crate::prefs::{Appearance, Prefs, SpectrumView};
 use crate::theme;
+pub(crate) use crash::LogLines;
 use dialogs::{AddBusDialog, AddStripDialog};
 use egui::Frame;
 use history::Toast;
@@ -117,11 +119,15 @@ struct Snapshot {
     transfers: Vec<(crate::client::Transfer, Result<serde_json::Value, String>)>,
     /// What a bug report needs, from the daemon.
     diagnostics: Option<Diagnostics>,
+    /// Reports of parts of the service that stopped because of a bug.
+    crashes: Vec<weir_protocol::crash::Report>,
 }
 
 /// The mixer window.
 pub struct App {
     client: Client,
+    /// The crash window, when something crashed.
+    crash: crash::CrashUi,
     socket: PathBuf,
     /// Requests made this frame, sent at the end of it.
     actions: Vec<Request>,
@@ -238,7 +244,10 @@ impl App {
         theme::apply(&cc.egui_ctx, theme::DARK);
         appearance::set_context(&cc.egui_ctx);
         let client = Client::spawn(socket.clone(), cc.egui_ctx.clone(), allow_spawn);
+        let prefs = Prefs::load();
+        prefs.note_for_crashes();
         Self {
+            crash: crash::CrashUi::at_start(&cc.egui_ctx),
             client,
             socket,
             actions: Vec::new(),
@@ -264,7 +273,7 @@ impl App {
             show_prefs: false,
             raise_prefs: false,
             prefs_page: settings::PrefsPage::default(),
-            prefs: Prefs::load(),
+            prefs,
             start_minimized,
             last_show_seq: 0,
             app_pitch: 45.0,
@@ -334,6 +343,7 @@ impl App {
             window_look: sh.window_look.take(),
             transfers: std::mem::take(&mut sh.transfers),
             diagnostics: sh.diagnostics.take(),
+            crashes: std::mem::take(&mut sh.crashes),
         }
     }
 
@@ -584,7 +594,9 @@ impl eframe::App for App {
             window_look,
             transfers,
             diagnostics,
+            crashes,
         } = self.snapshot();
+        self.crash_tick(crashes, connected);
         self.history = history;
         if let Some(d) = diagnostics {
             self.take_diagnostics(d, &state);
@@ -642,6 +654,8 @@ impl eframe::App for App {
             self.poll_sounds(&state);
             self.show_transfer(ctx, &state, transfers);
         }
+        // Last, so it is drawn over everything else.
+        self.crash_window(ctx);
         self.flush(false);
         ctx.request_repaint_after(Duration::from_millis(if connected { 33 } else { 500 }));
     }

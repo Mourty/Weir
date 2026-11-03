@@ -153,6 +153,9 @@ impl App {
             self.open_about();
             ui.close();
         }
+        if self.safe_menu_item(ui) {
+            ui.close();
+        }
         if ui.button("Quit window").clicked() {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
         }

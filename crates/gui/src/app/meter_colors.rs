@@ -85,6 +85,10 @@ impl App {
     /// The colors meters are drawn in now: the scheme chosen in
     /// Preferences, as it is being edited.
     pub(super) fn meter_paint(&self, state: &FullState) -> MeterPaint {
+        // Held back by safe mode: Weir's own.
+        if self.held(&SafeItem::Meters) {
+            return MeterPaint::of(&MeterColors::weir_default());
+        }
         match self.newer_edits() {
             Some(c) => MeterPaint::of(c),
             None => MeterPaint::of(&scheme(state, &self.prefs.meter_colors)),

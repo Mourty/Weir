@@ -48,6 +48,11 @@ struct Args {
     /// Open the recorder's window too.
     #[arg(long)]
     recorder: bool,
+    /// Start Weir in safe mode: strips, buses and the parts most likely to
+    /// make it crash held back, to bring back one at a time. Restarts
+    /// Weir's service if it is running.
+    #[arg(long)]
+    safe: bool,
 }
 
 fn main() -> eframe::Result {
@@ -96,6 +101,7 @@ fn main() -> eframe::Result {
                 !args.no_spawn,
                 args.minimized,
                 args.recorder,
+                args.safe,
             )))
         }),
     )

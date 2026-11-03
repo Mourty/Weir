@@ -394,7 +394,7 @@ impl App {
     /// The list of strips feeding a bus, drawn according to the preference.
     /// Whatever is not shown is still reachable from the tooltip.
     fn bus_sources(&mut self, ui: &mut Ui, state: &FullState, b: &Bus, width: f32) {
-        if self.prefs.bus_sources == BusSources::Hidden {
+        if self.prefs.bus_sources == BusSources::Hidden || self.held(&SafeItem::Lists) {
             return;
         }
         let feeders: Vec<&Strip> = state

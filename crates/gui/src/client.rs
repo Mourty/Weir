@@ -24,6 +24,8 @@ use weir_protocol::*;
 #[derive(Default)]
 pub struct Shared {
     pub connected: bool,
+    /// The daemon's whole state has arrived on this connection.
+    pub has_state: bool,
     /// Why the last attempt to connect failed.
     pub connect_error: Option<String>,
     /// The last error the daemon answered a request with, and when.
@@ -57,6 +59,9 @@ pub struct Shared {
     /// Start the daemon even though this window was told not to: set by
     /// the crash window's Restart Weir, after the whole service crashed.
     pub start_service: bool,
+    /// Start the daemon in safe mode, when this window starts one:
+    /// `weir --safe`, or the crash window's Restart in safe mode.
+    pub safe_start: bool,
     /// A window look imported, for the window to take once.
     pub window_look: Option<Value>,
     /// Answers to export and import requests, for the window waiting on
@@ -239,6 +244,7 @@ fn connection_loop(
         {
             let mut sh = shared.locked();
             sh.connected = false;
+            sh.has_state = false;
             sh.connect_error = Some("connection to the Weir daemon lost".into());
         }
         ctx.request_repaint();
@@ -361,6 +367,7 @@ fn apply_result(sh: &mut Shared, answer: Answer, result: Value) {
         Answer::State => {
             if let Ok(s) = serde_json::from_value::<FullState>(result) {
                 sh.state = s;
+                sh.has_state = true;
             }
         }
         Answer::History => {
@@ -418,6 +425,9 @@ fn spawn_daemon(socket: &Path, shared: &Arc<Mutex<Shared>>, ctx: &egui::Context)
         if socket != default_socket_path() {
             cmd.arg("--socket").arg(socket);
         }
+        if shared.locked().safe_start {
+            cmd.arg("--safe");
+        }
         cmd.stdin(Stdio::null());
         if let Some((out, err)) = open_daemon_log(&log) {
             cmd.stdout(out).stderr(err);
@@ -425,6 +435,7 @@ fn spawn_daemon(socket: &Path, shared: &Arc<Mutex<Shared>>, ctx: &egui::Context)
         match cmd.spawn() {
             Ok(child) => {
                 info!("started {}, logging to {}", c.display(), log.display());
+                shared.locked().safe_start = false;
                 watch_daemon(child, log, shared.clone(), ctx.clone());
                 return true;
             }

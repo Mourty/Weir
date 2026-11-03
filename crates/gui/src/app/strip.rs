@@ -628,7 +628,7 @@ impl App {
                     .unwrap_or_else(|| "Move this application".into()),
             );
         });
-        if !self.prefs.show_app_volume {
+        if !self.prefs.show_app_volume || self.held(&SafeItem::Lists) {
             return;
         }
         ui.horizontal(|ui| {

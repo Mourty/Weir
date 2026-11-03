@@ -117,11 +117,12 @@ fn routes_width(cols: usize) -> f32 {
 
 impl App {
     pub(super) fn mixer_view(&mut self, ui: &mut Ui, state: &FullState) {
+        let meters = !self.held(&SafeItem::Meters);
         let lay = Metrics::compute(
             ui.available_height(),
             &state.mixer,
-            self.prefs.meter_scale,
-            self.prefs.meter_peak,
+            self.prefs.meter_scale && meters,
+            self.prefs.meter_peak && meters,
         );
         egui::ScrollArea::horizontal()
             .auto_shrink([false, false])
@@ -138,6 +139,11 @@ impl App {
                     let order: Vec<StripOrBus> =
                         strips.iter().map(|s| StripOrBus::Strip(s.id)).collect();
                     for (i, s) in strips.iter().enumerate() {
+                        let item = SafeItem::Strip(s.name.clone());
+                        if self.held(&item) {
+                            self.held_view(ui, item, &s.name, "STRIP", &lay);
+                            continue;
+                        }
                         let resp = self.strip_view(ui, state, s, &lay);
                         self.drop_target(ui, &resp, i, &order);
                     }
@@ -154,6 +160,12 @@ impl App {
                     let order: Vec<StripOrBus> =
                         buses.iter().map(|b| StripOrBus::Bus(b.id)).collect();
                     for (i, b) in buses.iter().enumerate() {
+                        let item = SafeItem::Bus(b.name.clone());
+                        if self.held(&item) {
+                            let caption = format!("BUS {}", super::bus_label(&state.mixer, b));
+                            self.held_view(ui, item, &b.name, &caption, &lay);
+                            continue;
+                        }
                         let resp = self.bus_view(ui, state, b, &lay);
                         self.drop_target(ui, &resp, i, &order);
                     }

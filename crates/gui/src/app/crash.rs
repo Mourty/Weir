@@ -277,9 +277,10 @@ impl App {
             match (service, self.crash.connected) {
                 // The service starts again, and opens a new window: this
                 // one is told to close as it goes.
-                (true, true) => self
-                    .actions
-                    .push(Request::Restart(RestartParams { window: true })),
+                (true, true) => self.actions.push(Request::Restart(RestartParams {
+                    window: true,
+                    safe: false,
+                })),
                 // The whole service went: start it again from here.
                 (true, false) => self.client.shared.locked().start_service = true,
                 (false, _) => restart_window(ctx),

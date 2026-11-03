@@ -383,7 +383,10 @@ pub fn show_window(c: &mut Client) -> Result<()> {
 }
 
 pub fn restart(c: &mut Client, window: bool) -> Result<()> {
-    c.call(&Request::Restart(RestartParams { window }))?;
+    c.call(&Request::Restart(RestartParams {
+        window,
+        safe: false,
+    }))?;
     println!("restarting Weir");
     Ok(())
 }

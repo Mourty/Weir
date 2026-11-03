@@ -152,6 +152,11 @@ impl super::Controller {
         let Some(engine) = self.engine() else {
             return;
         };
+        // Safe mode: the rules wait, and apply to what plays then once
+        // they come back.
+        if self.holds(&weir_protocol::SafeItem::AppRules) {
+            return;
+        }
         for (app, name, strip) in moves {
             tracing::info!("rule: moving {name} ({app}) to strip {strip}");
             if let Err(e) = engine.move_app(app, strip) {

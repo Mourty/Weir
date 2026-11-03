@@ -26,10 +26,11 @@ pub enum TrayCommand {
     StartRecording,
     /// Stop recording.
     StopRecording,
-    /// Stop everything and start again.
-    Restart,
-    /// Stop everything and start again, opening the mixer window then.
-    RestartWithWindow,
+    /// Stop everything and start again: opening the mixer window then
+    /// (`window`), in safe mode (`safe`).
+    Restart { window: bool, safe: bool },
+    /// Bring back everything safe mode holds back, and leave it.
+    LeaveSafeMode,
     /// Stop everything.
     Exit,
     /// Change what happens the next time the daemon starts.
@@ -54,6 +55,8 @@ pub struct MixerTray {
     pub recording: Option<(f64, usize)>,
     /// Whether any strip or bus is ticked for recording.
     pub can_record: bool,
+    /// Whether Weir is in safe mode.
+    pub safe_mode: bool,
 }
 
 impl MixerTray {
@@ -68,6 +71,7 @@ impl MixerTray {
             buses: 0,
             recording: None,
             can_record: false,
+            safe_mode: false,
         }
     }
 
@@ -141,13 +145,14 @@ impl Tray for MixerTray {
             icon_pixmap: self.icon_pixmap(),
             title: "Weir".into(),
             description: format!(
-                "Engine {}. {} strips, {} buses.{}",
+                "Engine {}. {} strips, {} buses.{}{}",
                 self.engine_state,
                 self.strips,
                 self.buses,
                 self.recording
                     .map(|r| format!(" {}.", recording_words(r)))
-                    .unwrap_or_default()
+                    .unwrap_or_default(),
+                if self.safe_mode { " In safe mode." } else { "" }
             ),
         }
     }
@@ -201,10 +206,16 @@ impl Tray for MixerTray {
             StandardItem {
                 label: "Restart Weir".into(),
                 icon_name: "view-refresh".into(),
-                activate: Box::new(|this: &mut Self| this.send(TrayCommand::Restart)),
+                activate: Box::new(|this: &mut Self| {
+                    this.send(TrayCommand::Restart {
+                        window: false,
+                        safe: false,
+                    })
+                }),
                 ..Default::default()
             }
             .into(),
+            self.safe_mode_item(),
             StandardItem {
                 label: "Quit Weir".into(),
                 icon_name: "application-exit".into(),
@@ -218,6 +229,31 @@ impl Tray for MixerTray {
 }
 
 impl MixerTray {
+    /// In safe mode a way out of it; otherwise a way in, for when Weir
+    /// keeps crashing.
+    fn safe_mode_item(&self) -> MenuItem<Self> {
+        if self.safe_mode {
+            StandardItem {
+                label: "Leave safe mode".into(),
+                activate: Box::new(|this: &mut Self| this.send(TrayCommand::LeaveSafeMode)),
+                ..Default::default()
+            }
+            .into()
+        } else {
+            StandardItem {
+                label: "Restart in safe mode".into(),
+                activate: Box::new(|this: &mut Self| {
+                    this.send(TrayCommand::Restart {
+                        window: true,
+                        safe: true,
+                    })
+                }),
+                ..Default::default()
+            }
+            .into()
+        }
+    }
+
     /// While recording, how long and a way to stop it; otherwise a way to
     /// start, when anything is ticked. Then the recorder's window.
     fn recording_items(&self) -> Vec<MenuItem<Self>> {

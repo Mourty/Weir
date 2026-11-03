@@ -117,6 +117,12 @@ impl Controller {
             Request::SetSettings(p) => self.set_settings(p),
             Request::ShowWindow => self.show_window_request(),
             Request::Restart(p) => self.restart_request(p),
+            Request::EnterSafeMode(p) => self.enter_safe_mode(p),
+            Request::BringBack(p) => self.bring_back_request(p),
+            Request::LeaveSafeMode => {
+                self.leave_safe_mode();
+                Ok(Value::Null)
+            }
             Request::ListSetups => Ok(to_json(&config::list_saved(&self.paths.setups_dir))),
             Request::ListScenes => Ok(to_json(&config::list_saved(&self.paths.scenes_dir))),
             Request::SaveSetup(p) => self.save_setup(p),
@@ -159,7 +165,10 @@ impl Controller {
             Request::Redo(p) => self.step_history(p.steps, false),
             Request::History => Ok(to_json(&self.inner.locked().history.info())),
             Request::Describe => Ok(weir_protocol::describe()),
-            Request::CheckForUpdate => self.check_for_update(),
+            Request::CheckForUpdate => {
+                self.needs(SafeItem::UpdateCheck)?;
+                self.check_for_update()
+            }
             Request::Diagnostics => Ok(to_json(&crate::diagnostics::gather(
                 self.engine().and_then(|e| e.server_version()),
             ))),
@@ -194,6 +203,7 @@ impl Controller {
             meter_colors,
             recorder: inner.recorder.clone(),
             recording,
+            safe_mode: self.safe_mode(),
         }
     }
 
@@ -421,10 +431,9 @@ impl Controller {
 
     /// Restart the service through the main loop, as the tray does.
     fn restart_request(&self, p: RestartParams) -> Result<Value, RpcError> {
-        let command = if p.window {
-            TrayCommand::RestartWithWindow
-        } else {
-            TrayCommand::Restart
+        let command = TrayCommand::Restart {
+            window: p.window,
+            safe: p.safe,
         };
         match self.window_tx.locked().as_ref() {
             Some(tx) if tx.send(command).is_ok() => Ok(Value::Null),

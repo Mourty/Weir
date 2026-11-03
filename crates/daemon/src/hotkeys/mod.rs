@@ -24,7 +24,13 @@ use weir_protocol::crash::Locked;
 pub fn start(controller: &Arc<Controller>) {
     controller.set_popups(popup::Popups::start());
     let tx = start_runner(controller);
-    tokio::spawn(keys::run(controller.clone(), tx));
+    let c = controller.clone();
+    tokio::spawn(async move {
+        // Safe mode leaves the desktop's keys alone until hotkeys come
+        // back.
+        c.until_back(weir_protocol::SafeItem::Hotkeys).await;
+        keys::run(c, tx).await;
+    });
 }
 
 /// Start the runner, and hand it to the controller. Returns its mailbox.

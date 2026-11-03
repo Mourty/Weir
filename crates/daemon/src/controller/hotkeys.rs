@@ -37,6 +37,9 @@ fn allowed_in_hotkey(req: &Request) -> bool {
             | Request::Describe
             | Request::Diagnostics
             | Request::Restart(_)
+            | Request::EnterSafeMode(_)
+            | Request::BringBack(_)
+            | Request::LeaveSafeMode
             | Request::CheckForUpdate
             | Request::GetState
             | Request::ListDevices
@@ -579,6 +582,7 @@ impl Controller {
     /// Press, let go of, or tap a hotkey, for a client. Answers with the
     /// hotkey once its steps are done; fades carry on.
     pub(super) fn hotkey_action(&self, r: HotkeyRef, action: Action) -> Result<Value, RpcError> {
+        self.needs(SafeItem::Hotkeys)?;
         let id = self.find_hotkey(&r.hotkey)?;
         let hotkey = self.hotkey(id);
         let command = match action {

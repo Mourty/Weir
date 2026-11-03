@@ -123,10 +123,26 @@ impl Controller {
         self.inner.locked().sounds.info(name).map(|s| s.name)
     }
 
+    /// The names of the user's own sounds while safe mode holds them back,
+    /// unread: hotkeys keep playing them once they are back.
+    fn held_sound_names(&self) -> Vec<String> {
+        if !self.holds(&SafeItem::HotkeySounds) {
+            return Vec::new();
+        }
+        crate::sounds::own_files(&self.paths.sounds_dir)
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect()
+    }
+
     /// Read the sound files again, give the engine the sounds, and tell
     /// clients.
     pub(super) fn sounds_changed(&self) {
-        let library = Library::load(&self.paths.sounds_dir);
+        let library = if self.holds(&SafeItem::HotkeySounds) {
+            Library::builtin()
+        } else {
+            Library::load(&self.paths.sounds_dir)
+        };
         self.inner.locked().sounds = library;
         self.push_sounds();
         self.announce(Notification::HotkeysChanged(self.hotkeys_info()));
@@ -134,6 +150,7 @@ impl Controller {
 
     /// Add the sound file at `p.path` as `p.name`, keeping a copy.
     pub(super) fn add_sound(&self, p: AddSoundParams) -> Result<Value, RpcError> {
+        self.needs(SafeItem::HotkeySounds)?;
         let name = p.name.trim().to_string();
         if let Some(problem) = sound_name_problem(&name) {
             return Err(RpcError::invalid_params(problem));
@@ -173,6 +190,7 @@ impl Controller {
     /// Remove the sound of the person's own called `name`, and take it out
     /// of every hotkey that plays it.
     pub(super) fn remove_sound(&self, p: NameParams) -> Result<Value, RpcError> {
+        self.needs(SafeItem::HotkeySounds)?;
         let name = {
             let inner = self.inner.locked();
             let info = inner
@@ -216,6 +234,7 @@ impl Controller {
     /// `h`'s sounds, each named as the library has it, or, where it has no
     /// such sound and `also` does not name one, why not.
     pub(super) fn check_sounds(&self, h: &mut Hotkey, also: &[String]) -> Result<(), RpcError> {
+        let held = self.held_sound_names();
         for s in h.sounds.names_mut() {
             let Some(name) = s.as_deref().map(str::trim) else {
                 continue;
@@ -228,6 +247,7 @@ impl Controller {
                 Some(known) => known,
                 None => also
                     .iter()
+                    .chain(&held)
                     .find(|a| a.eq_ignore_ascii_case(name))
                     .cloned()
                     .ok_or_else(|| {
@@ -241,6 +261,7 @@ impl Controller {
     /// Hotkeys that play sounds Weir no longer has, such as a file removed
     /// by hand.
     pub(super) fn sound_problems(&self, hotkeys: &[Hotkey]) -> Vec<HotkeyProblem> {
+        let held = self.held_sound_names();
         let inner = self.inner.locked();
         hotkeys
             .iter()
@@ -250,6 +271,7 @@ impl Controller {
                     .named()
                     .map(|(_, s)| s)
                     .filter(|s| inner.sounds.index(s).is_none())
+                    .filter(|s| !held.iter().any(|h| h.eq_ignore_ascii_case(s)))
                     .collect();
                 let first = gone.first()?;
                 Some(HotkeyProblem {

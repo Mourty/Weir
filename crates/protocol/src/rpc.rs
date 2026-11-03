@@ -264,8 +264,9 @@ pub enum Topic {
     /// to the front, or to close. Subscribing marks this connection as a
     /// window, which is how the tray knows whether one is already open.
     Window,
-    /// `settings_changed` and `update_changed`: the daemon's own settings,
-    /// or what it knows about Weir's newest release.
+    /// `settings_changed`, `update_changed` and `safe_mode_changed`: the
+    /// daemon's own settings, what it knows about Weir's newest release, or
+    /// what safe mode holds back.
     Settings,
     /// `spectrum`: sent for the strips and buses a connection asked for with
     /// `watch_spectrum`, whatever it subscribed to.
@@ -1039,6 +1040,10 @@ pub struct RestartParams {
     /// set to do when it starts.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub window: bool,
+    /// Start again in safe mode, with everything held back that can be:
+    /// see `bring_back`.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub safe: bool,
 }
 
 /// Parameters naming a scene, a setup, an equalizer preset, a sound or an
@@ -1170,6 +1175,22 @@ pub enum Request {
     /// because of a bug (see [`Notification::Crashed`]). Returns `null`,
     /// then the service restarts.
     Restart(RestartParams),
+    /// Hold back what the window draws, as the window asks after it
+    /// closed because of a bug soon after opening: its look, meters and
+    /// lists, and every strip and bus (which play on). In safe mode
+    /// already, only `suspect` is held back again. Holding back the rest
+    /// takes a restart: `restart` with `safe`. Returns the [`SafeMode`].
+    ///
+    /// [`SafeMode`]: crate::safe::SafeMode
+    EnterSafeMode(crate::safe::EnterSafeModeParams),
+    /// Bring back what safe mode holds back, some or all of it. Safe mode
+    /// stays on, so that a crash still says what came back last. Returns
+    /// the [`SafeMode`].
+    ///
+    /// [`SafeMode`]: crate::safe::SafeMode
+    BringBack(crate::safe::BringBackParams),
+    /// Bring everything back and leave safe mode. Returns `null`.
+    LeaveSafeMode,
     /// Returns `Vec<String>`, the saved setups.
     ListSetups,
     /// Save what is there as a setup: the strips and buses, their devices,
@@ -1410,7 +1431,9 @@ pub enum Notification {
     /// `~/.local/state/weir/crash.log`. The service carries on, but
     /// restarting it (`restart`) is the safest way to get everything
     /// working again.
-    Crashed(crate::crash::Report),
+    Crashed(Box<crate::crash::Report>),
+    /// Safe mode started, ended, or brought something back.
+    SafeModeChanged(crate::safe::SafeMode),
     /// What can be undone and redone changed.
     HistoryChanged(HistoryInfo),
     /// The application rules changed.
@@ -1445,7 +1468,9 @@ impl Notification {
             }
             Self::AppsChanged(_) | Self::SeenAppsChanged(_) => Topic::Apps,
             Self::EngineChanged(_) => Topic::Engine,
-            Self::SettingsChanged(_) | Self::UpdateChanged(_) => Topic::Settings,
+            Self::SettingsChanged(_) | Self::UpdateChanged(_) | Self::SafeModeChanged(_) => {
+                Topic::Settings
+            }
             Self::Spectrum(_) => Topic::Spectrum,
             Self::ShowWindow
             | Self::ShowRecorder

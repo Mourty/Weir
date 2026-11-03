@@ -10,10 +10,14 @@ use weir_protocol::{
 };
 
 /// Whether `method` keeps strips by name rather than by id: app rules, so
-/// that a rule can wait for a setup that has its strip, and the strips
-/// and buses to record, which may be another setup's.
+/// that a rule can wait for a setup that has its strip, the strips and
+/// buses to record, which may be another setup's, and what safe mode holds
+/// back, which goes by name.
 pub(super) fn takes_names(method: &str) -> bool {
-    matches!(method, "set_app_rules" | "set_recorder")
+    matches!(
+        method,
+        "set_app_rules" | "set_recorder" | "bring_back" | "enter_safe_mode"
+    )
 }
 
 /// Let clients name strips and buses instead of giving their ids. In

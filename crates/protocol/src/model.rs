@@ -1439,6 +1439,9 @@ pub struct FullState {
     /// The ways of coloring meters: Weir's own first, then the user's.
     #[serde(default)]
     pub meter_colors: Vec<crate::meter_colors::MeterColors>,
+    /// What safe mode holds back, when Weir is in it.
+    #[serde(default, skip_serializing_if = "crate::safe::SafeMode::is_off")]
+    pub safe_mode: crate::safe::SafeMode,
     /// How recordings are made.
     #[serde(default)]
     pub recorder: crate::recorder::RecorderSettings,

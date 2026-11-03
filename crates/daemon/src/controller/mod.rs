@@ -14,6 +14,8 @@
 //! * [`rules`]: putting applications where their rules say, and the
 //!   applications heard lately.
 //! * [`sounds`]: hotkeys' sounds and popups.
+//! * [`safe`]: safe mode, holding parts of Weir back and bringing them
+//!   back.
 
 mod handlers;
 pub mod hotkeys;
@@ -21,6 +23,7 @@ mod meter_colors;
 mod names;
 mod recorder;
 mod rules;
+mod safe;
 mod sounds;
 mod transfer;
 mod undo_labels;
@@ -154,6 +157,9 @@ pub struct Controller {
     me: OnceLock<Weak<Controller>>,
     /// The recording under way, or the last one until another starts.
     recording: Mutex<Option<crate::recorder::Recording>>,
+    /// What safe mode holds back. Parts that wait to be brought back
+    /// watch it.
+    safe: tokio::sync::watch::Sender<SafeMode>,
     /// The sounds asked to play, by name, for tests to check.
     #[cfg(test)]
     pub(crate) played: Mutex<Vec<String>>,
@@ -161,7 +167,8 @@ pub struct Controller {
 
 impl Controller {
     /// A controller for `mixer`, driving `engine` (if any), keeping its
-    /// files where `paths` says.
+    /// files where `paths` says, out of safe mode.
+    #[cfg(test)]
     pub fn new(
         mixer: MixerState,
         engine: Option<EngineHandle>,
@@ -169,7 +176,43 @@ impl Controller {
         settings: Settings,
         app_rules: Vec<AppRule>,
     ) -> Self {
+        Self::new_with(
+            mixer,
+            engine,
+            paths,
+            settings,
+            app_rules,
+            SafeMode::default(),
+        )
+    }
+
+    /// A controller for `mixer`, driving `engine` (if any), keeping its
+    /// files where `paths` says. What `safe` holds back is not read or set
+    /// up; the engine must have been started with
+    /// [`SafeMode::engine_mixer`].
+    pub fn new_with(
+        mixer: MixerState,
+        engine: Option<EngineHandle>,
+        paths: Paths,
+        settings: Settings,
+        app_rules: Vec<AppRule>,
+        safe: SafeMode,
+    ) -> Self {
         let (notify, _) = broadcast::channel(512);
+        let keys_status = if safe.holds(&SafeItem::Hotkeys) {
+            safe::keys_held()
+        } else {
+            KeysStatus {
+                method: KeysMethod::Starting,
+                message: "Weir is getting hotkeys ready.".into(),
+                ..Default::default()
+            }
+        };
+        let sounds = if safe.holds(&SafeItem::HotkeySounds) {
+            crate::sounds::Library::builtin()
+        } else {
+            crate::sounds::Library::load(&paths.sounds_dir)
+        };
         let hotkeys = config::load_hotkeys(&paths.hotkeys_file, &paths.backups_dir, &mixer)
             .map_err(|e| {
                 warn!("{e:#}");
@@ -208,14 +251,10 @@ impl Controller {
                 system_volumes: SystemVolumes::default(),
                 inserts: Vec::new(),
                 hotkeys,
-                keys_status: KeysStatus {
-                    method: KeysMethod::Starting,
-                    message: "Weir is getting hotkeys ready.".into(),
-                    ..Default::default()
-                },
+                keys_status,
                 key_problems: BTreeMap::new(),
                 target_problems: Vec::new(),
-                sounds: crate::sounds::Library::load(&paths.sounds_dir),
+                sounds,
                 sounds_device: None,
                 update: UpdateStatus::default(),
                 seen_apps: crate::seen_apps::SeenApps::load(
@@ -241,6 +280,7 @@ impl Controller {
             update_wanted: tokio::sync::Notify::new(),
             me: OnceLock::new(),
             recording: Mutex::new(None),
+            safe: tokio::sync::watch::Sender::new(safe),
             #[cfg(test)]
             played: Mutex::new(Vec::new()),
         }
@@ -257,7 +297,7 @@ impl Controller {
     /// Tell the window that part of the service stopped because of a bug,
     /// with the report of it.
     pub fn tell_crash(&self, report: weir_protocol::crash::Report) {
-        self.announce(Notification::Crashed(report));
+        self.announce(Notification::Crashed(Box::new(report)));
     }
 
     /// Tell every connection that subscribed to this kind of news.
@@ -612,6 +652,7 @@ impl Controller {
         self.follow_renames(&renamed);
         self.rules_follow_renames(&renamed);
         self.recorder_follow_renames(&renamed);
+        self.safe_follow_renames(&renamed);
         self.push_state(state);
         if let Some(info) = history {
             self.announce(Notification::HistoryChanged(info));
@@ -667,6 +708,7 @@ impl Controller {
         self.follow_renames(&renamed);
         self.rules_follow_renames(&renamed);
         self.recorder_follow_renames(&renamed);
+        self.safe_follow_renames(&renamed);
         info!(
             "{} {}",
             if back { "undid" } else { "redid" },
@@ -680,7 +722,9 @@ impl Controller {
     /// A new mixer state: to the engine, to the config file, to clients.
     fn push_state(&self, state: MixerState) {
         if let Some(engine) = &self.engine {
-            if let Err(e) = engine.set_state(state.clone()) {
+            // In safe mode, without what it holds back.
+            let given = self.safe.borrow().engine_mixer(&state);
+            if let Err(e) = engine.set_state(given.unwrap_or_else(|| state.clone())) {
                 warn!("engine rejected state: {e}");
             }
         }

@@ -14,6 +14,7 @@
 
 use crate::recorder::LocalTime;
 use crate::report::Desktop;
+use crate::safe::{SafeItem, SafeMode, EARLY_CRASH_SECS};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
@@ -22,6 +23,7 @@ use std::collections::{BTreeSet, VecDeque};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
+use std::time::Instant;
 
 /// Log lines a report ends with.
 const LOG_LINES: usize = 20;
@@ -66,6 +68,19 @@ pub struct Report {
     pub log: Vec<String>,
     /// What [`Report::text`] hides, as it was when it happened.
     pub private: Private,
+    /// Seconds from the program's start to the crash.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uptime_s: Option<u64>,
+    /// This report, told apart from every other, so that safe mode answers
+    /// it once.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub id: String,
+    /// The program was in safe mode.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub safe_mode: bool,
+    /// What safe mode brought back last before the crash.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub brought_back: Option<SafeItem>,
 }
 
 /// What is personal, to hide.
@@ -118,6 +133,9 @@ impl<T: ?Sized> Locked<T> for Mutex<T> {
 }
 
 static PROGRAM: OnceLock<&'static str> = OnceLock::new();
+static START: OnceLock<Instant> = OnceLock::new();
+/// Whether the program is in safe mode, and what came back last.
+static SAFE: Mutex<(bool, Option<SafeItem>)> = Mutex::new((false, None));
 static LOG: Mutex<VecDeque<String>> = Mutex::new(VecDeque::new());
 static SETTINGS: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
 static FRESH: Mutex<Vec<Report>> = Mutex::new(Vec::new());
@@ -139,6 +157,7 @@ thread_local! {
 /// `service`). Once, at the start.
 pub fn install(program: &'static str) {
     let _ = PROGRAM.set(program);
+    let _ = START.set(Instant::now());
     let before = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         let place = info
@@ -235,6 +254,12 @@ pub fn note_settings(settings: Vec<(String, String)>) {
     *lock(&SETTINGS) = settings;
 }
 
+/// Tell reports whether the program is in safe mode, and what it brought
+/// back last.
+pub fn note_safe_mode(mode: &SafeMode) {
+    *lock(&SAFE) = (mode.on, mode.last_brought_back().cloned());
+}
+
 /// Call `wake` when a report is kept, so the program can pass it on at
 /// once.
 pub fn on_crash(wake: impl Fn() + Send + Sync + 'static) {
@@ -262,6 +287,31 @@ pub fn log_path() -> PathBuf {
 /// Reports not yet shown, oldest first, from earlier runs too.
 pub fn pending() -> Vec<Report> {
     pending_in(&state_dir())
+}
+
+/// The newest report from `program` (`window` or `service`) if it calls
+/// for safe mode ([`Report::calls_for_safe_mode`]) and has not been
+/// answered yet. Each report is answered once: the next start after this
+/// one is a normal one again.
+pub fn safe_mode_wanted(program: &str) -> Option<Report> {
+    safe_mode_wanted_in(&state_dir(), program)
+}
+
+fn safe_mode_wanted_in(dir: &Path, program: &str) -> Option<Report> {
+    let newest = pending_in(dir)
+        .into_iter()
+        .rev()
+        .find(|r| r.program == program)?;
+    let answered = dir.join(format!("safe-mode-answered-{program}"));
+    if newest.id.is_empty()
+        || std::fs::read_to_string(&answered).is_ok_and(|id| id.trim() == newest.id)
+        || !newest.calls_for_safe_mode()
+    {
+        return None;
+    }
+    let _ = std::fs::create_dir_all(dir);
+    let _ = std::fs::write(&answered, &newest.id);
+    Some(newest)
 }
 
 /// The reports waiting have been shown.
@@ -350,7 +400,30 @@ impl Report {
                 home: dirs::home_dir().map(|h| h.display().to_string()),
                 user: std::env::var("USER").ok().filter(|u| !u.is_empty()),
             },
+            uptime_s: START.get().map(|s| s.elapsed().as_secs()),
+            id: format!(
+                "{}-{}-{}",
+                PROGRAM.get().copied().unwrap_or("weir"),
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |d| d.as_nanos())
+            ),
+            safe_mode: SAFE.try_lock().map(|s| s.0).unwrap_or(false),
+            brought_back: SAFE.try_lock().ok().and_then(|s| s.1.clone()),
         }
+    }
+
+    /// Whether the program ended, or its sound did: the whole program, or
+    /// the service's audio part, which then stays silent.
+    pub fn ended(&self) -> bool {
+        self.whole || self.part == "audio"
+    }
+
+    /// Whether the program's next start should be in safe mode: it ended
+    /// soon after starting, or while in safe mode.
+    pub fn calls_for_safe_mode(&self) -> bool {
+        self.ended() && (self.safe_mode || self.uptime_s.is_some_and(|s| s < EARLY_CRASH_SECS))
     }
 
     /// The report as text, with what is personal hidden or not, and what
@@ -361,7 +434,16 @@ impl Report {
             "Weir {} ({}) on {}\n",
             self.version, self.program, self.system
         );
-        t += &format!("Crashed: {}\n", self.time);
+        match self.uptime_s {
+            Some(up) => t += &format!("Crashed: {}, {} after starting\n", self.time, span(up)),
+            None => t += &format!("Crashed: {}\n", self.time),
+        }
+        if self.safe_mode {
+            match &self.brought_back {
+                Some(b) => t += &format!("Safe mode: on, {} came back last\n", s.text(&b.label())),
+                None => t += "Safe mode: on, nothing brought back\n",
+            }
+        }
         t += &format!("Part: {}\n", s.text(&self.part));
         t += &format!("Panic: {}\n", s.text(&self.message));
         t += &format!("At: {}\n", s.text(&self.at));
@@ -409,6 +491,15 @@ impl Report {
         } else {
             format!("Crash: {message} in {file}")
         }
+    }
+}
+
+/// `secs` in words: `12 s`, `4 min`, `3 h 20 min`.
+fn span(secs: u64) -> String {
+    match secs {
+        0..60 => format!("{secs} s"),
+        60..3600 => format!("{} min", secs / 60),
+        _ => format!("{} h {} min", secs / 3600, secs % 3600 / 60),
     }
 }
 
@@ -791,6 +882,48 @@ mod tests {
         );
         let log = std::fs::read_to_string(dir.join("crash.log")).unwrap();
         assert!(log.contains("Panic: number 0") && log.contains("The whole backtrace"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn safe_mode_answers_a_crash_at_startup_once() {
+        let dir = std::env::temp_dir().join(format!("weir-safe-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let crash = |id: &str, program: &str, whole: bool, up: u64, safe: bool| Report {
+            id: id.into(),
+            program: program.into(),
+            whole,
+            uptime_s: Some(up),
+            safe_mode: safe,
+            ..report()
+        };
+
+        // Late, or only a part: not for safe mode.
+        keep(&dir, &crash("w1", "window", true, 300, false));
+        assert_eq!(safe_mode_wanted_in(&dir, "window"), None);
+        keep(&dir, &crash("w2", "window", false, 3, false));
+        assert_eq!(safe_mode_wanted_in(&dir, "window"), None);
+
+        // Early: once, and only for its own program.
+        keep(&dir, &crash("w3", "window", true, 3, false));
+        keep(&dir, &crash("s1", "service", true, 600, false));
+        assert_eq!(safe_mode_wanted_in(&dir, "service"), None);
+        assert_eq!(safe_mode_wanted_in(&dir, "window").unwrap().id, "w3");
+        assert_eq!(safe_mode_wanted_in(&dir, "window"), None, "answered");
+
+        // In safe mode, however late; the audio part counts as ending.
+        let mut audio = crash("s2", "service", false, 900, true);
+        audio.part = "audio".into();
+        audio.brought_back = Some(SafeItem::Strip("Mic".into()));
+        keep(&dir, &audio);
+        let wanted = safe_mode_wanted_in(&dir, "service").unwrap();
+        assert_eq!(wanted.brought_back, Some(SafeItem::Strip("Mic".into())));
+        let (text, _) = wanted.text(true);
+        assert!(text.contains("15 min after starting"), "{text}");
+        assert!(
+            text.contains("Safe mode: on, Strip \"Mic\" came back last"),
+            "{text}"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

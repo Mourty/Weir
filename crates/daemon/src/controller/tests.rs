@@ -26,11 +26,15 @@ struct Rig {
 
 impl Rig {
     fn new(name: &str) -> Self {
+        Self::with(name, SafeMode::default())
+    }
+
+    fn with(name: &str, safe: SafeMode) -> Self {
         let dir = std::env::temp_dir().join(format!("weir-ctl-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let paths = Paths::resolve(Some(dir.join("config.toml")));
-        let c = Controller::new(mixer(), None, paths, Settings::default(), Vec::new());
+        let c = Controller::new_with(mixer(), None, paths, Settings::default(), Vec::new(), safe);
         Self {
             c,
             subs: Subscriptions::default(),
@@ -1769,4 +1773,84 @@ fn recorder_settings_keep_names_and_follow_renames() {
         "{text}"
     );
     let _ = std::fs::remove_dir_all(&r.dir);
+}
+
+#[test]
+fn safe_mode_holds_things_back_until_they_are_brought_back() {
+    let safe = SafeMode::everything(SafeWhy::Asked, &mixer(), None);
+    let mut r = Rig::with("safe", safe);
+    let state = r.ok("get_state", json!({}));
+    assert_eq!(state["safe_mode"]["on"], true);
+    assert_eq!(state["hotkeys"]["keys"]["method"], "unavailable");
+
+    // Held back: refused, saying what to bring back.
+    r.ok("set_record_track", json!({"strip": "Mic", "on": true}));
+    let e = r.call("set_recording", json!({"on": true})).unwrap_err();
+    assert!(
+        e.message.contains("holding back the recorder"),
+        "{}",
+        e.message
+    );
+    assert_eq!(r.code("check_for_update", json!({})), RpcError::APPLICATION);
+    assert_eq!(
+        r.code("add_sound", json!({"name": "Horn", "path": "/nowhere.wav"})),
+        RpcError::APPLICATION
+    );
+
+    // A strip renamed while held back stays held back.
+    r.ok("set_strip", json!({"id": "Music", "name": "Songs"}));
+    assert!(r.c.safe_mode().holds_strip("Songs"));
+
+    // Brought back one at a time; the last is what a crash names.
+    assert_eq!(
+        r.code("bring_back", json!({"items": [{"strip": "Nothing"}]})),
+        RpcError::APPLICATION
+    );
+    let now = r.ok(
+        "bring_back",
+        json!({"items": [{"strip": "Songs"}, "recorder"]}),
+    );
+    assert_eq!(now["brought_back"], json!([{"strip": "Songs"}, "recorder"]));
+    assert!(!r.c.holds(&SafeItem::Recorder));
+    let now = r.ok("bring_back", json!({"all": true}));
+    assert_eq!(
+        (now["on"].clone(), now["held"].clone()),
+        (json!(true), json!([]))
+    );
+
+    r.ok("leave_safe_mode", json!({}));
+    assert!(r.ok("get_state", json!({})).get("safe_mode").is_none());
+    assert_eq!(
+        r.code("bring_back", json!({"all": true})),
+        RpcError::APPLICATION
+    );
+}
+
+#[test]
+fn the_window_holds_back_what_it_draws() {
+    let mut r = Rig::new("safe-window");
+    let now = r.ok("enter_safe_mode", json!({"why": "window"}));
+    assert_eq!(
+        (now["on"].clone(), now["audio"].clone()),
+        (json!(true), json!(false))
+    );
+    assert_eq!(now["why"], "window");
+    let safe = r.c.safe_mode();
+    assert!(safe.holds(&SafeItem::Look) && safe.holds_bus("Stream Mic"));
+    assert!(!safe.holds(&SafeItem::Hotkeys) && !safe.holds(&SafeItem::Recorder));
+
+    // Crashed again after the lists came back: only they go back.
+    r.ok("bring_back", json!({"items": ["lists", "look"]}));
+    let now = r.ok(
+        "enter_safe_mode",
+        json!({"why": "window", "suspect": "lists"}),
+    );
+    assert_eq!(now["suspect"], "lists");
+    let safe = r.c.safe_mode();
+    assert!(safe.holds(&SafeItem::Lists) && !safe.holds(&SafeItem::Look));
+
+    // By hand, it says so.
+    r.ok("leave_safe_mode", json!({}));
+    let now = r.ok("enter_safe_mode", json!({}));
+    assert_eq!(now["why"], "asked");
 }

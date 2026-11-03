@@ -334,7 +334,8 @@ fn read_loop(
                 Notification::InsertsChanged(v) => sh.state.inserts = v,
                 Notification::HotkeysChanged(h) => sh.state.hotkeys = h,
                 Notification::WindowLook(look) => sh.window_look = Some(look),
-                Notification::Crashed(r) => sh.crashes.push(r),
+                Notification::Crashed(r) => sh.crashes.push(*r),
+                Notification::SafeModeChanged(s) => sh.state.safe_mode = s,
             },
             ServerMessage::Response(r) => {
                 let answer =

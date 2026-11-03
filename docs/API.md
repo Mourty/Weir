@@ -37,7 +37,7 @@ Python and Node.js are in [`examples/`](../examples/).
   * [Hotkeys](#hotkeys): `list_hotkeys`, `set_hotkey`, `remove_hotkey`, `switch_hotkey`, `move_hotkey`, `run_hotkey`, `press_hotkey`, `release_hotkey`, `add_hotkey_group`, `set_hotkey_group`, `remove_hotkey_group`, `move_hotkey_group`, `open_shortcut_settings`, `add_sound`, `remove_sound`, `play_sound`
   * [Recording](#recording): `set_recorder`, `set_record_track`, `set_recording`
   * [Export and import](#export-and-import): `export_settings`, `inspect_import`, `import_settings`
-  * [Settings and the window](#settings-and-the-window): `set_settings`, `check_for_update`, `show_window`
+  * [Settings and the window](#settings-and-the-window): `set_settings`, `check_for_update`, `show_window`, `restart`
 * [Notifications](#notifications)
 * [Types](#types)
 * [Errors](#errors)
@@ -371,7 +371,7 @@ stop when the connection closes.
 | `settings` | `settings_changed`, `update_changed` |
 | `hotkeys` | `hotkeys_changed` |
 | `recorder` | `recorder_changed`, `recording_changed` |
-| `window` | `show_window`, `show_recorder`, `quit`, `window_look`. Only for a mixer window: subscribing to it tells the daemon this connection *is* one. There is one window at a time: while one is open, a second connection subscribing to `window` gets `quit` at once, and the open window gets `show_window`. |
+| `window` | `show_window`, `show_recorder`, `quit`, `window_look`, `crashed`. Only for a mixer window: subscribing to it tells the daemon this connection *is* one. There is one window at a time: while one is open, a second connection subscribing to `window` gets `quit` at once, and the open window gets `show_window`. |
 
 Returns the list of topics now active on this connection.
 
@@ -2253,6 +2253,36 @@ mixer.call("show_window")
 await mixer.call("show_window");
 ```
 
+#### `restart`
+
+Restart the daemon, as the tray's **Restart Weir** does: windows get
+`quit`, and the daemon saves, stops, and starts again from its saved
+settings. Restarting is the safest way to get everything working again
+after part of the daemon stopped because of a bug (see `crashed` under
+[Notifications](#notifications)).
+
+| Parameter | Type | |
+|---|---|---|
+| `window` | boolean, *optional* | Open the mixer window once the daemon is back, whatever `startup` says. |
+
+Returns `null`, then the daemon restarts: the connection closes, and the
+socket is back a moment later.
+
+<!-- not tested: restarts the daemon -->
+```sh
+weirctl raw restart '{"window": true}'
+```
+
+<!-- not tested: restarts the daemon -->
+```python
+mixer.call("restart", window=True)
+```
+
+<!-- not tested: restarts the daemon -->
+```js
+await mixer.call("restart", { window: true });
+```
+
 ## Notifications
 
 The daemon sends these to connections that [subscribed](#subscribe) to
@@ -2284,6 +2314,7 @@ replace its copy.
 | `show_window` | `window` | none | The mixer window should come to the front. |
 | `show_recorder` | `window` | none | The mixer window should open its recorder, as the tray's **Open the recorder** asks. |
 | `quit` | `window` | none | The daemon is stopping, or another window is already open; the window should close. |
+| `crashed` | `window` | [CrashReport](#crashreport) | Part of the daemon stopped because of a bug, or a request ran into one. The daemon carries on, but [`restart`](#restart) is the safest way to get everything working again. The window shows the report. |
 | `window_look` | `window` | object | A window look was imported: the window takes these settings (`appearance`, `system_accent`, `system_font`, `bus_sources`, `show_app_volume`, `spectrum`, `meter_scale`, `meter_peak`, `meter_number`, `meter_colors`) and saves them. |
 
 For example, after someone mutes the Mic strip:
@@ -2953,6 +2984,38 @@ What [`diagnostics`](#diagnostics) returns.
 | `log` | string | Where the daemon's messages go: a file, the journal, a terminal. |
 | `problems` | list | The last 20 warnings and errors the daemon logged, oldest first: `at_ms` (milliseconds since 1970), `level` (`warning` or `error`) and `message`. |
 
+### CrashReport
+
+What `crashed` brings: a report of part of Weir stopping because of a bug.
+Each is also written in full to `~/.local/state/weir/crash.log`.
+
+```json
+{"version": "1.3.0", "system": "Linux: Nobara Linux 44, KDE (Plasma 6), Wayland",
+ "time": "2026-11-03 21:42", "program": "service", "part": "request set_strip",
+ "whole": false, "message": "index out of bounds: the len is 2 but the index is 2",
+ "at": "crates/daemon/src/controller/handlers.rs:212:17",
+ "ours": ["weir_daemon::controller::Controller::set_strip"],
+ "backtrace": "...", "settings": [["installed", "package weir-1.3.0-1.fc44"]],
+ "log": ["21:42:03 INFO  loaded 4 strips and 3 buses"],
+ "private": {"home": "/home/sam", "user": "sam"}}
+```
+
+| Field | Type | |
+|---|---|---|
+| `version` | string | Weir's version. |
+| `system` | string | The system, desktop and session. |
+| `time` | string | When, in local time. |
+| `program` | string | `service` or `window`. |
+| `part` | string | What was running: a request (`request set_strip`), a part of the daemon (`hotkeys`, `meters`, `audio`, `recorder`) or a thread's name. |
+| `whole` | boolean | Whether the whole program ended, rather than one part of it. |
+| `message` | string | What the panic said. |
+| `at` | string | Where in Weir's code. |
+| `ours` | list of strings | Weir's own functions on the way there, innermost first. |
+| `backtrace` | string | The whole backtrace. |
+| `settings` | list | The settings that most often matter, as `[name, value]`. |
+| `log` | list of strings | The last lines of the program's log, oldest first. |
+| `private` | object | The home folder and user name, for a client to hide in what it shows: `home`, `user`. |
+
 ### ImportInspection
 
 What [`inspect_import`](#inspect_import) returns.
@@ -3015,7 +3078,7 @@ words meant for people. The message is fine to show to a user as it is.
 | -32602 | The parameters are wrong: missing, of the wrong type, or not allowed. | `invalid type: string "loud", expected f32`, `name is too long (40 characters max)` |
 | -32000 | The request was understood, but cannot be done as things are. | `no strip called 'Musci'`, `the name 'Mic' is already in use`, `nothing to undo`, `apps can only be moved to virtual strips` |
 | -32001 | The audio engine could not do it. | Moving an application when PipeWire refuses. |
-| -32603 | Something went wrong inside the daemon. | Should not happen; please report it. |
+| -32603 | Something went wrong inside the daemon. | Should not happen; please report it. A request that runs into a bug in Weir gets this, with a message saying so, and a crash report is kept (see `crashed`); the daemon carries on. |
 
 The example clients raise these as `WeirError` (Python) or reject with a
 `WeirError` (JavaScript), with `code` and `message`:

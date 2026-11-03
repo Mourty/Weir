@@ -29,7 +29,7 @@ weirctl scene load Streaming           # everything as saved for streaming
 * [Hotkeys' sounds](#hotkeys-sounds): `sounds`, `sound`
 * [Recording](#recording): `record`, `recorder`
 * [Export and import](#export-and-import): `export`, `import`
-* [Settings and the window](#settings-and-the-window): `settings`, `update`, `show`
+* [Settings and the window](#settings-and-the-window): `settings`, `update`, `show`, `restart`
 * [Watching and anything else](#watching-and-anything-else): `watch`, `report`, `raw`
 * [A mute key for any desktop](#a-mute-key-for-any-desktop)
 
@@ -583,6 +583,17 @@ Brings the mixer window to the front, or opens it.
 <!-- not tested: needs a display -->
 ```sh
 weirctl show
+```
+
+### `weirctl restart [--window]`
+
+Restarts Weir's service, as the tray's **Restart Weir** does: the safest
+way to get everything working again after part of Weir stopped because of
+a bug. With `--window`, the mixer window opens once it is back.
+
+<!-- not tested: restarts the service -->
+```sh
+weirctl restart --window
 ```
 
 ## Watching and anything else

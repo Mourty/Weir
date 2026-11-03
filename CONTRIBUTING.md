@@ -21,7 +21,7 @@ before a larger change.
 
 ## Building
 
-You need Rust 1.88 or newer, a C compiler, `make`, `pkg-config`, CMake
+You need Rust 1.95 or newer, a C compiler, `make`, `pkg-config`, CMake
 (libopus, for recording in Opus, builds with it), and clang with
 PipeWire's development files, from which the bindings are generated at
 build time. The [install steps](README.md#install) put all
@@ -53,14 +53,14 @@ After adding or updating a dependency, run `make licenses` (it needs
 because the libraries' licenses ask for their notices to go with every
 copy of Weir, and the checks fail when it is out of date.
 
-Weir builds on Rust 1.88 (`rust-version` in `Cargo.toml`), the oldest its
+Weir builds on Rust 1.95 (`rust-version` in `Cargo.toml`), the oldest its
 window library, egui, supports, so standard library methods newer than
 that are not available. Updating a dependency can raise the minimum; check
 that a change still builds with it:
 
 ```sh
-rustup toolchain install 1.88
-cargo +1.88 build --workspace --locked
+rustup toolchain install 1.95
+cargo +1.95 build --workspace --locked
 ```
 
 ## Running it from the checkout

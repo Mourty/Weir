@@ -194,7 +194,7 @@ impl App {
             pos2(x, area.top() + theme::PEAK_H / 2.0),
             vec2(PEAK_W, theme::PEAK_H),
         );
-        let id = ui.id().with(("peak", target));
+        let id = ui.scope_id().with(("peak", target));
         let peak = mode == MeterNumber::Peak;
         let r = widgets::peak_number(ui, id, rect, db, peak).on_hover_text(match mode {
             MeterNumber::Live => "How loud it is now, its loudest channel",

@@ -316,7 +316,7 @@ fn ext_link(ui: &mut Ui, on: bool, status: Option<Status>, name: &str) -> egui::
         paint(ui.painter(), rect);
         ui.painter().rect_filled(rect, 4, p.bg.gamma_multiply(0.6));
         if let Some(pos) = ui.ctx().pointer_interact_pos() {
-            let layer = egui::LayerId::new(egui::Order::Tooltip, egui::Id::new("ext_fx_drag"));
+            let layer = egui::LayerId::new(egui::Order::Tooltip, egui::Id::unique("ext_fx_drag"));
             paint(
                 &ui.ctx().layer_painter(layer),
                 Rect::from_min_size(pos + vec2(10.0, 10.0), size),

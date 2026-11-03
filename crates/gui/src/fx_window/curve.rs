@@ -148,7 +148,11 @@ impl FxWindow {
         let mut hovered_band: Option<usize> = None;
         for (i, band) in bands.iter_mut().enumerate() {
             let hit = Rect::from_center_size(scale.handle(band), vec2(18.0, 18.0));
-            let r = ui.interact(hit, ui.id().with(("band", i)), Sense::click_and_drag());
+            let r = ui.interact(
+                hit,
+                ui.scope_id().with(("band", i)),
+                Sense::click_and_drag(),
+            );
             if r.hovered() || r.dragged() {
                 hovered_band = Some(i);
             }
@@ -232,7 +236,7 @@ impl FxWindow {
         // Scrolling changes the width of the band under the pointer, or of
         // the selected one.
         let scroll = if bg.hovered() || hovered_band.is_some() {
-            ui.input(|i| i.raw_scroll_delta.y)
+            crate::widgets::wheel(ui)
         } else {
             0.0
         };

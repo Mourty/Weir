@@ -12,18 +12,18 @@ use weir_protocol::*;
 impl App {
     pub(super) fn top_bar(
         &mut self,
-        ctx: &egui::Context,
+        root: &mut Ui,
         connected: bool,
         state: &FullState,
         last_error: Option<&str>,
     ) {
-        egui::TopBottomPanel::top("bar")
+        egui::Panel::top("bar")
             .frame(
                 Frame::new()
                     .fill(theme::p().top_bar)
                     .inner_margin(egui::Margin::symmetric(10, 6)),
             )
-            .show(ctx, |ui| {
+            .show(root, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(
                         RichText::new("Weir")
@@ -162,7 +162,7 @@ impl App {
     }
 
     /// Which mix the strip faders show: their own levels, or one bus's.
-    pub(super) fn mix_bar(&mut self, ctx: &egui::Context, state: &FullState) {
+    pub(super) fn mix_bar(&mut self, root: &mut Ui, state: &FullState) {
         if self
             .mix_view
             .is_some_and(|id| state.mixer.bus(id).is_none())
@@ -172,13 +172,13 @@ impl App {
         if state.mixer.buses.is_empty() {
             return;
         }
-        egui::TopBottomPanel::top("mixbar")
+        egui::Panel::top("mixbar")
             .frame(
                 Frame::new()
                     .fill(theme::p().bg)
                     .inner_margin(egui::Margin::symmetric(10, 6)),
             )
-            .show(ctx, |ui| {
+            .show(root, |ui| {
                 ui.horizontal_centered(|ui| {
                     ui.label(
                         RichText::new("Faders show")

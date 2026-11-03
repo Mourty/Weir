@@ -116,7 +116,7 @@ impl App {
             _ => "Weir crashed",
         };
         egui::Window::new(title)
-            .id(egui::Id::new("crash-window"))
+            .id(egui::Id::unique("crash-window"))
             .open(&mut open)
             .collapsible(false)
             .resizable(false)

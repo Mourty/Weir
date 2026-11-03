@@ -30,17 +30,17 @@ impl App {
     /// The question asked once, under the top bar: should Weir tell when a
     /// new version is out? Either answer is one click, and it is never
     /// asked again.
-    pub(super) fn update_question(&mut self, ctx: &egui::Context, state: &FullState) {
+    pub(super) fn update_question(&mut self, root: &mut egui::Ui, state: &FullState) {
         if state.settings.update_check.is_some() {
             return;
         }
-        egui::TopBottomPanel::top("update_question")
+        egui::Panel::top("update_question")
             .frame(
                 Frame::new()
                     .fill(theme::p().section_fill)
                     .inner_margin(egui::Margin::symmetric(10, 6)),
             )
-            .show(ctx, |ui| {
+            .show(root, |ui| {
                 ui.horizontal_wrapped(|ui| {
                     ui.label("Should Weir tell you when a new version is out?");
                     ui.label(

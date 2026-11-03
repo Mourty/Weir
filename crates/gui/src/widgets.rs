@@ -11,6 +11,20 @@ use egui::{pos2, vec2, Align2, Color32, CornerRadius, FontId, Rect, Response, Se
 use weir_protocol::{Limiter, GAIN_MAX_DB, GAIN_MIN_DB};
 
 /// Where a level sits on the shared scale: 0 at the bottom of the fader's
+/// Which way the mouse wheel turned this frame: above zero for up, below
+/// for down. Only its sign is used, to step a value.
+pub fn wheel(ui: &Ui) -> f32 {
+    ui.input(|i| {
+        i.events
+            .iter()
+            .map(|e| match e {
+                egui::Event::MouseWheel { delta, .. } => delta.y,
+                _ => 0.0,
+            })
+            .sum()
+    })
+}
+
 /// range, 1 at the top. Linear in dB, as on a mixing desk.
 pub fn db_to_t(db: f32) -> f32 {
     ((db - GAIN_MIN_DB) / (GAIN_MAX_DB - GAIN_MIN_DB)).clamp(0.0, 1.0)
@@ -47,7 +61,7 @@ pub fn fader(ui: &mut Ui, value_db: &mut f32, height: f32, fill: Color32) -> Res
         }
     }
     if response.hovered() {
-        let scroll = ui.input(|i| i.raw_scroll_delta.y);
+        let scroll = wheel(ui);
         if scroll != 0.0 {
             let step = if scroll > 0.0 { 1.0 } else { -1.0 };
             *value_db = (*value_db + step).clamp(GAIN_MIN_DB, GAIN_MAX_DB);
@@ -296,7 +310,7 @@ pub fn ceiling_handle(
         }
     }
     if response.hovered() {
-        let scroll = ui.input(|i| i.raw_scroll_delta.y);
+        let scroll = wheel(ui);
         if scroll != 0.0 {
             let step = if scroll > 0.0 { 0.5 } else { -0.5 };
             *ceiling_db = (*ceiling_db + step).clamp(GAIN_MIN_DB, GAIN_MAX_DB);
@@ -677,7 +691,7 @@ pub fn mini_volume(ui: &mut Ui, value_db: &mut f32, width: f32, muted: bool) -> 
         }
     }
     if response.hovered() {
-        let scroll = ui.input(|i| i.raw_scroll_delta.y);
+        let scroll = wheel(ui);
         if scroll != 0.0 {
             *value_db =
                 (*value_db + if scroll > 0.0 { 1.0 } else { -1.0 }).clamp(GAIN_MIN_DB, GAIN_MAX_DB);

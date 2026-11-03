@@ -91,37 +91,29 @@ impl HotkeysWindow {
             .with_inner_size([880.0, 600.0])
             .with_min_inner_size([640.0, 360.0]);
         let mut asked = None;
-        ctx.show_viewport_immediate(id, builder, |ctx, class| {
-            if class == egui::ViewportClass::Embedded {
-                let mut open = true;
-                egui::Window::new("Hotkeys")
-                    .id(egui::Id::new("hotkeys_embedded"))
-                    .open(&mut open)
-                    .default_size([820.0, 520.0])
-                    .show(ctx, |ui| {
-                        asked = self.contents(ui, state, actions);
-                        ui.separator();
-                        asked = asked.take().or(self.footer(ui, state, actions));
-                    });
-                if !open {
-                    self.closed = true;
-                }
+        ctx.show_viewport_immediate(id, builder, |ui, class| {
+            if class == egui::ViewportClass::EmbeddedWindow {
+                // egui shows it as a window inside the mixer; the footer has
+                // Close.
+                asked = self.contents(ui, state, actions);
+                ui.separator();
+                asked = asked.take().or(self.footer(ui, state, actions));
             } else {
-                egui::TopBottomPanel::bottom(egui::Id::new("hotkeys_footer"))
+                egui::Panel::bottom("hotkeys_footer")
                     .frame(
                         egui::Frame::new()
                             .fill(theme::p().bg)
                             .inner_margin(egui::Margin::symmetric(16, 10)),
                     )
-                    .show(ctx, |ui| asked = self.footer(ui, state, actions));
+                    .show(ui, |ui| asked = self.footer(ui, state, actions));
                 egui::CentralPanel::default()
                     .frame(egui::Frame::new().fill(theme::p().bg).inner_margin(16))
-                    .show(ctx, |ui| {
+                    .show(ui, |ui| {
                         if let Some(a) = self.contents(ui, state, actions) {
                             asked = Some(a);
                         }
                     });
-                if ctx.input(|i| i.viewport().close_requested()) {
+                if ui.input(|i| i.viewport().close_requested()) {
                     self.closed = true;
                 }
             }
@@ -730,7 +722,7 @@ fn scroll_at_edges(ui: &Ui, armed: &mut bool) {
 
 /// Six dots to drag `what` by.
 fn drag_grip(ui: &mut Ui, what: Dragged, tip: &str) {
-    let id = egui::Id::new(("hotkeys-drag", what));
+    let id = egui::Id::unique(("hotkeys-drag", what));
     let hovered = ui
         .ctx()
         .read_response(id)

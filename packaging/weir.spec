@@ -39,8 +39,8 @@ License:        MIT
 URL:            https://github.com/Mourty/Weir
 Source0:        %{name}-%{version}.tar.gz
 
-BuildRequires:  cargo >= 1.88
-BuildRequires:  rust >= 1.88
+BuildRequires:  cargo >= 1.95
+BuildRequires:  rust >= 1.95
 BuildRequires:  clang
 # libopus, built into Weir for recording in Opus, builds with CMake.
 BuildRequires:  cmake

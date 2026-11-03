@@ -260,36 +260,31 @@ impl FxWindow {
             .with_icon(crate::icon())
             .with_inner_size(size)
             .with_min_inner_size([620.0, 440.0]);
-        ctx.show_viewport_immediate(id, builder, |ctx, class| {
-            if class == egui::ViewportClass::Embedded {
-                // No separate windows on this backend: fall back to one
-                // floating inside the mixer.
-                let mut open = true;
-                egui::Window::new(title.clone())
-                    .id(egui::Id::new(("fx_embedded", self.target)))
-                    .open(&mut open)
-                    .default_size(size)
-                    .show(ctx, |ui| self.contents(ui, state, meters, actions));
-                if !open {
+        ctx.show_viewport_immediate(id, builder, |ui, class| {
+            if class == egui::ViewportClass::EmbeddedWindow {
+                // No separate windows on this backend: egui shows it as a
+                // window floating inside the mixer, without a close box.
+                if ui.button("Close").clicked() {
                     self.closed = true;
                 }
+                self.contents(ui, state, meters, actions);
             } else {
                 // Undo and redo work from here too; the mixer window has the
                 // labels, so it is only told which way to go.
-                if let Some(key) = crate::app::history_shortcut(ctx) {
+                if let Some(key) = crate::app::history_shortcut(ui.ctx()) {
                     self.history_key = Some(key);
                 }
                 egui::CentralPanel::default()
                     .frame(egui::Frame::new().fill(theme::p().bg).inner_margin(10))
-                    .show(ctx, |ui| self.contents(ui, state, meters, actions));
-                if let Some(rect) = ctx.input(|i| i.viewport().inner_rect) {
+                    .show(ui, |ui| self.contents(ui, state, meters, actions));
+                if let Some(rect) = ui.input(|i| i.viewport().inner_rect) {
                     self.size = [rect.width().round(), rect.height().round()];
                 }
-                if ctx.input(|i| i.viewport().close_requested()) {
+                if ui.input(|i| i.viewport().close_requested()) {
                     self.closed = true;
                 }
                 // Keep the gate's and compressor's displays moving.
-                ctx.request_repaint_after(Duration::from_millis(33));
+                ui.request_repaint_after(Duration::from_millis(33));
             }
         });
         self.flush(actions, self.closed);

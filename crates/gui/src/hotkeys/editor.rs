@@ -213,43 +213,35 @@ impl Editor {
             .with_icon(crate::icon())
             .with_inner_size([620.0, 700.0])
             .with_min_inner_size([540.0, 420.0]);
-        ctx.show_viewport_immediate(id, builder, |ctx, class| {
+        ctx.show_viewport_immediate(id, builder, |ui, class| {
             if self.recording.is_some() {
-                self.take_keys(ctx, state);
-                ctx.request_repaint_after(Duration::from_millis(50));
+                self.take_keys(ui.ctx(), state);
+                ui.request_repaint_after(Duration::from_millis(50));
             }
-            if class == egui::ViewportClass::Embedded {
-                let mut open = true;
-                egui::Window::new(title)
-                    .id(egui::Id::new("hotkey_editor_embedded"))
-                    .open(&mut open)
-                    .default_size([620.0, 640.0])
-                    .show(ctx, |ui| {
-                        egui::ScrollArea::vertical()
-                            .max_height(520.0)
-                            .show(ui, |ui| self.form(ui, state, actions));
-                        ui.separator();
-                        self.buttons(ui, state, actions);
-                    });
-                if !open {
-                    self.closed = true;
-                }
+            if class == egui::ViewportClass::EmbeddedWindow {
+                // egui shows it as a window inside the mixer; the buttons
+                // have Cancel.
+                egui::ScrollArea::vertical()
+                    .max_height(520.0)
+                    .show(ui, |ui| self.form(ui, state, actions));
+                ui.separator();
+                self.buttons(ui, state, actions);
             } else {
-                egui::TopBottomPanel::bottom(egui::Id::new("hotkey_editor_buttons"))
+                egui::Panel::bottom("hotkey_editor_buttons")
                     .frame(
                         egui::Frame::new()
                             .fill(theme::p().bg)
                             .inner_margin(egui::Margin::symmetric(16, 10)),
                     )
-                    .show(ctx, |ui| self.buttons(ui, state, actions));
+                    .show(ui, |ui| self.buttons(ui, state, actions));
                 egui::CentralPanel::default()
                     .frame(egui::Frame::new().fill(theme::p().bg).inner_margin(16))
-                    .show(ctx, |ui| {
+                    .show(ui, |ui| {
                         egui::ScrollArea::vertical()
                             .auto_shrink(false)
                             .show(ui, |ui| self.form(ui, state, actions));
                     });
-                if ctx.input(|i| i.viewport().close_requested()) {
+                if ui.input(|i| i.viewport().close_requested()) {
                     self.closed = true;
                 }
             }
@@ -860,7 +852,7 @@ impl Editor {
     /// documents.
     fn json_section(&mut self, ui: &mut Ui, mixer: &MixerState) {
         let current = self.assemble(mixer);
-        let editing = ui.memory(|m| m.has_focus(egui::Id::new("hotkey_json")));
+        let editing = ui.memory(|m| m.has_focus(egui::Id::unique("hotkey_json")));
         if !editing && self.json_of.as_ref() != Some(&current) {
             self.json = to_json_text(&current);
             self.json_of = Some(current);
@@ -881,7 +873,7 @@ impl Editor {
         });
         let r = ui.add(
             egui::TextEdit::multiline(&mut self.json)
-                .id(egui::Id::new("hotkey_json"))
+                .id(egui::Id::unique("hotkey_json"))
                 .code_editor()
                 .desired_rows(8)
                 .desired_width(f32::INFINITY),

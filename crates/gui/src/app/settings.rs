@@ -98,55 +98,50 @@ impl App {
             .with_inner_size([820.0, 600.0])
             .with_min_inner_size([620.0, 400.0]);
         let mut closed = false;
-        ctx.show_viewport_immediate(id, builder, |ctx, class| {
-            if class == egui::ViewportClass::Embedded {
+        ctx.show_viewport_immediate(id, builder, |ui, class| {
+            if class == egui::ViewportClass::EmbeddedWindow {
                 // Inside the mixer window where the system gives no
-                // separate windows.
-                let mut open = true;
-                egui::Window::new("Preferences")
-                    .id(egui::Id::new("preferences_embedded"))
-                    .open(&mut open)
-                    .default_size([760.0, 540.0])
-                    .show(ctx, |ui| {
-                        ui.horizontal_top(|ui| {
-                            ui.vertical(|ui| {
-                                ui.set_width(170.0);
-                                self.prefs_nav(ui);
-                            });
-                            ui.separator();
-                            ui.vertical(|ui| {
-                                egui::ScrollArea::vertical()
-                                    .max_height(ctx.content_rect().height() - 120.0)
-                                    .show(ui, |ui| self.prefs_page_contents(ui, state));
-                            });
-                        });
-                    });
-                if !open {
+                // separate windows: egui shows it as a window there,
+                // without a close box.
+                let height = ui.content_rect().height() - 140.0;
+                if ui.button("Close").clicked() {
                     closed = true;
                 }
+                ui.horizontal_top(|ui| {
+                    ui.vertical(|ui| {
+                        ui.set_width(170.0);
+                        self.prefs_nav(ui);
+                    });
+                    ui.separator();
+                    ui.vertical(|ui| {
+                        egui::ScrollArea::vertical()
+                            .max_height(height)
+                            .show(ui, |ui| self.prefs_page_contents(ui, state));
+                    });
+                });
                 return;
             }
-            egui::SidePanel::left("prefs_nav")
+            egui::Panel::left("prefs_nav")
                 .resizable(false)
-                .exact_width(190.0)
+                .exact_size(190.0)
                 .frame(
                     egui::Frame::new()
                         .fill(theme::p().top_bar)
                         .inner_margin(egui::Margin::symmetric(10, 14)),
                 )
-                .show(ctx, |ui| self.prefs_nav(ui));
+                .show(ui, |ui| self.prefs_nav(ui));
             egui::CentralPanel::default()
                 .frame(
                     egui::Frame::new()
                         .fill(theme::p().bg)
                         .inner_margin(egui::Margin::symmetric(22, 16)),
                 )
-                .show(ctx, |ui| {
+                .show(ui, |ui| {
                     egui::ScrollArea::vertical()
                         .auto_shrink(false)
                         .show(ui, |ui| self.prefs_page_contents(ui, state));
                 });
-            if ctx.input(|i| i.viewport().close_requested()) {
+            if ui.input(|i| i.viewport().close_requested()) {
                 closed = true;
             }
         });

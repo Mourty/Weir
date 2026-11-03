@@ -18,7 +18,7 @@ pub(crate) enum HistoryKey {
 /// being typed, where those belong to the text field.
 pub(crate) fn history_shortcut(ctx: &egui::Context) -> Option<HistoryKey> {
     use egui::{Key, KeyboardShortcut, Modifiers};
-    if ctx.wants_keyboard_input() {
+    if ctx.egui_wants_keyboard_input() {
         return None;
     }
     ctx.input_mut(|i| {
@@ -101,7 +101,7 @@ impl App {
         }
         let (text, undo) = (t.text.clone(), t.undo);
         let mut clicked = false;
-        egui::Area::new(egui::Id::new("toast"))
+        egui::Area::new(egui::Id::unique("toast"))
             .anchor(egui::Align2::CENTER_BOTTOM, vec2(0.0, -18.0))
             .order(egui::Order::Foreground)
             .show(ctx, |ui| {

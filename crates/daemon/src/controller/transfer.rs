@@ -7,7 +7,7 @@
 //! hotkeys' steps, app rules and a solo cue are numbered here and named in
 //! files, and named again in this mixer's numbers when imported.
 
-use super::handlers::{check_bands, is_builtin_eq_preset, NAME_MAX};
+use super::handlers::{check_bands, is_builtin_eq_preset};
 use super::names::{self, Mixers};
 use super::Controller;
 use crate::config::{self, HotkeyList};
@@ -19,6 +19,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use tracing::info;
 use weir_protocol::crash::Locked;
+use weir_protocol::NAME_MAX;
 use weir_protocol::*;
 
 /// A failure, as the client is told it.
@@ -1633,7 +1634,7 @@ impl Controller {
                     h.group = match found {
                         Some(id) => id,
                         None => {
-                            let id = list.groups.iter().map(|g| g.id).max().unwrap_or(0) + 1;
+                            let id = next_id(list.groups.iter().map(|g| g.id));
                             let enabled = groups_file
                                 .iter()
                                 .find(|g| g.name.eq_ignore_ascii_case(name))
@@ -1676,7 +1677,7 @@ impl Controller {
                 match (replace, existing) {
                     (true, Some(at)) => list.hotkeys[at] = h.clone(),
                     _ => {
-                        h.id = list.hotkeys.iter().map(|o| o.id).max().unwrap_or(0) + 1;
+                        h.id = next_id(list.hotkeys.iter().map(|o| o.id));
                         list.hotkeys.push(h.clone());
                     }
                 }

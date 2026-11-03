@@ -1017,12 +1017,12 @@ impl MixerState {
 
     /// The id a new strip gets: one more than the highest in use.
     pub fn next_strip_id(&self) -> StripId {
-        self.strips.iter().map(|s| s.id).max().map_or(1, |m| m + 1)
+        next_id(self.strips.iter().map(|s| s.id))
     }
 
     /// The id a new bus gets: one more than the highest in use.
     pub fn next_bus_id(&self) -> BusId {
-        self.buses.iter().map(|b| b.id).max().map_or(1, |m| m + 1)
+        next_id(self.buses.iter().map(|b| b.id))
     }
 
     /// True when any strip is soloed.
@@ -1035,25 +1035,83 @@ impl MixerState {
     /// words for a log.
     pub fn normalize(&mut self) -> Vec<String> {
         let mut fixes = Vec::new();
+        tell_apart(
+            self.strips.iter_mut().map(|s| (&mut s.id, &mut s.name)),
+            "strip",
+            &mut fixes,
+        );
+        tell_apart(
+            self.buses.iter_mut().map(|b| (&mut b.id, &mut b.name)),
+            "bus",
+            &mut fixes,
+        );
         let bus_ids: BTreeSet<BusId> = self.buses.iter().map(|b| b.id).collect();
         let strip_ids: BTreeSet<StripId> = self.strips.iter().map(|s| s.id).collect();
-        let mut seen = BTreeSet::new();
         for s in &mut self.strips {
-            if !seen.insert(s.id) {
-                fixes.push(format!("duplicate strip id {}", s.id));
-            }
             s.normalize(&bus_ids, &strip_ids, &mut fixes);
         }
-        let mut seen = BTreeSet::new();
         for b in &mut self.buses {
-            if !seen.insert(b.id) {
-                fixes.push(format!("duplicate bus id {}", b.id));
-            }
             b.normalize(&mut fixes);
         }
         fixes
     }
 }
+
+/// Make every strip's (or bus's) id and name its own: only a damaged or
+/// hand-edited file can hold two alike, and then the engine, the window and
+/// everything that names one (scenes, hotkeys, the recorder) would mix
+/// them up. A repeated id gets the next free one; an empty name gets the
+/// `word`, and a repeated one a number after it, as `Mic 2`.
+fn tell_apart<'a>(
+    items: impl Iterator<Item = (&'a mut u32, &'a mut String)>,
+    word: &str,
+    fixes: &mut Vec<String>,
+) {
+    let items: Vec<(&mut u32, &mut String)> = items.collect();
+    let mut all: BTreeSet<u32> = items.iter().map(|(id, _)| **id).collect();
+    let mut ids = BTreeSet::new();
+    let mut names: Vec<String> = Vec::new();
+    for (id, name) in items {
+        if !ids.insert(*id) {
+            let free = next_id(all.iter().copied());
+            fixes.push(format!("duplicate {word} id {}, now {free}", *id));
+            *id = free;
+            ids.insert(free);
+            all.insert(free);
+        }
+        let trimmed = name.trim();
+        let base = if trimmed.is_empty() {
+            let mut w = word.to_string();
+            w[..1].make_ascii_uppercase();
+            w
+        } else {
+            trimmed.to_string()
+        };
+        let taken = |n: &str| names.iter().any(|o| o.eq_ignore_ascii_case(n));
+        let free = crate::transfer::free_name(&base, NAME_MAX, taken);
+        if free != *name {
+            fixes.push(format!("{word} name '{name}' is now '{free}'"));
+            *name = free;
+        }
+        names.push(name.clone());
+    }
+}
+
+/// An id none of `ids` has: one past the highest, or, should that be the
+/// highest there is, the lowest free one. For strips, buses, hotkeys and
+/// their groups, whose ids a damaged file may push to the top.
+pub fn next_id(ids: impl Iterator<Item = u32>) -> u32 {
+    let ids: BTreeSet<u32> = ids.collect();
+    match ids.last() {
+        None => 1,
+        Some(&top) => top
+            .checked_add(1)
+            .unwrap_or_else(|| (1..).find(|i| !ids.contains(i)).unwrap_or(0)),
+    }
+}
+
+/// The longest name a strip or bus may have, in bytes.
+pub const NAME_MAX: usize = 40;
 
 /// What the daemon does about the mixer window when it starts.
 #[derive(
@@ -1609,6 +1667,39 @@ pub fn linear_to_db(lin: f32) -> f32 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn repeated_ids_and_names_are_made_unique() {
+        use super::*;
+        let mut m = MixerState {
+            strips: vec![
+                Strip::new(1, "Mic", StripKind::Hardware, ChannelLayout::Mono),
+                Strip::new(1, "mic", StripKind::Virtual, ChannelLayout::Stereo),
+                Strip::new(3, "  ", StripKind::Virtual, ChannelLayout::Stereo),
+            ],
+            buses: vec![
+                Bus::new(2, "Headset", BusKind::Hardware, ChannelLayout::Stereo),
+                Bus::new(2, "Headset", BusKind::Virtual, ChannelLayout::Stereo),
+            ],
+        };
+        let fixes = m.normalize();
+        assert!(!fixes.is_empty());
+        let ids: Vec<u32> = m.strips.iter().map(|s| s.id).collect();
+        assert_eq!(ids, [1, 4, 3]);
+        let names: Vec<&str> = m.strips.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, ["Mic", "mic 2", "Strip"]);
+        let buses: Vec<(u32, &str)> = m.buses.iter().map(|b| (b.id, b.name.as_str())).collect();
+        assert_eq!(buses, [(2, "Headset"), (3, "Headset 2")]);
+        assert!(m.normalize().is_empty(), "once is enough");
+
+        // The highest id there is, twice: the second gets a free one, and
+        // so does a bus added after.
+        m.buses[0].id = u32::MAX;
+        m.buses[1].id = u32::MAX;
+        m.normalize();
+        assert_eq!(m.buses[1].id, 1);
+        assert_eq!(m.next_bus_id(), 2);
+    }
+
     use super::*;
 
     #[test]

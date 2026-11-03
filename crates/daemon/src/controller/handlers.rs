@@ -19,7 +19,6 @@ use weir_protocol::crash::Locked;
 use weir_protocol::*;
 
 /// Longest a strip's, bus's or equalizer preset's name may be.
-pub(super) const NAME_MAX: usize = 40;
 /// Most channels a strip or bus may have.
 const CHANNELS_MAX: usize = 16;
 

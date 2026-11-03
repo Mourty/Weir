@@ -344,7 +344,7 @@ impl Controller {
                 }
             }
             if h.id == 0 {
-                h.id = list.hotkeys.iter().map(|o| o.id).max().unwrap_or(0) + 1;
+                h.id = next_id(list.hotkeys.iter().map(|o| o.id));
                 list.hotkeys.push(h.clone());
             } else {
                 let pos = list.position(h.id)?;
@@ -437,7 +437,7 @@ impl Controller {
         let group = self.edit_hotkeys(|list| {
             list.check_group_name(0, &name)?;
             let group = HotkeyGroup {
-                id: list.groups.iter().map(|g| g.id).max().unwrap_or(0) + 1,
+                id: next_id(list.groups.iter().map(|g| g.id)),
                 name,
                 enabled: p.enabled,
             };

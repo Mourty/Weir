@@ -82,6 +82,7 @@ fn run() -> Result<()> {
             mute,
         } => commands::app_volume(c, app, gain, gain_by, mute.as_deref()),
         Cmd::Show => commands::show_window(c),
+        Cmd::Restart { window } => commands::restart(c, window),
         Cmd::Undo { steps } => commands::step_history(c, steps, true, json),
         Cmd::Redo { steps } => commands::step_history(c, steps, false, json),
         Cmd::History => commands::history(c, json),

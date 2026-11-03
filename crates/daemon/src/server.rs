@@ -186,10 +186,22 @@ fn process_request(
         }
     };
     let id = envelope.id.clone();
-    let result = controller
-        .resolve_names(&envelope.method, &mut envelope.params)
-        .and_then(|_| envelope.parse())
-        .and_then(|req| controller.handle(req, subs));
+    // A bug met while doing a request is kept as a crash report and
+    // answered as an error, and the daemon carries on.
+    let doing = weir_protocol::crash::doing(format!("request {}", envelope.method));
+    let result = weir_protocol::crash::caught(|| {
+        controller
+            .resolve_names(&envelope.method, &mut envelope.params)
+            .and_then(|_| envelope.parse())
+            .and_then(|req| controller.handle(req, subs))
+    })
+    .unwrap_or_else(|why| {
+        Err(RpcError::internal(format!(
+            "Weir ran into a bug doing that ({why}). A crash report was kept, and the \
+             mixer window shows it."
+        )))
+    });
+    drop(doing);
     let id = id?;
     Some(match result {
         Ok(v) => RpcResponse::ok(id, v),

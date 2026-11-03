@@ -28,6 +28,8 @@ pub enum TrayCommand {
     StopRecording,
     /// Stop everything and start again.
     Restart,
+    /// Stop everything and start again, opening the mixer window then.
+    RestartWithWindow,
     /// Stop everything.
     Exit,
     /// Change what happens the next time the daemon starts.

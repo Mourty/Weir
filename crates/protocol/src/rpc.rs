@@ -1031,6 +1031,16 @@ pub struct SettingsPatch {
     pub skipped_version: Option<Option<String>>,
 }
 
+/// Parameters of `restart`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(default)]
+pub struct RestartParams {
+    /// Open the mixer window once the service is back, whatever Weir is
+    /// set to do when it starts.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub window: bool,
+}
+
 /// Parameters naming a scene, a setup, an equalizer preset, a sound or an
 /// application.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -1154,6 +1164,12 @@ pub enum Request {
     /// Bring the mixer window to the front, starting it if it is not
     /// running. Returns `null`.
     ShowWindow,
+    /// Restart Weir's service, as the tray's Restart Weir does: windows
+    /// close, the service starts again from its saved settings, and the
+    /// mixer window opens again if asked. For when part of Weir stopped
+    /// because of a bug (see [`Notification::Crashed`]). Returns `null`,
+    /// then the service restarts.
+    Restart(RestartParams),
     /// Returns `Vec<String>`, the saved setups.
     ListSetups,
     /// Save what is there as a setup: the strips and buses, their devices,
@@ -1389,6 +1405,12 @@ pub enum Notification {
     /// Close now. Sent before the daemon restarts or exits, so the window
     /// does not outlive the mixer it is showing.
     Quit,
+    /// Part of Weir's service stopped because of a bug, or a request ran
+    /// into one: the report of what went wrong, which is also kept in
+    /// `~/.local/state/weir/crash.log`. The service carries on, but
+    /// restarting it (`restart`) is the safest way to get everything
+    /// working again.
+    Crashed(crate::crash::Report),
     /// What can be undone and redone changed.
     HistoryChanged(HistoryInfo),
     /// The application rules changed.
@@ -1425,9 +1447,11 @@ impl Notification {
             Self::EngineChanged(_) => Topic::Engine,
             Self::SettingsChanged(_) | Self::UpdateChanged(_) => Topic::Settings,
             Self::Spectrum(_) => Topic::Spectrum,
-            Self::ShowWindow | Self::ShowRecorder | Self::Quit | Self::WindowLook(_) => {
-                Topic::Window
-            }
+            Self::ShowWindow
+            | Self::ShowRecorder
+            | Self::Quit
+            | Self::WindowLook(_)
+            | Self::Crashed(_) => Topic::Window,
             Self::HotkeysChanged(_) => Topic::Hotkeys,
             Self::RecorderChanged(_) | Self::RecordingChanged(_) => Topic::Recorder,
         }

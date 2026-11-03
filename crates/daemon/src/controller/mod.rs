@@ -254,6 +254,12 @@ impl Controller {
         self.inner.locked().settings.start_at_login = now;
     }
 
+    /// Tell the window that part of the service stopped because of a bug,
+    /// with the report of it.
+    pub fn tell_crash(&self, report: weir_protocol::crash::Report) {
+        self.announce(Notification::Crashed(report));
+    }
+
     /// Tell every connection that subscribed to this kind of news.
     fn announce(&self, n: Notification) {
         // No receivers just means no client is connected.

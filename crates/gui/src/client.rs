@@ -61,6 +61,9 @@ pub struct Shared {
     pub transfers: Vec<(Transfer, Result<Value, String>)>,
     /// The daemon's answer to `diagnostics`, for the About window to take.
     pub diagnostics: Option<Diagnostics>,
+    /// Reports of parts of the service that stopped because of a bug, for
+    /// the crash window to take.
+    pub crashes: Vec<weir_protocol::crash::Report>,
 }
 
 /// Which export or import request an answer is to.
@@ -327,6 +330,7 @@ fn read_loop(
                 Notification::InsertsChanged(v) => sh.state.inserts = v,
                 Notification::HotkeysChanged(h) => sh.state.hotkeys = h,
                 Notification::WindowLook(look) => sh.window_look = Some(look),
+                Notification::Crashed(r) => sh.crashes.push(r),
             },
             ServerMessage::Response(r) => {
                 let answer =

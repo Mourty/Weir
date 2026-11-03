@@ -22,7 +22,7 @@ use pipewire::sys as pw_sys;
 use std::cell::UnsafeCell;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_void};
-use std::sync::atomic::{AtomicI32, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use weir_protocol::{ChannelPosition, EngineStatus, MixerState, SoloMode};
 
@@ -65,6 +65,10 @@ pub struct FilterShared {
     pub state_cb: Mutex<Option<Box<dyn Fn() + Send>>>,
     /// The PipeWire server's version, once it has said.
     pub server_version: Mutex<Option<String>>,
+    /// The mixer panicked: from then on every output is silence, since
+    /// what it was in the middle of may be left half done. A restart
+    /// starts it afresh.
+    pub broken: AtomicBool,
 }
 
 // `processor` is only touched from PipeWire's data thread, one cycle at a
@@ -90,6 +94,7 @@ impl FilterShared {
             error: Mutex::new(None),
             state_cb: Mutex::new(None),
             server_version: Mutex::new(None),
+            broken: AtomicBool::new(false),
         })
     }
 
@@ -168,6 +173,7 @@ unsafe extern "C" fn on_process(data: *mut c_void, position: *mut spa_sys::spa_i
     if position.is_null() {
         return;
     }
+    weir_protocol::crash::name_part("audio");
     let clock = &(*position).clock;
     let n = clock.duration as usize;
     let rate = clock
@@ -220,7 +226,50 @@ unsafe extern "C" fn on_process(data: *mut c_void, position: *mut spa_sys::spa_i
     let input = |si: usize, c: usize| -> *const f32 { params.strips[si].in_bufs[c].get() };
     let output = |bi: usize, c: usize| -> *mut f32 { params.buses[bi].out_bufs[c].get() };
     let ramp = (rate * RAMP_MS / 1000).max(16) as usize;
-    (*shared.processor.get()).process(params, n, &input, &output, ramp, rate);
+    if shared.broken.load(Ordering::Relaxed) {
+        silence(params, n);
+        return;
+    }
+    // A panic cannot unwind out of a C callback: it would end the whole
+    // daemon. Caught, it is kept as a crash report (the hook runs here),
+    // and the mixer falls silent rather than playing whatever it left.
+    let ran = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if CRASH_TEST.load(Ordering::Relaxed) {
+            panic!("a crash on purpose (WEIR_CRASH_TEST=audio)");
+        }
+        (*shared.processor.get()).process(params, n, &input, &output, ramp, rate);
+    }));
+    if ran.is_err() {
+        shared.broken.store(true, Ordering::Relaxed);
+        silence(params, n);
+    }
+}
+
+/// Set to make the next cycle panic, to try crash reports.
+static CRASH_TEST: AtomicBool = AtomicBool::new(false);
+
+/// Make the mixer panic in its next cycle, to try what happens then
+/// (`WEIR_CRASH_TEST=audio`).
+pub fn crash_on_purpose() {
+    CRASH_TEST.store(true, Ordering::Relaxed);
+}
+
+/// Fill every output this cycle with silence: the buses, external effects'
+/// sends and hotkey sounds. Their buffers were resolved this cycle.
+unsafe fn silence(params: &RtParams, n: usize) {
+    let zero = |p: *mut f32| {
+        if !p.is_null() {
+            std::ptr::write_bytes(p, 0, n);
+        }
+    };
+    for bus in &params.buses {
+        bus.out_bufs.iter().for_each(|b| zero(b.get()));
+        bus.insert.send_bufs.iter().for_each(|b| zero(b.get()));
+    }
+    for strip in &params.strips {
+        strip.insert.send_bufs.iter().for_each(|b| zero(b.get()));
+    }
+    params.sound_bufs.iter().for_each(|b| zero(b.get()));
 }
 
 /// What went wrong making the engine node or its ports.
@@ -293,6 +342,7 @@ unsafe extern "C" fn on_return_process(data: *mut c_void, position: *mut spa_sys
     if position.is_null() {
         return;
     }
+    weir_protocol::crash::name_part("audio");
     let n = ((*position).clock.duration as usize).min(MAX_QUANTUM);
     let guard = shared.params.load();
     for r in &guard.returns {

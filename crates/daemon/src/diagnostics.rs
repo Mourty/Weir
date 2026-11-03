@@ -22,13 +22,19 @@ pub struct Problems;
 
 impl<S: Subscriber> Layer<S> for Problems {
     fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
-        let level = match *event.metadata().level() {
+        let level = *event.metadata().level();
+        if level > Level::INFO {
+            return;
+        }
+        let mut text = Message::default();
+        event.record(&mut text);
+        // A crash report ends with the last lines of the log.
+        weir_protocol::crash::remember(level.as_str(), &text.0);
+        let level = match level {
             Level::ERROR => ProblemLevel::Error,
             Level::WARN => ProblemLevel::Warning,
             _ => return,
         };
-        let mut text = Message::default();
-        event.record(&mut text);
         let Ok(mut problems) = PROBLEMS.lock() else {
             return;
         };
@@ -65,6 +71,22 @@ impl Visit for Message {
             self.0.push_str(&format!(" {}={value}", field.name()));
         }
     }
+}
+
+/// Tell crash reports the settings that most often matter.
+pub fn note_for_crashes(s: &weir_protocol::Settings) {
+    let or_auto = |v: Option<u32>, unit: &str| {
+        v.map_or_else(|| "PipeWire's".to_string(), |v| format!("{v}{unit}"))
+    };
+    weir_protocol::crash::note_settings(vec![
+        ("installed".into(), Install::here().describe()),
+        ("sample rate".into(), or_auto(s.sample_rate, " Hz")),
+        ("buffer".into(), or_auto(s.quantum, " frames")),
+        (
+            "hotkeys".into(),
+            std::env::var("WEIR_HOTKEYS").unwrap_or_else(|_| "desktop".into()),
+        ),
+    ]);
 }
 
 /// Everything `diagnostics` returns. `server` is the PipeWire server's

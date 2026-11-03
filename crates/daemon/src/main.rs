@@ -70,7 +70,23 @@ struct Args {
 enum Outcome {
     Exit,
     Restart,
+    /// Restart, and open the mixer window once back.
+    RestartWithWindow,
 }
+
+/// Set to `service`, `part`, `audio` or `request`, the service crashes on
+/// purpose, to try crash reports: the whole service, a part of its own, the
+/// audio thread (each a few seconds after it starts), or a `ping`.
+const CRASH_TEST_ENV: &str = "WEIR_CRASH_TEST";
+
+/// What `WEIR_CRASH_TEST` asks for, if anything.
+pub fn crash_test() -> Option<String> {
+    std::env::var(CRASH_TEST_ENV).ok().filter(|t| !t.is_empty())
+}
+
+/// Set for the restarted service when it is to open the mixer window
+/// whatever its startup setting says.
+const OPEN_WINDOW_ENV: &str = "WEIR_OPEN_WINDOW";
 
 /// The longest the daemon may take to shut down before it is ended by force.
 /// Comfortably above the sum of the limits of the individual steps.
@@ -85,6 +101,7 @@ const WINDOW_WAIT: Duration = Duration::from_secs(120);
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    weir_protocol::crash::install("service");
     init_logging();
     let args = Args::parse();
     let paths = config::Paths::resolve(args.config.clone());
@@ -126,6 +143,7 @@ async fn main() -> Result<()> {
         loaded.app_rules,
     ));
     controller.set_self();
+    diagnostics::note_for_crashes(&controller.settings());
     controller.set_recorder_settings(loaded.recorder);
     controller.restore_current(loaded.scene, loaded.setup);
     controller.apply_engine_options();
@@ -150,7 +168,9 @@ async fn main() -> Result<()> {
         None
     };
 
-    if !args.no_window {
+    if std::env::var_os(OPEN_WINDOW_ENV).is_some() {
+        open_window_when_ready(&controller, socket_path.clone(), false);
+    } else if !args.no_window {
         match controller.settings().startup {
             Startup::Window => open_window_when_ready(&controller, socket_path.clone(), false),
             Startup::Minimized => open_window_when_ready(&controller, socket_path.clone(), true),
@@ -158,6 +178,15 @@ async fn main() -> Result<()> {
                 info!("starting without a window ({})", startup.label())
             }
         }
+    }
+
+    // A part that stops because of a bug says so to the window at once.
+    let crashed = Arc::new(tokio::sync::Notify::new());
+    let wake = crashed.clone();
+    weir_protocol::crash::on_crash(move || wake.notify_one());
+
+    if let Some(test) = crash_test() {
+        crash_on_purpose(test);
     }
 
     let mut signals = StopSignals::new()?;
@@ -168,6 +197,7 @@ async fn main() -> Result<()> {
         serve,
         tray_rx,
         tray.as_ref(),
+        &crashed,
     )
     .await;
 
@@ -179,11 +209,11 @@ async fn main() -> Result<()> {
 
     // A stop that arrived while shutting down for a restart cancels the
     // restart: coming back now would only hold up whoever asked us to stop.
-    if outcome == Outcome::Restart {
+    if matches!(outcome, Outcome::Restart | Outcome::RestartWithWindow) {
         if signals.stop_pending().await {
             info!("asked to stop while restarting, so not restarting");
         } else {
-            return restart();
+            return restart(outcome == Outcome::RestartWithWindow);
         }
     }
     info!("bye");
@@ -298,9 +328,12 @@ fn spawn_background_tasks(
     mut events: UnboundedReceiver<EngineEvent>,
 ) {
     let c = controller.clone();
+    // Each of these loops carries on past a bug, which is kept as a crash
+    // report: one bad event must not leave the mixer deaf to the rest.
     tokio::spawn(async move {
         while let Some(ev) = events.recv().await {
-            c.on_engine_event(ev);
+            let _doing = weir_protocol::crash::doing("the engine's news");
+            let _ = weir_protocol::crash::caught(|| c.on_engine_event(ev));
         }
     });
 
@@ -311,7 +344,8 @@ fn spawn_background_tasks(
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             interval.tick().await;
-            c.tick();
+            let _doing = weir_protocol::crash::doing("meters");
+            let _ = weir_protocol::crash::caught(|| c.tick());
         }
     });
 
@@ -322,7 +356,8 @@ fn spawn_background_tasks(
         let mut interval = tokio::time::interval(SAVE_INTERVAL);
         loop {
             interval.tick().await;
-            c.save_if_dirty();
+            let _doing = weir_protocol::crash::doing("saving");
+            let _ = weir_protocol::crash::caught(|| c.save_if_dirty());
         }
     });
 }
@@ -401,9 +436,14 @@ async fn run(
     mut serve: tokio::task::JoinHandle<()>,
     mut tray_rx: UnboundedReceiver<TrayCommand>,
     tray: Option<&ksni::Handle<MixerTray>>,
+    crashed: &tokio::sync::Notify,
 ) -> Outcome {
     // Keeps the tray's icon, menu and tooltip in step with the mixer.
     let mut notes = controller.subscribe();
+    // WEIR_CRASH_TEST=service: the main loop itself, so the whole service.
+    let whole_crash = crash_test().is_some_and(|t| t == "service");
+    let crash_soon = tokio::time::sleep(Duration::from_secs(3));
+    tokio::pin!(crash_soon);
     let mut notes_open = true;
     loop {
         tokio::select! {
@@ -429,6 +469,16 @@ async fn run(
             _ = &mut serve => {
                 error!("server task ended");
                 return Outcome::Exit;
+            }
+            _ = &mut crash_soon, if whole_crash => {
+                panic!("a crash on purpose ({CRASH_TEST_ENV}=service)");
+            }
+            _ = crashed.notified() => {
+                for report in weir_protocol::crash::take_fresh() {
+                    error!("{} stopped because of a bug: {} (at {})",
+                        report.part, report.message, report.at);
+                    controller.tell_crash(report);
+                }
             }
             command = tray_rx.recv() => match command {
                 Some(TrayCommand::Show) => {
@@ -472,6 +522,10 @@ async fn run(
                 Some(TrayCommand::Restart) => {
                     info!("restarting at the tray's request");
                     return Outcome::Restart;
+                }
+                Some(TrayCommand::RestartWithWindow) => {
+                    info!("restarting at the window's request");
+                    return Outcome::RestartWithWindow;
                 }
                 Some(TrayCommand::Exit) => {
                     info!("quitting at the tray's request");
@@ -559,13 +613,22 @@ async fn shut_down(
 
 /// Replace this process with a fresh copy of itself, with the same
 /// arguments. Replacing rather than forking means whatever started us (a
-/// shell, or systemd) keeps supervising the same pid. Returns only if that
-/// fails.
-fn restart() -> Result<()> {
+/// shell, or systemd) keeps supervising the same pid. With `window`, the
+/// new one opens the mixer window whatever its startup setting says.
+/// Returns only if that fails.
+fn restart(window: bool) -> Result<()> {
     use std::os::unix::process::CommandExt;
     let exe = std::env::current_exe().context("finding our own binary to restart")?;
     let rest: Vec<String> = std::env::args().skip(1).collect();
-    let error = std::process::Command::new(&exe).args(&rest).exec();
+    let mut command = std::process::Command::new(&exe);
+    // A crash on purpose is for the run it was asked of.
+    command.args(&rest).env_remove(CRASH_TEST_ENV);
+    if window {
+        command.env(OPEN_WINDOW_ENV, "1");
+    } else {
+        command.env_remove(OPEN_WINDOW_ENV);
+    }
+    let error = command.exec();
     anyhow::bail!("could not restart {}: {error}", exe.display());
 }
 
@@ -655,9 +718,18 @@ fn spawn_window(socket: &Path, opening: Opening, env: &[(String, String)]) -> bo
             .kill_on_drop(false)
             .spawn()
         {
-            Ok(child) => {
+            Ok(mut child) => {
                 info!("started {}", candidate.display());
-                drop(child);
+                // A window that panics ends with 101. It is gone before it
+                // can say so, so this does, and its report waits for it.
+                tokio::spawn(async move {
+                    if let Ok(status) = child.wait().await {
+                        if status.code() == Some(101) {
+                            warn!("the mixer window closed because of a bug");
+                            window_crash_notice().await;
+                        }
+                    }
+                });
                 return true;
             }
             Err(e) => debug!("could not start {}: {e}", candidate.display()),
@@ -665,6 +737,65 @@ fn spawn_window(socket: &Path, opening: Opening, env: &[(String, String)]) -> bo
     }
     warn!("the mixer window (weir) was not found next to this binary or on PATH");
     false
+}
+
+/// Crash a part of the service a few seconds from now, as `test` asks
+/// (see [`CRASH_TEST_ENV`]).
+fn crash_on_purpose(test: String) {
+    if !matches!(test.as_str(), "part" | "audio") {
+        return;
+    }
+    warn!("{CRASH_TEST_ENV}={test}: crashing on purpose in 3 seconds");
+    let started = std::thread::Builder::new()
+        .name("crash test".into())
+        .spawn(move || {
+            std::thread::sleep(Duration::from_secs(3));
+            if test == "audio" {
+                weir_engine::crash_on_purpose();
+            } else {
+                panic!("a crash on purpose ({CRASH_TEST_ENV}=part)");
+            }
+        });
+    if let Err(e) = started {
+        warn!("could not start the crash test: {e}");
+    }
+}
+
+/// Tell the desktop the mixer window closed because of a bug: a
+/// notification that stays in its list, pointing to the report the window
+/// shows when it opens again.
+async fn window_crash_notice() {
+    use ashpd::zbus;
+    use std::collections::HashMap;
+    use zbus::zvariant::Value as V;
+    let Ok(connection) = zbus::Connection::session().await else {
+        return;
+    };
+    let mut hints: HashMap<&str, V> = HashMap::new();
+    hints.insert("desktop-entry", V::from("weir"));
+    let actions: Vec<&str> = Vec::new();
+    let sent = connection
+        .call_method(
+            Some("org.freedesktop.Notifications"),
+            "/org/freedesktop/Notifications",
+            Some("org.freedesktop.Notifications"),
+            "Notify",
+            &(
+                "Weir",
+                0u32,
+                "weir",
+                "Weir's window closed unexpectedly",
+                "It ran into a bug. Open Weir again to see what went wrong, and to send a \
+                 report if you like.",
+                actions,
+                hints,
+                -1i32,
+            ),
+        )
+        .await;
+    if let Err(e) = sent {
+        debug!("could not show a notification about the window: {e}");
+    }
 }
 
 /// End the process after `limit`, whatever it is doing by then.

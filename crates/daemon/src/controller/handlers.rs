@@ -84,7 +84,12 @@ impl Controller {
                 daemon_version: env!("CARGO_PKG_VERSION").into(),
                 capabilities: CAPABILITIES.iter().map(|c| c.to_string()).collect(),
             })),
-            Request::Ping => Ok(json!("pong")),
+            Request::Ping => {
+                if crate::crash_test().as_deref() == Some("request") {
+                    panic!("a crash on purpose (WEIR_CRASH_TEST=request), answering ping");
+                }
+                Ok(json!("pong"))
+            }
             Request::GetState => Ok(to_json(&self.full_state())),
             Request::ListDevices => Ok(to_json(&self.inner.locked().devices)),
             Request::ListApps => Ok(to_json(&self.inner.locked().apps)),
@@ -111,6 +116,7 @@ impl Controller {
             Request::SetAppVolume(p) => self.set_app_volume(p),
             Request::SetSettings(p) => self.set_settings(p),
             Request::ShowWindow => self.show_window_request(),
+            Request::Restart(p) => self.restart_request(p),
             Request::ListSetups => Ok(to_json(&config::list_saved(&self.paths.setups_dir))),
             Request::ListScenes => Ok(to_json(&config::list_saved(&self.paths.scenes_dir))),
             Request::SaveSetup(p) => self.save_setup(p),
@@ -393,6 +399,7 @@ impl Controller {
         if check_now {
             self.update_wanted.notify_one();
         }
+        crate::diagnostics::note_for_crashes(&settings);
         Ok(to_json(&settings))
     }
 
@@ -410,6 +417,19 @@ impl Controller {
             self.login.set(wanted).map_err(RpcError::application)?;
         }
         Ok(self.login.get())
+    }
+
+    /// Restart the service through the main loop, as the tray does.
+    fn restart_request(&self, p: RestartParams) -> Result<Value, RpcError> {
+        let command = if p.window {
+            TrayCommand::RestartWithWindow
+        } else {
+            TrayCommand::Restart
+        };
+        match self.window_tx.locked().as_ref() {
+            Some(tx) if tx.send(command).is_ok() => Ok(Value::Null),
+            _ => Err(RpcError::application("this daemon cannot restart itself")),
+        }
     }
 
     fn show_window_request(&self) -> Result<Value, RpcError> {

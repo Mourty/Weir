@@ -18,6 +18,7 @@ mod runner;
 mod volume;
 
 pub use engine::{Engine, EngineError, EngineEvent, EngineHandle, EngineOptions};
+pub use filter::crash_on_purpose;
 
 /// The version of the PipeWire library the engine runs with, such as
 /// `1.4.8`.

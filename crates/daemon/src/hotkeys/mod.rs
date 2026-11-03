@@ -38,7 +38,10 @@ pub fn start_runner(controller: &Arc<Controller>) -> UnboundedSender<Command> {
     controller.set_hotkey_runner(runner.clone());
     tokio::spawn(async move {
         while let Some(command) = rx.recv().await {
-            runner.locked().handle(command);
+            // A bug in one hotkey's steps is kept as a crash report, and
+            // the others go on working.
+            let _doing = weir_protocol::crash::doing("hotkeys");
+            let _ = weir_protocol::crash::caught(|| runner.locked().handle(command));
         }
     });
     tx

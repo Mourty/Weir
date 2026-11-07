@@ -569,7 +569,12 @@ impl App {
         let gap = ui.spacing().item_spacing.y;
         let pitch = self.app_pitch.max(1.0);
         let fits = (((height + gap) / pitch).floor() as usize).max(1);
-        let whole = (fits as f32 * pitch - gap).clamp(pitch - gap, height);
+        // At least one entry tall, even when not even one fits (a note
+        // above it, or a taller desktop font): the clip then cuts it.
+        // Plain `clamp(one, height)` stops the window when `one` is the
+        // larger.
+        let one = pitch - gap;
+        let whole = (fits as f32 * pitch - gap).clamp(one.min(height), one.max(height));
         let (view, _) = ui.allocate_exact_size(vec2(width, whole), egui::Sense::hover());
         let mut sui = ui.new_child(egui::UiBuilder::new().max_rect(view).layout(*ui.layout()));
         sui.set_clip_rect(view);

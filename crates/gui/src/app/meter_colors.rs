@@ -496,14 +496,7 @@ fn editor(ui: &mut Ui, c: &mut MeterColors, dragging: &mut Option<usize>) -> boo
         }
         if r.dragged() {
             if let Some(pos) = r.interact_pointer_pos() {
-                let lo = match k {
-                    0 => GAIN_MIN_DB + METER_BREAK_GAP_DB,
-                    _ => c.breaks_db[k - 1] + METER_BREAK_GAP_DB,
-                };
-                let hi = c
-                    .breaks_db
-                    .get(k + 1)
-                    .map_or(GAIN_MAX_DB - METER_BREAK_GAP_DB, |b| b - METER_BREAK_GAP_DB);
+                let (lo, hi) = drag_range(&c.breaks_db, k);
                 let new = db_at(pos.y).clamp(lo, hi);
                 if new != db {
                     c.breaks_db[k] = new;
@@ -604,6 +597,26 @@ fn pencil_color_button(ui: &mut Ui, id: egui::Id, rect: Rect, color: &mut Color3
     response
 }
 
+/// Where line `k` of `breaks` may be dragged: between its neighbors,
+/// keeping the gap to each, and inside the meter. A line with no room
+/// (lines packed at an end of the meter, as weirctl or an import can
+/// make them) stays where it is.
+fn drag_range(breaks: &[f32], k: usize) -> (f32, f32) {
+    let at = breaks[k];
+    let lo = match k.checked_sub(1).and_then(|i| breaks.get(i)) {
+        Some(b) => b + METER_BREAK_GAP_DB,
+        None => GAIN_MIN_DB + METER_BREAK_GAP_DB,
+    };
+    let hi = breaks
+        .get(k + 1)
+        .map_or(GAIN_MAX_DB - METER_BREAK_GAP_DB, |b| b - METER_BREAK_GAP_DB);
+    if lo <= hi {
+        (lo, hi)
+    } else {
+        (at, at)
+    }
+}
+
 fn band_words(lo: f32, hi: f32, first: bool, last: bool) -> String {
     let db = |v: f32| {
         if v > 0.0 {
@@ -617,5 +630,34 @@ fn band_words(lo: f32, hi: f32, first: bool, last: bool) -> String {
         (true, false) => format!("below {} dB", db(hi)),
         (false, true) => format!("from {} dB up", db(lo)),
         (false, false) => format!("from {} to {} dB", db(lo), db(hi)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_line_moves_between_its_neighbors() {
+        let breaks = [-12.0, 0.0];
+        assert_eq!(drag_range(&breaks, 0), (GAIN_MIN_DB + 1.0, -1.0));
+        assert_eq!(drag_range(&breaks, 1), (-11.0, GAIN_MAX_DB - 1.0));
+    }
+
+    #[test]
+    fn a_line_with_no_room_stays_put() {
+        // Lines at the very bottom or top of the meter, a dB apart: the
+        // range from their neighbors was turned round, and clamping to it
+        // stopped the window.
+        let bottom = [GAIN_MIN_DB, GAIN_MIN_DB + 1.0];
+        assert_eq!(drag_range(&bottom, 0), (GAIN_MIN_DB, GAIN_MIN_DB));
+        let top = [GAIN_MAX_DB - 1.0, GAIN_MAX_DB];
+        assert_eq!(drag_range(&top, 1), (GAIN_MAX_DB, GAIN_MAX_DB));
+        for breaks in [&bottom[..], &top[..]] {
+            for k in 0..breaks.len() {
+                let (lo, hi) = drag_range(breaks, k);
+                assert!(lo <= hi, "{breaks:?} {k}");
+            }
+        }
     }
 }

@@ -533,6 +533,10 @@ pub fn pan_slider(ui: &mut Ui, value: &mut f32, width: f32) -> Response {
 }
 
 /// A compact on/off button with a colored "on" state.
+///
+/// Its text stays on one line, cut short when it does not fit: these sit
+/// in fixed slots, and a wider desktop font once wrapped "Show mix on
+/// faders" onto two lines, taking the room the bus's list below needed.
 pub fn toggle(ui: &mut Ui, label: &str, on: bool, on_color: Color32, size: egui::Vec2) -> Response {
     let text = egui::RichText::new(label).size(11.0).strong().color(if on {
         theme::p().on_text
@@ -544,6 +548,7 @@ pub fn toggle(ui: &mut Ui, label: &str, on: bool, on_color: Color32, size: egui:
         egui::Button::new(text)
             .fill(fill)
             .min_size(size)
+            .truncate()
             .corner_radius(4),
     )
 }

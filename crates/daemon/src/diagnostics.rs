@@ -136,7 +136,7 @@ impl Install {
     /// moment, so it is asked once.
     pub fn here() -> Install {
         static HERE: OnceLock<Install> = OnceLock::new();
-        HERE.get_or_init(|| match std::env::current_exe() {
+        HERE.get_or_init(|| match weir_protocol::own_exe() {
             Ok(exe) => Install::of(&exe, dirs::home_dir().as_deref(), package),
             Err(_) => Install::Elsewhere(None),
         })

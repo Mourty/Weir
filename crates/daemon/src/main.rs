@@ -631,7 +631,7 @@ async fn shut_down(
 /// one was started with `--safe`. Returns only if that fails.
 fn restart(window: bool, safe: bool) -> Result<()> {
     use std::os::unix::process::CommandExt;
-    let exe = std::env::current_exe().context("finding our own binary to restart")?;
+    let exe = weir_protocol::own_exe().context("finding our own binary to restart")?;
     let rest: Vec<String> = std::env::args().skip(1).filter(|a| a != "--safe").collect();
     let mut command = std::process::Command::new(&exe);
     // A crash on purpose is for the run it was asked of.
@@ -702,7 +702,7 @@ enum Opening {
 
 fn spawn_window(socket: &Path, opening: Opening, env: &[(String, String)]) -> bool {
     let mut candidates: Vec<PathBuf> = Vec::new();
-    if let Ok(exe) = std::env::current_exe() {
+    if let Ok(exe) = weir_protocol::own_exe() {
         if let Some(dir) = exe.parent() {
             candidates.push(dir.join("weir"));
         }

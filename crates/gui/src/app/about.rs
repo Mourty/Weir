@@ -246,7 +246,7 @@ fn open_licenses() -> bool {
 fn licenses_folder() -> Option<PathBuf> {
     let system = PathBuf::from("/usr/share/licenses/weir");
     let own = dirs::data_dir().map(|d| d.join("licenses").join("weir"));
-    let packaged = std::env::current_exe().is_ok_and(|e| e.starts_with("/usr"));
+    let packaged = weir_protocol::own_exe().is_ok_and(|e| e.starts_with("/usr"));
     let mut candidates = Vec::new();
     if packaged {
         candidates.push(system);

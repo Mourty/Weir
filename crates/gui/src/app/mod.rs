@@ -29,6 +29,7 @@
 //! * `recorder`: the Recorder window, and what shows in the mixer while it
 //!   records.
 //! * `updates`: saying when a new version of Weir is out.
+//! * `safe`: safe mode, and bringing back what it holds back.
 //! * `history`: undo, redo, and the messages that report them.
 //! * `status`: what shows while there is no daemon to talk to.
 
@@ -45,6 +46,7 @@ mod meter_colors;
 mod meters;
 mod mixer;
 mod recorder;
+mod safe;
 mod settings;
 mod sounds;
 mod status;
@@ -96,6 +98,8 @@ enum Key {
 /// lock is held only for that long.
 struct Snapshot {
     connected: bool,
+    /// The daemon's whole state has arrived since connecting.
+    has_state: bool,
     connect_error: Option<String>,
     last_error: Option<String>,
     state: FullState,
@@ -128,6 +132,8 @@ pub struct App {
     client: Client,
     /// The crash window, when something crashed.
     crash: crash::CrashUi,
+    /// Safe mode: what is held back, the bar and the Safe mode window.
+    safe: safe::SafeUi,
     socket: PathBuf,
     /// Requests made this frame, sent at the end of it.
     actions: Vec<Request>,
@@ -239,15 +245,19 @@ impl App {
         allow_spawn: bool,
         start_minimized: bool,
         open_recorder: bool,
+        safe_mode: bool,
     ) -> Self {
         // The first frame puts the right palette in; see `palette`.
         theme::apply(&cc.egui_ctx, theme::DARK);
         appearance::set_context(&cc.egui_ctx);
         let client = Client::spawn(socket.clone(), cc.egui_ctx.clone(), allow_spawn);
+        // A daemon this window starts starts in safe mode too.
+        client.shared.locked().safe_start = safe_mode;
         let prefs = Prefs::load();
         prefs.note_for_crashes();
         Self {
             crash: crash::CrashUi::at_start(&cc.egui_ctx),
+            safe: safe::SafeUi::at_start(safe_mode),
             client,
             socket,
             actions: Vec::new(),
@@ -319,6 +329,7 @@ impl App {
         };
         Snapshot {
             connected: sh.connected,
+            has_state: sh.has_state,
             connect_error: sh.connect_error.clone(),
             last_error: err,
             state: sh.state.clone(),
@@ -351,13 +362,17 @@ impl App {
     /// desktop says it prefers light, since that is how Weir looks without
     /// being told.
     fn palette(&self) -> theme::Palette {
+        // Held back by safe mode: Weir's own dark look, asking the desktop
+        // nothing.
+        let held = self.held(&SafeItem::Look);
         let dark = match self.prefs.appearance {
+            _ if held => true,
             Appearance::Dark => true,
             Appearance::Light => false,
             Appearance::System => appearance::scheme() != appearance::Scheme::Light,
         };
         let palette = if dark { theme::DARK } else { theme::LIGHT };
-        match appearance::accent().filter(|_| self.prefs.system_accent) {
+        match appearance::accent().filter(|_| self.prefs.system_accent && !held) {
             Some(accent) => theme::with_accent(palette, accent),
             None => palette,
         }
@@ -371,9 +386,10 @@ impl App {
         if palette != theme::p() {
             theme::apply(ctx, palette);
         }
-        if self.desktop_font != Some(self.prefs.system_font) {
-            appearance::use_desktop_font(ctx, self.prefs.system_font);
-            self.desktop_font = Some(self.prefs.system_font);
+        let font = self.prefs.system_font && !self.held(&SafeItem::Look);
+        if self.desktop_font != Some(font) {
+            appearance::use_desktop_font(ctx, font);
+            self.desktop_font = Some(font);
         }
     }
 
@@ -579,6 +595,7 @@ impl eframe::App for App {
         self.last_frame = now;
         let Snapshot {
             connected,
+            has_state,
             connect_error,
             last_error,
             state,
@@ -597,6 +614,7 @@ impl eframe::App for App {
             crashes,
         } = self.snapshot();
         self.crash_tick(crashes, connected);
+        self.safe_tick(&state, has_state);
         self.history = history;
         if let Some(d) = diagnostics {
             self.take_diagnostics(d, &state);
@@ -626,6 +644,7 @@ impl eframe::App for App {
 
         self.top_bar(ctx, connected, &state, last_error.as_deref());
         if connected {
+            self.safe_bar(ctx, &state);
             self.update_question(ctx, &state);
             self.mix_bar(ctx, &state);
         }
@@ -649,6 +668,7 @@ impl eframe::App for App {
         self.show_fx_windows(ctx, &state, &spectra);
         if connected {
             self.recorder_window(ctx, &state);
+            self.safe_window(ctx, &state);
             self.update_window(ctx, &state);
             self.show_hotkeys(ctx, &state, error_at.as_ref());
             self.poll_sounds(&state);

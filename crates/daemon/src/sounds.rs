@@ -161,16 +161,8 @@ impl Library {
     /// Weir's own sounds, and every sound file in `dir` that decodes. One
     /// that does not is left out, and said so in the log.
     pub fn load(dir: &Path) -> Self {
-        let mut sounds: Vec<Sound> = BUILTIN_SOUNDS
-            .iter()
-            .filter_map(|&name| {
-                Some(Sound {
-                    name: name.to_string(),
-                    builtin: true,
-                    data: builtin_sound(name)?,
-                })
-            })
-            .collect();
+        let mut library = Self::builtin();
+        let sounds = &mut library.sounds;
         for (name, path) in own_files(dir) {
             if sounds.iter().any(|s| s.name.eq_ignore_ascii_case(&name)) {
                 warn!("passing over {}: a sound has that name", path.display());
@@ -185,6 +177,21 @@ impl Library {
                 Err(e) => warn!("passing over the sound {}: {e:#}", path.display()),
             }
         }
+        library
+    }
+
+    /// Weir's own sounds alone: in safe mode, which holds back the user's.
+    pub fn builtin() -> Self {
+        let sounds = BUILTIN_SOUNDS
+            .iter()
+            .filter_map(|&name| {
+                Some(Sound {
+                    name: name.to_string(),
+                    builtin: true,
+                    data: builtin_sound(name)?,
+                })
+            })
+            .collect();
         Self { sounds }
     }
 

@@ -191,10 +191,19 @@ impl App {
                 });
             }
             PrefsPage::Mixer => {
-                card(ui, "Look", |ui| self.appearance_prefs(ui));
+                card(ui, "Look", |ui| {
+                    self.held_prefs_note(ui, SafeItem::Look);
+                    self.appearance_prefs(ui)
+                });
                 card(ui, "Solo", |ui| self.solo_prefs(ui, state));
-                card(ui, "Under each bus", |ui| self.bus_list_prefs(ui));
-                card(ui, "Applications", |ui| self.app_prefs(ui));
+                card(ui, "Under each bus", |ui| {
+                    self.held_prefs_note(ui, SafeItem::Lists);
+                    self.bus_list_prefs(ui)
+                });
+                card(ui, "Applications", |ui| {
+                    self.held_prefs_note(ui, SafeItem::Lists);
+                    self.app_prefs(ui)
+                });
                 explain(
                     ui,
                     &format!(
@@ -204,8 +213,14 @@ impl App {
                 );
             }
             PrefsPage::Meters => {
-                card(ui, "Beside each meter", |ui| self.meter_prefs(ui));
-                card(ui, "Meter colors", |ui| self.meter_colors_prefs(ui, state));
+                card(ui, "Beside each meter", |ui| {
+                    self.held_prefs_note(ui, SafeItem::Meters);
+                    self.meter_prefs(ui)
+                });
+                card(ui, "Meter colors", |ui| {
+                    self.held_prefs_note(ui, SafeItem::Meters);
+                    self.meter_colors_prefs(ui, state)
+                });
             }
             PrefsPage::Hotkeys => {
                 card(ui, "When a hotkey is pressed", |ui| {

@@ -110,6 +110,7 @@ impl App {
         let mut open = true;
         let mut close = false;
         let mut restart = false;
+        let mut safe = false;
         let title = match (now, report.whole) {
             (true, false) => "Part of Weir stopped",
             _ => "Weir crashed",
@@ -159,6 +160,15 @@ impl App {
                     ui.label(
                         RichText::new(format!("It also happened {times} before that."))
                             .color(p.text_dim),
+                    );
+                }
+                if !now && report.calls_for_safe_mode() && self.safe.on() {
+                    ui.label(
+                        RichText::new(
+                            "So that it does not happen again straight away, Weir is in safe \
+                             mode: the bar at the top says what it holds back.",
+                        )
+                        .color(p.warning),
                     );
                 }
                 ui.add_space(6.0);
@@ -256,6 +266,18 @@ impl App {
                         if now && ui.button("Restart Weir").clicked() {
                             restart = true;
                         }
+                        if now
+                            && service
+                            && ui
+                                .button("Restart in safe mode")
+                                .on_hover_text(
+                                    "Start again with strips, buses and the parts most likely \
+                                     to make Weir crash held back, to bring back one at a time",
+                                )
+                                .clicked()
+                        {
+                            (restart, safe) = (true, true);
+                        }
                     });
                 });
                 if let Some(note) = &self.crash.note {
@@ -279,9 +301,13 @@ impl App {
                 // one is told to close as it goes.
                 (true, true) => self
                     .actions
-                    .push(Request::Restart(RestartParams { window: true })),
+                    .push(Request::Restart(RestartParams { window: true, safe })),
                 // The whole service went: start it again from here.
-                (true, false) => self.client.shared.locked().start_service = true,
+                (true, false) => {
+                    let mut shared = self.client.shared.locked();
+                    shared.start_service = true;
+                    shared.safe_start = safe;
+                }
                 (false, _) => restart_window(ctx),
             }
         }

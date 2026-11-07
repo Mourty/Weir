@@ -106,7 +106,8 @@ def write_sound(path, hz, seconds):
 
 def reset(mixer, sounds_device, workdir):
     """Put the mixer, the settings, the rules, the hotkeys, the sounds, the
-    meter colors and the recorder back as they were."""
+    meter colors and the recorder back as they were, out of safe mode."""
+    mixer.call("leave_safe_mode")
     mixer.call("set_recording", on=False)
     mixer.batch(
         ("load_setup", {"name": BASELINE}),

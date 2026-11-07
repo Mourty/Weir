@@ -38,6 +38,7 @@ Python and Node.js are in [`examples/`](../examples/).
   * [Recording](#recording): `set_recorder`, `set_record_track`, `set_recording`
   * [Export and import](#export-and-import): `export_settings`, `inspect_import`, `import_settings`
   * [Settings and the window](#settings-and-the-window): `set_settings`, `check_for_update`, `show_window`, `restart`
+  * [Safe mode](#safe-mode): `enter_safe_mode`, `bring_back`, `leave_safe_mode`
 * [Notifications](#notifications)
 * [Types](#types)
 * [Errors](#errors)
@@ -368,7 +369,7 @@ stop when the connection closes.
 | `devices` | `devices_changed`, `system_volumes_changed`, `inserts_changed` |
 | `apps` | `apps_changed`, `seen_apps_changed` |
 | `engine` | `engine_changed` |
-| `settings` | `settings_changed`, `update_changed` |
+| `settings` | `settings_changed`, `update_changed`, `safe_mode_changed` |
 | `hotkeys` | `hotkeys_changed` |
 | `recorder` | `recorder_changed`, `recording_changed` |
 | `window` | `show_window`, `show_recorder`, `quit`, `window_look`, `crashed`. Only for a mixer window: subscribing to it tells the daemon this connection *is* one. There is one window at a time: while one is open, a second connection subscribing to `window` gets `quit` at once, and the open window gets `show_window`. |
@@ -2264,6 +2265,7 @@ after part of the daemon stopped because of a bug (see `crashed` under
 | Parameter | Type | |
 |---|---|---|
 | `window` | boolean, *optional* | Open the mixer window once the daemon is back, whatever `startup` says. |
+| `safe` | boolean, *optional* | Start again in [safe mode](#safe-mode), with everything held back that can be. Without it, the daemon starts normally, even if it is in safe mode now. |
 
 Returns `null`, then the daemon restarts: the connection closes, and the
 socket is back a moment later.
@@ -2271,6 +2273,7 @@ socket is back a moment later.
 <!-- not tested: restarts the daemon -->
 ```sh
 weirctl raw restart '{"window": true}'
+weirctl raw restart '{"window": true, "safe": true}'   # in safe mode
 ```
 
 <!-- not tested: restarts the daemon -->
@@ -2281,6 +2284,116 @@ mixer.call("restart", window=True)
 <!-- not tested: restarts the daemon -->
 ```js
 await mixer.call("restart", { window: true });
+```
+
+### Safe mode
+
+In safe mode, Weir runs with parts of itself held back, so that a setup
+that makes it crash can still be used, and the part to blame found by
+bringing the others back one at a time. Nothing held back is changed or
+forgotten: it is left out of what is drawn or set up, and comes back as it
+was saved. Changes made meanwhile, to held-back things too, are kept.
+
+The daemon starts in safe mode, with everything held back
+([SafeMode](#safemode)), when it is started with `--safe`, restarted with
+[`restart`](#restart) and `safe`, or when it stopped because of a bug
+within 30 seconds of starting, or while in safe mode, the time before.
+Each crash is answered once: the start after that is a normal one again.
+The window asks for [`enter_safe_mode`](#enter_safe_mode) when it closed
+because of a bug the same way.
+
+What safe mode holds back is in `safe_mode` in [`get_state`](#get_state),
+left out while Weir is not in it; `safe_mode_changed` (topic `settings`)
+says when it changes. A [crash report](#crashreport) says whether Weir was
+in safe mode, and what came back last; safe mode after that crash keeps it
+back (`suspect`).
+
+While safe mode holds them back, `set_recording` cannot start a recording,
+`run_hotkey`, `press_hotkey` and `release_hotkey` do nothing but say so,
+`check_for_update` does not check, and `add_sound` and `remove_sound`
+wait: each answers with an error naming what to bring back. None of
+these methods may be a hotkey's step.
+
+#### `enter_safe_mode`
+
+Hold back what the window draws: its look, meters and lists, and every
+strip and bus, which play on (`audio` false). In safe mode already, only
+`suspect` is held back again. Holding back the rest (hotkeys, sounds,
+external effects, the recorder, app rules, the update check, and strips
+and buses in the sound) takes a restart: [`restart`](#restart) with
+`safe`.
+
+| Parameter | Type | |
+|---|---|---|
+| `why` | string, *optional* | `window` when the window asks after it crashed; `asked`, the default, otherwise. See [SafeMode](#safemode). |
+| `suspect` | [SafeItem](#safeitem), *optional* | What came back last before the window crashed in safe mode, to hold back again and point out. |
+
+Returns the [SafeMode](#safemode).
+
+```sh
+weirctl raw enter_safe_mode
+```
+
+```python
+safe = mixer.call("enter_safe_mode")
+print(len(safe["held"]), "things held back")
+```
+
+```js
+const safe = await mixer.call("enter_safe_mode");
+console.log(safe.held.length, "things held back");
+```
+
+#### `bring_back`
+
+Bring back some or all of what safe mode holds back, and set it up as it
+would have been at the start: a strip or bus is made, hotkeys take their
+keys, your own sounds are read, app rules apply to what plays now. Safe
+mode stays on until it is left, so that a crash still says what came back
+last.
+
+| Parameter | Type | |
+|---|---|---|
+| `items` | list of [SafeItem](#safeitem), *optional* | What to bring back. Strips and buses by name, or by id. Each must be held back. |
+| `all` | boolean, *optional* | Everything held back. |
+
+Returns the [SafeMode](#safemode).
+
+```sh
+weirctl raw enter_safe_mode > /dev/null
+weirctl raw bring_back '{"items": ["look", {"strip": "Mic"}]}'
+```
+
+```python
+mixer.call("enter_safe_mode")
+safe = mixer.call("bring_back", items=["lists", {"bus": "Headset"}])
+print("still held back:", safe["held"])
+```
+
+```js
+await mixer.call("enter_safe_mode");
+const safe = await mixer.call("bring_back", { all: true });
+console.log("still held back:", safe.held);
+```
+
+#### `leave_safe_mode`
+
+Bring everything back and leave safe mode. Takes no parameters. Returns
+`null`.
+
+```sh
+weirctl raw enter_safe_mode > /dev/null
+weirctl raw leave_safe_mode
+```
+
+```python
+mixer.call("enter_safe_mode")
+mixer.call("leave_safe_mode")
+```
+
+```js
+await mixer.call("enter_safe_mode");
+await mixer.call("leave_safe_mode");
 ```
 
 ## Notifications
@@ -2307,6 +2420,7 @@ replace its copy.
 | `engine_changed` | `engine` | [EngineStatus](#enginestatus) | The engine connected, stopped, or changed rate or buffer size. |
 | `settings_changed` | `settings` | [Settings](#settings) | A setting changed. |
 | `update_changed` | `settings` | [UpdateStatus](#updatestatus) | A check for Weir's newest release started or ended. |
+| `safe_mode_changed` | `settings` | [SafeMode](#safemode) | Safe mode started or ended, or brought something back. |
 | `hotkeys_changed` | `hotkeys` | [HotkeysInfo](#hotkeysinfo) | A hotkey was added, changed or removed, the desktop gave them other keys, or something went wrong with one, or came right. |
 | `recorder_changed` | `recorder` | [RecorderSettings](#recordersettings) | How recordings are made changed, or the strips and buses ticked for recording. |
 | `recording_changed` | `recorder` | [RecordingStatus](#recordingstatus) | A recording started or stopped, once a second while it goes on, when it starts new files, and when the folder for the next one changes. |
@@ -2357,6 +2471,7 @@ What [`get_state`](#get_state) returns.
 | `recorder` | [RecorderSettings](#recordersettings) | How recordings are made. |
 | `recording` | [RecordingStatus](#recordingstatus) | The recording under way, or the last one. |
 | `seen_apps` | list of [SeenApp](#seenapp) | The applications heard lately, as [`list_seen_apps`](#list_seen_apps) gives them. Left out when there are none. |
+| `safe_mode` | [SafeMode](#safemode), *optional* | What [safe mode](#safe-mode) holds back. Left out when Weir is not in it. |
 
 ### MixerState
 
@@ -3015,6 +3130,47 @@ Each is also written in full to `~/.local/state/weir/crash.log`.
 | `settings` | list | The settings that most often matter, as `[name, value]`. |
 | `log` | list of strings | The last lines of the program's log, oldest first. |
 | `private` | object | The home folder and user name, for a client to hide in what it shows: `home`, `user`. |
+| `uptime_s` | number, *optional* | Seconds from the program's start to the crash. |
+| `id` | string | This report, told apart from every other. |
+| `safe_mode` | boolean, *optional* | Whether the program was in safe mode. |
+| `brought_back` | [SafeItem](#safeitem), *optional* | What safe mode brought back last before the crash. |
+
+### SafeMode
+
+What [safe mode](#safe-mode) holds back.
+
+```json
+{"on": true, "why": "service", "audio": true,
+ "held": ["meters", {"strip": "Mic"}, {"bus": "Stream Mic"}, "hotkeys"],
+ "suspect": {"strip": "Mic"}, "brought_back": ["look", {"strip": "Music"}]}
+```
+
+| Field | Type | |
+|---|---|---|
+| `on` | boolean | Weir is in safe mode. It stays on until it is left or the daemon restarts, even with nothing held back. |
+| `why` | string | `asked`; `service`, the daemon stopped because of a bug soon after starting or in safe mode, or its sound did; `window`, the window closed because of a bug the same way. |
+| `audio` | boolean | Strips and buses held back are left out of the sound as well as the window. False when only the window asked for safe mode: they play on. |
+| `held` | list of [SafeItem](#safeitem) | What is held back now. |
+| `suspect` | [SafeItem](#safeitem), *optional* | What came back last before Weir crashed in safe mode: held back again, and likely to blame. |
+| `brought_back` | list of [SafeItem](#safeitem), *optional* | What was brought back, the latest last. |
+
+### SafeItem
+
+Something safe mode holds back: a string, or a strip or bus by name.
+
+| Item | Held back |
+|---|---|
+| `"look"` | The window's look: it is dark, in Weir's own font and colors. |
+| `"meters"` | Meter scales, the numbers above meters and meter colors. |
+| `"lists"` | Application volumes under strips, and the strips each bus hears. |
+| `{"strip": "Mic"}` | A strip: the window shows only its name. With `audio`, it is not set up, so it is silent and nothing can play into it. |
+| `{"bus": "Headset"}` | A bus, likewise; routes to it are left out too. |
+| `"hotkeys"` | Hotkeys: their keys are left to other programs, and they cannot be pressed. |
+| `"hotkey_sounds"` | Your own hotkey sounds, which are not read from their files. Weir's own sounds play. |
+| `"external_effects"` | External effects: strips and buses play as if they were off. |
+| `"recorder"` | The recorder: recordings cannot start. |
+| `"app_rules"` | Application rules: applications that start playing stay where they are. |
+| `"update_check"` | The check for a newer Weir. |
 
 ### ImportInspection
 

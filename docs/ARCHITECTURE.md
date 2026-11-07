@@ -481,6 +481,30 @@ to open the window. `WEIR_CRASH_TEST` makes Weir crash on purpose:
 `service`, `part`, `audio` or `request` in the daemon, `window` or
 `window-part` in the window.
 
+**Safe mode** (`weir_protocol::safe`) answers crashes that may come from
+one setup: it holds parts of Weir back, and brings them back one at a
+time. A report carries the program's uptime, an id, and whether it was in
+safe mode with what came back last. At startup each program asks
+`crash::safe_mode_wanted` whether its newest report ended it (the whole
+program, or the daemon's audio part) within `EARLY_CRASH_SECS` or while
+in safe mode; each report is answered once (`safe-mode-answered-PROGRAM`
+in the state folder), so a start in safe mode does not repeat. The daemon
+keeps one `SafeMode` in a `watch` channel: `SafeMode::everything` when it
+starts in it (`--safe`, `WEIR_SAFE_MODE` from a restart, or its own early
+crash), or what the window asks for with `enter_safe_mode` after its own
+(its look, meters and lists, and every strip and bus, still playing:
+`audio` false). Held-back strips and buses are left out of the mixer the
+engine is given (`SafeMode::engine_mixer`, in `push_state` and at
+`Engine::spawn`), with routes to them cleared by `normalize`, and so are
+external effects. The keys task and the update check wait in
+`Controller::until_back`; the user's sounds are not decoded; rules are not
+applied; recording and hotkey presses are refused. `bring_back` sets each
+part up as at the start. Items name strips and buses, renames are
+followed, and the window draws a card in place of each held-back strip or
+bus, and takes Weir's own look, plain meters and no lists while those are
+held back. Nothing held back is written differently: the files never know
+about safe mode.
+
 ## The protocol
 
 The protocol crate's types *are* the protocol. `describe` returns JSON

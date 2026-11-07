@@ -19,6 +19,8 @@ const TIMEOUT: Duration = Duration::from_secs(20);
 
 /// Check when the daemon starts, if wanted, and whenever asked.
 pub async fn run(c: Arc<Controller>) {
+    // Safe mode: no check until it comes back, then as at the start.
+    c.until_back(weir_protocol::SafeItem::UpdateCheck).await;
     // The wait before the next check by itself, and how many retries are
     // used up; `None` once there is none to do.
     let mut next = (c.settings().update_check == Some(true)).then_some((FIRST_WAIT, 0));

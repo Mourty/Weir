@@ -19,6 +19,7 @@
 //! * [`transfer`]: exporting settings to files, and importing them.
 //! * [`report`]: what a bug report says, worded alike by every client.
 //! * [`crash`]: crash reports, and locks a panic cannot spoil.
+//! * [`safe`]: safe mode, which holds parts of Weir back after a crash.
 //! * [`updates`]: whether a newer Weir is out.
 //! * [`rpc`]: every request, response and notification.
 //!
@@ -38,6 +39,7 @@ pub mod model;
 pub mod recorder;
 pub mod report;
 pub mod rpc;
+pub mod safe;
 pub mod sounds;
 pub mod targets;
 pub mod transfer;
@@ -52,6 +54,7 @@ pub use model::*;
 pub use recorder::*;
 pub use report::*;
 pub use rpc::*;
+pub use safe::*;
 pub use sounds::*;
 pub use targets::*;
 pub use transfer::*;

@@ -63,15 +63,22 @@ struct Args {
     /// Do not open the mixer window, whatever the configuration says.
     #[arg(long)]
     no_window: bool,
+    /// Start in safe mode: strips, buses and the parts of Weir most likely
+    /// to make it crash held back, to bring back one at a time.
+    #[arg(long)]
+    safe: bool,
 }
 
 /// Why the main loop stopped.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Outcome {
     Exit,
-    Restart,
-    /// Restart, and open the mixer window once back.
-    RestartWithWindow,
+    /// Restart: opening the mixer window once back (`window`), in safe
+    /// mode (`safe`).
+    Restart {
+        window: bool,
+        safe: bool,
+    },
 }
 
 /// Set to `service`, `part`, `audio` or `request`, the service crashes on
@@ -87,6 +94,10 @@ pub fn crash_test() -> Option<String> {
 /// Set for the restarted service when it is to open the mixer window
 /// whatever its startup setting says.
 const OPEN_WINDOW_ENV: &str = "WEIR_OPEN_WINDOW";
+
+/// Set for the restarted service when it is to start in safe mode, as
+/// `--safe` does.
+const SAFE_MODE_ENV: &str = "WEIR_SAFE_MODE";
 
 /// The longest the daemon may take to shut down before it is ended by force.
 /// Comfortably above the sum of the limits of the individual steps.
@@ -122,25 +133,32 @@ async fn main() -> Result<()> {
         }
     }
 
+    let safe = safe_mode_at_start(args.safe, &loaded.mixer);
+    weir_protocol::crash::note_safe_mode(&safe);
+
     let (ev_tx, ev_rx) = tokio::sync::mpsc::unbounded_channel();
     let engine = if args.no_engine {
         warn!("running without the audio engine (--no-engine)");
         None
     } else {
+        let first = safe
+            .engine_mixer(&loaded.mixer)
+            .unwrap_or_else(|| loaded.mixer.clone());
         Some(
-            Engine::spawn(loaded.mixer.clone(), move |ev| {
+            Engine::spawn(first, move |ev| {
                 let _ = ev_tx.send(ev);
             })
             .context("starting the audio engine")?,
         )
     };
 
-    let controller = Arc::new(Controller::new(
+    let controller = Arc::new(Controller::new_with(
         loaded.mixer,
         engine,
         paths,
         loaded.settings,
         loaded.app_rules,
+        safe,
     ));
     controller.set_self();
     diagnostics::note_for_crashes(&controller.settings());
@@ -209,11 +227,11 @@ async fn main() -> Result<()> {
 
     // A stop that arrived while shutting down for a restart cancels the
     // restart: coming back now would only hold up whoever asked us to stop.
-    if matches!(outcome, Outcome::Restart | Outcome::RestartWithWindow) {
+    if let Outcome::Restart { window, safe } = outcome {
         if signals.stop_pending().await {
             info!("asked to stop while restarting, so not restarting");
         } else {
-            return restart(outcome == Outcome::RestartWithWindow);
+            return restart(window, safe);
         }
     }
     info!("bye");
@@ -378,6 +396,7 @@ async fn start_tray(
     let mixer = controller.mixer();
     (tray.strips, tray.buses) = (mixer.strips.len(), mixer.buses.len());
     tray.can_record = controller.can_record();
+    tray.safe_mode = controller.safe_mode().on;
     match tray.assume_sni_available(true).spawn().await {
         Ok(h) => {
             info!("tray icon started");
@@ -464,7 +483,7 @@ async fn run(
             }
             _ = signals.usr1.recv() => {
                 info!("restarting on SIGUSR1");
-                return Outcome::Restart;
+                return Outcome::Restart { window: false, safe: false };
             }
             _ = &mut serve => {
                 error!("server task ended");
@@ -519,14 +538,11 @@ async fn run(
                     });
                 }
                 Some(TrayCommand::SetStartup(mode)) => set_startup(controller, mode),
-                Some(TrayCommand::Restart) => {
-                    info!("restarting at the tray's request");
-                    return Outcome::Restart;
+                Some(TrayCommand::Restart { window, safe }) => {
+                    info!("restarting{}", if safe { " in safe mode" } else { "" });
+                    return Outcome::Restart { window, safe };
                 }
-                Some(TrayCommand::RestartWithWindow) => {
-                    info!("restarting at the window's request");
-                    return Outcome::RestartWithWindow;
-                }
+                Some(TrayCommand::LeaveSafeMode) => controller.leave_safe_mode(),
                 Some(TrayCommand::Exit) => {
                     info!("quitting at the tray's request");
                     return Outcome::Exit;
@@ -555,12 +571,36 @@ async fn run(
                         let can = !r.tracks.is_empty();
                         handle.update(|t| t.can_record = can).await;
                     }
+                    Ok(Notification::SafeModeChanged(s)) => {
+                        handle.update(|t| t.safe_mode = s.on).await;
+                    }
                     Ok(_) | Err(RecvError::Lagged(_)) => {}
                     Err(RecvError::Closed) => notes_open = false,
                 }
             }
         }
     }
+}
+
+/// Safe mode as the service starts: everything held back when asked for
+/// (`--safe`, or a restart in safe mode), or when the service stopped
+/// because of a bug soon after its last start, or while in safe mode;
+/// otherwise off.
+fn safe_mode_at_start(asked: bool, mixer: &MixerState) -> weir_protocol::SafeMode {
+    use weir_protocol::{SafeMode, SafeWhy};
+    let asked = asked || std::env::var_os(SAFE_MODE_ENV).is_some();
+    let safe = if asked {
+        SafeMode::everything(SafeWhy::Asked, mixer, None)
+    } else if let Some(crash) = weir_protocol::crash::safe_mode_wanted("service") {
+        SafeMode::everything(SafeWhy::Service, mixer, crash.brought_back)
+    } else {
+        return SafeMode::default();
+    };
+    warn!(
+        "{} Bring things back from the window, or with weirctl safe-mode.",
+        safe.reason()
+    );
+    safe
 }
 
 /// Change the startup mode, as the tray's menu asked, the way a client's
@@ -614,19 +654,22 @@ async fn shut_down(
 /// Replace this process with a fresh copy of itself, with the same
 /// arguments. Replacing rather than forking means whatever started us (a
 /// shell, or systemd) keeps supervising the same pid. With `window`, the
-/// new one opens the mixer window whatever its startup setting says.
-/// Returns only if that fails.
-fn restart(window: bool) -> Result<()> {
+/// new one opens the mixer window whatever its startup setting says; with
+/// `safe`, it starts in safe mode, and without, it does not, even if this
+/// one was started with `--safe`. Returns only if that fails.
+fn restart(window: bool, safe: bool) -> Result<()> {
     use std::os::unix::process::CommandExt;
     let exe = std::env::current_exe().context("finding our own binary to restart")?;
-    let rest: Vec<String> = std::env::args().skip(1).collect();
+    let rest: Vec<String> = std::env::args().skip(1).filter(|a| a != "--safe").collect();
     let mut command = std::process::Command::new(&exe);
     // A crash on purpose is for the run it was asked of.
     command.args(&rest).env_remove(CRASH_TEST_ENV);
-    if window {
-        command.env(OPEN_WINDOW_ENV, "1");
-    } else {
-        command.env_remove(OPEN_WINDOW_ENV);
+    for (env, on) in [(OPEN_WINDOW_ENV, window), (SAFE_MODE_ENV, safe)] {
+        if on {
+            command.env(env, "1");
+        } else {
+            command.env_remove(env);
+        }
     }
     let error = command.exec();
     anyhow::bail!("could not restart {}: {error}", exe.display());

@@ -152,6 +152,7 @@ impl Controller {
         let recording = self.recording_now();
         if p.on.apply(recording) {
             if !recording {
+                self.needs(SafeItem::Recorder)?;
                 self.start_recording()?;
             }
         } else if recording {

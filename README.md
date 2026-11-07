@@ -55,6 +55,9 @@ lets the rest flow on.*
 * **Export and import** your scenes, setups, hotkeys and their sounds,
   meter colors and preferences, to keep them safe or take them to
   another computer.
+* **When something goes wrong**, a crash report says what happened,
+  ready to send with personal details hidden, and **safe mode** starts
+  Weir with the likely culprits held back, to bring back one at a time.
 * **Scriptable.** `weirctl` does everything the window does from a
   terminal or a script, and a documented protocol lets any program, such
   as a Stream Deck plugin, do the same.

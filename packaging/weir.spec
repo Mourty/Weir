@@ -29,7 +29,7 @@
 %global cargo_flags --release --locked
 
 Name:           weir
-Version:        1.3.0
+Version:        1.4.0
 Release:        %{?_release}%{!?_release:1}%{?dist}
 Summary:        Voicemeeter-style audio mixer for PipeWire
 
@@ -98,7 +98,27 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/io.github.mour
 %doc %{_datadir}/doc/%{name}/docs/
 
 %changelog
-* Sat Oct 17 2026 Mourty <Mourt2@proton.me> - 1.3.0-1
+* Sat Nov 07 2026 Mourty <Mourt2@proton.me> - 1.4.0-1
+- Show a crash report when part of Weir stops: what happened, ready to
+  send as a GitHub issue with personal details hidden, and kept in
+  ~/.local/state/weir/crash.log. The service now carries on past most
+  bugs, and Restart Weir brings back what stopped.
+- Add safe mode: after a crash at startup, or when asked, Weir starts
+  with the parts most likely at fault held back, to bring back one at a
+  time and find which one it was.
+- Show any character the system's fonts have, such as other scripts,
+  symbols and colored emoji, and draw text more sharply. Building Weir
+  now needs Rust 1.95.
+- Fix the window closing at once with the desktop's font, a full bus
+  list and an unplugged device. Reported and first fixed by
+  NeonLightning. Strips and buses now keep their faders in line however
+  much their labels hold.
+- Refuse damaged sound files, oversized imports and files that never
+  end instead of crashing, give repeated strip and bus names a number,
+  and save settings so a power cut cannot empty them.
+- Make Restart Weir start the new version after an update, where it
+  used to quit, and say to use it after installing one.
+
 - Add a recorder: strips and buses as heard in the mix, each on its own
   track, in WAV, FLAC, MP3, Opus or Ogg Vorbis, as a folder of files or
   one Matroska file, with names from a pattern, new files every so many

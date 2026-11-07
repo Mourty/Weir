@@ -70,6 +70,19 @@
   </provides>
 
   <releases>
+    <release version="1.4.0" date="2026-11-07">
+      <description>
+        <p>Crash reports, safe mode, and a sturdier Weir.</p>
+        <ul>
+          <li>When part of Weir stops, a crash report says what happened, ready to send as a GitHub issue with personal details hidden. The service carries on past most bugs, and Restart Weir brings back what stopped.</li>
+          <li>Safe mode: after a crash at startup, or when you ask, Weir starts with the parts most likely at fault held back, so you can bring them back one at a time and find which one it was.</li>
+          <li>Any character your system's fonts have now shows, such as other scripts, symbols and colored emoji, and text is drawn more sharply.</li>
+          <li>The window no longer closes at once with the desktop's font, a full bus list and an unplugged device. Reported and first fixed by NeonLightning.</li>
+          <li>Damaged sound files, oversized imports and repeated strip names no longer crash Weir, and settings are saved so a power cut cannot empty them.</li>
+          <li>Restart Weir in the tray starts the new version after an update, where it used to quit.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.3.0" date="2026-10-17">
       <description>
         <p>A recorder for strips and buses, meters you can read and color, and help when something goes wrong.</p>

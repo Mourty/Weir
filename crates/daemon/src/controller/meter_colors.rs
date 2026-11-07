@@ -1,12 +1,12 @@
 //! Ways of coloring meters of the user's own, kept beside Weir's own
 //! Default the way equalizer presets are kept.
 
-use super::handlers::NAME_MAX;
 use super::Controller;
 use crate::config;
 use serde_json::Value;
 use tracing::{debug, info};
 use weir_protocol::crash::Locked;
+use weir_protocol::NAME_MAX;
 use weir_protocol::*;
 
 /// `c` as it is kept: a trimmed name, colors written alike. Refused when

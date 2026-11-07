@@ -1,0 +1,2 @@
+{"jsonrpc": "2.0", "id": 1, "method": "save_eq_preset", "params": {"name": "My mic", "bands": [{"kind": "high_pass", "freq_hz": 90, "q": 0.707}, {"kind": "peak", "freq_hz": 3000, "gain_db": 2, "q": 1}]}}
+{"jsonrpc": "2.0", "id": 1, "method": "save_eq_preset", "params": {"name": "Warm", "bands": []}}

@@ -409,7 +409,7 @@ fn open_daemon_log(path: &Path) -> Option<(Stdio, Stdio)> {
 /// it stops with an error the window can say why rather than wait forever.
 fn spawn_daemon(socket: &Path, shared: &Arc<Mutex<Shared>>, ctx: &egui::Context) -> bool {
     let mut candidates: Vec<PathBuf> = Vec::new();
-    if let Ok(exe) = std::env::current_exe() {
+    if let Ok(exe) = weir_protocol::own_exe() {
         if let Some(dir) = exe.parent() {
             candidates.push(dir.join("weir-daemon"));
         }

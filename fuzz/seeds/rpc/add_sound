@@ -1,0 +1,1 @@
+{"jsonrpc": "2.0", "id": 1, "method": "add_sound", "params": {"name": "Applause", "path": "$PWD/applause.wav"}}

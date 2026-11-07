@@ -136,7 +136,7 @@ impl Install {
     /// moment, so it is asked once.
     pub fn here() -> Install {
         static HERE: OnceLock<Install> = OnceLock::new();
-        HERE.get_or_init(|| match std::env::current_exe() {
+        HERE.get_or_init(|| match weir_protocol::own_exe() {
             Ok(exe) => Install::of(&exe, dirs::home_dir().as_deref(), package),
             Err(_) => Install::Elsewhere(None),
         })
@@ -178,29 +178,34 @@ impl Install {
 
     /// How to update it, for people who are told a new version is out.
     pub fn how_to_update(&self) -> String {
-        match self {
+        let steps = match self {
             Install::Package(Manager::Rpm, p) if p.contains("Copr") => {
                 "Weir came from COPR: Discover offers the update, or run \
                  sudo dnf upgrade --refresh weir"
-                    .into()
             }
-            Install::Package(Manager::Rpm, _) => "Download the new .rpm from the release page \
+            Install::Package(Manager::Rpm, _) => {
+                "Download the new .rpm from the release page \
                  and install it with sudo dnf install ./weir-*.rpm"
-                .into(),
-            Install::Package(Manager::Dpkg, _) => "Download the new .deb from the release page \
-                 and install it with sudo apt install ./weir_*.deb"
-                .into(),
-            Install::Package(Manager::Pacman, _) => "Update it the way you installed it: with \
-                 your AUR helper, such as paru -Syu, or with the package from the release page"
-                .into(),
-            Install::Make(_) => "Get the new source (git pull in your copy, or the \
-                 release's source download) and run make install again"
-                .into(),
-            Install::BuildFolder(_) => "Get the new source and build it again".into(),
-            Install::Unpackaged(_) | Install::Elsewhere(_) => {
-                "Download it from the release page".into()
             }
-        }
+            Install::Package(Manager::Dpkg, _) => {
+                "Download the new .deb from the release page \
+                 and install it with sudo apt install ./weir_*.deb"
+            }
+            Install::Package(Manager::Pacman, _) => {
+                "Update it the way you installed it: with \
+                 your AUR helper, such as paru -Syu, or with the package from the release page"
+            }
+            Install::Make(_) => {
+                "Get the new source (git pull in your copy, or the \
+                 release's source download) and run make install again"
+            }
+            Install::BuildFolder(_) => "Get the new source and build it again",
+            Install::Unpackaged(_) | Install::Elsewhere(_) => "Download it from the release page",
+        };
+        // Installing replaces the files, but the old version keeps running
+        // until Weir starts again, and a window opened in between may not
+        // work with it.
+        format!("{steps}. Then choose Restart Weir in Weir's tray menu")
     }
 }
 

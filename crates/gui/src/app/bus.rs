@@ -82,8 +82,7 @@ impl App {
     /// The band between the name and the fader, as tall as a strip's: the
     /// device, the "show mix" button, and the strips feeding the bus.
     fn bus_band(&mut self, ui: &mut Ui, state: &FullState, b: &Bus, inner_w: f32) {
-        ui.allocate_ui(vec2(inner_w, theme::BAND_H), |ui| {
-            ui.set_min_height(theme::BAND_H);
+        super::controls::band(ui, inner_w, |ui| {
             ui.vertical(|ui| {
                 match b.kind {
                     BusKind::Hardware => {
@@ -112,8 +111,22 @@ impl App {
                 // Give the source list an exact rectangle and clip to it. A
                 // long list then scrolls inside its own box instead of
                 // pushing this bus's fader out of line with every other
-                // column.
-                let rest = ui.available_height().max(14.0);
+                // column. Without room for its caption and one whole name,
+                // as when notes above take two lines, there is no list.
+                let rest = ui.available_height();
+                let line = |size: f32| {
+                    ui.painter()
+                        .layout_no_wrap(
+                            "Ag".to_owned(),
+                            egui::FontId::proportional(size),
+                            theme::p().text,
+                        )
+                        .size()
+                        .y
+                };
+                if rest < line(9.5) + line(NAME_SIZE) + ui.spacing().item_spacing.y {
+                    return;
+                }
                 let (rect, _) = ui.allocate_exact_size(vec2(inner_w, rest), egui::Sense::hover());
                 let mut band =
                     ui.new_child(egui::UiBuilder::new().max_rect(rect).layout(*ui.layout()));

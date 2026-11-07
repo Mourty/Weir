@@ -26,6 +26,9 @@ pub const HOTKEY_LIST: &str = "hotkeys/groups.json";
 /// any settings need, and a guard against a damaged or hostile one.
 const FILE_MAX: u64 = 16 << 20;
 const FILES_MAX: usize = 10_000;
+/// The most all the files in an export may unpack to: room for many
+/// sounds of the largest size.
+const TOTAL_MAX: u64 = 256 << 20;
 
 fn yes() -> bool {
     true
@@ -349,15 +352,14 @@ pub fn read_file(path: &str, text: &str) -> ReadFile {
 /// file itself cannot be read or is not one Weir exported.
 pub fn read_export(path: &Path) -> Result<Vec<ReadFile>> {
     let shown = path.display();
-    let size = std::fs::metadata(path)
-        .with_context(|| format!("could not read {shown}"))?
-        .len();
-    if size > FILE_MAX * 4 {
-        bail!("{shown} is far too large to be settings Weir exported");
-    }
-    let bytes = std::fs::read(path).with_context(|| format!("could not read {shown}"))?;
+    let bytes = crate::config::read_limited(path, FILE_MAX * 4)
+        .with_context(|| format!("{shown} cannot be settings Weir exported"))?;
     let files = if bytes.starts_with(b"PK") {
-        read_zip(&bytes).with_context(|| format!("could not read {shown}"))?
+        // The zip crate is other people's code, which a damaged file may
+        // make panic: only this file's problem.
+        weir_protocol::crash::guarded(|| read_zip(&bytes, TOTAL_MAX))
+            .unwrap_or_else(|why| Err(anyhow::anyhow!("it is damaged ({why})")))
+            .with_context(|| format!("could not read {shown}"))?
     } else {
         let Ok(text) = String::from_utf8(bytes) else {
             bail!("{shown} is neither a .zip nor a .json Weir exported");
@@ -382,21 +384,28 @@ pub fn read_export(path: &Path) -> Result<Vec<ReadFile>> {
 
 /// Read every `.json` in a `.zip`. Anything else in it is not Weir's and
 /// is passed over.
-fn read_zip(bytes: &[u8]) -> Result<Vec<ReadFile>> {
+fn read_zip(bytes: &[u8], total_max: u64) -> Result<Vec<ReadFile>> {
     let mut zip =
         zip::ZipArchive::new(Cursor::new(bytes)).context("it is not a .zip Weir can read")?;
     if zip.len() > FILES_MAX {
         bail!("it holds too many files to be settings Weir exported");
     }
     let mut files = Vec::new();
+    // What all of it unpacks to, counted as it is read: a small .zip can
+    // unpack to far more than fits in memory.
+    let mut total: u64 = 0;
     for i in 0..zip.len() {
         let mut entry = zip.by_index(i).context("it is damaged")?;
         let name = entry.name().to_string();
         if entry.is_dir() || !name.ends_with(".json") {
             continue;
         }
+        if total > total_max {
+            bail!("it unpacks to more than settings Weir exported ever take");
+        }
         let mut text = String::new();
         let read = (&mut entry).take(FILE_MAX + 1).read_to_string(&mut text);
+        total += text.len() as u64;
         files.push(match read {
             Ok(n) if n as u64 <= FILE_MAX => read_file(&name, &text),
             Ok(_) => broken(&name, "it is too large".into()),
@@ -500,6 +509,26 @@ pub fn paths_for(kind: ExportKind, names: &[String], reserved: &[&str]) -> Vec<S
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn a_zip_that_unpacks_to_too_much_is_refused() {
+        let body = format!("{{\"weir\": \"scene\", \"pad\": \"{}\"}}", "x".repeat(4000));
+        let files: Vec<(String, String)> = (0..5)
+            .map(|i| (format!("scenes/{i}.json"), body.clone()))
+            .collect();
+        let zip = zip_files(&files, "2026-11-03T21-42-00Z").unwrap();
+        // Within the limit it is read, and found to hold nothing of Weir's.
+        let e = read_zip(&zip, 1 << 20).unwrap_err();
+        assert!(format!("{e:#}").contains("none of Weir's"), "{e:#}");
+        let e = read_zip(&zip, 10_000).unwrap_err();
+        assert!(format!("{e:#}").contains("unpacks to more"), "{e:#}");
+    }
+
+    #[test]
+    fn only_ordinary_files_are_read() {
+        let e = read_export(Path::new("/dev/zero")).unwrap_err();
+        assert!(format!("{e:#}").contains("not a file"), "{e:#}");
+    }
 
     fn stamp() -> Stamp {
         Stamp {

@@ -1,0 +1,3 @@
+{"jsonrpc": "2.0", "id": 1, "method": "add_strip", "params": {"name": "Game", "kind": "virtual", "routes": ["A1", "B1"]}}
+{"jsonrpc": "2.0", "id": 1, "method": "add_strip", "params": {"name": "Guitar", "kind": "hardware", "layout": "mono"}}
+{"jsonrpc": "2.0", "id": 1, "method": "add_strip", "params": {"name": "Game", "kind": "virtual"}}

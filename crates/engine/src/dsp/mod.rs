@@ -22,6 +22,8 @@
 pub mod analyzer;
 pub mod fx;
 pub mod handoff;
+#[cfg(any(test, feature = "fuzzing"))]
+pub mod harness;
 pub mod mapping;
 pub mod params;
 pub mod process;

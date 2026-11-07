@@ -316,7 +316,7 @@ impl App {
 
 /// Start the window again, as it was started, and close this one.
 fn restart_window(ctx: &egui::Context) {
-    match std::env::current_exe() {
+    match weir_protocol::own_exe() {
         Ok(exe) => {
             let args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
             let started = std::process::Command::new(exe)

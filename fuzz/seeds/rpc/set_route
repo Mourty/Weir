@@ -1,0 +1,4 @@
+{"jsonrpc": "2.0", "id": 1, "method": "set_route", "params": {"strip": "Music", "bus": "B1"}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_route", "params": {"strip": "Mic", "bus": "A1", "enabled": true}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_route", "params": {"strip": "Music", "bus": "B1", "level_db": -12}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_route", "params": {"strip": "Music", "bus": "B1", "level_delta_db": 3}}

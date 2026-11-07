@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "schemes": [
+    {
+      "name": "Ocean",
+      "colors": [
+        "#3C7FD6",
+        "#EBC846",
+        "#EB4B41"
+      ],
+      "breaks_db": [
+        -18.0,
+        -3.0
+      ]
+    }
+  ]
+}

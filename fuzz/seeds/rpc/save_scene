@@ -1,0 +1,4 @@
+{"jsonrpc": "2.0", "id": 1, "method": "save_scene", "params": {"name": "Streaming"}}
+{"jsonrpc": "2.0", "id": 1, "method": "save_scene", "params": {"name": "Streaming"}}
+{"jsonrpc": "2.0", "id": 1, "method": "save_scene", "params": {"name": "Old"}}
+{"jsonrpc": "2.0", "id": 1, "method": "save_scene", "params": {"name": "Streaming"}}

@@ -1,0 +1,28 @@
+{
+  "version": 2,
+  "hotkeys": [
+    {
+      "id": 1,
+      "name": "Push to talk",
+      "keys": [
+        "F9",
+        "Ctrl+Alt+T"
+      ],
+      "steps": [
+        {
+          "method": "set_strip",
+          "params": {
+            "id": "Mic",
+            "mute": false
+          }
+        }
+      ],
+      "on_release": "restore"
+    }
+  ],
+  "order": [
+    {
+      "hotkey": 1
+    }
+  ]
+}

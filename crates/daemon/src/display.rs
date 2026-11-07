@@ -50,7 +50,7 @@ fn manager_env() -> String {
 /// names a display. It prints `KEY=VALUE` lines, quoting values with
 /// unusual characters as `$'…'`; the session variables never need that,
 /// so quoted values are left out rather than unquoted.
-fn session_from_manager(text: &str) -> Option<Vec<(String, String)>> {
+pub fn session_from_manager(text: &str) -> Option<Vec<(String, String)>> {
     let vars: Vec<(String, String)> = text
         .lines()
         .filter_map(|line| line.split_once('='))

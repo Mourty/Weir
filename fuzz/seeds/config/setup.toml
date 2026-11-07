@@ -1,0 +1,41 @@
+[[strips]]
+id = 1
+name = "Mic"
+kind = "hardware"
+layout = "mono"
+
+[[strips]]
+id = 2
+name = "Music"
+kind = "virtual"
+layout = "stereo"
+
+[[strips]]
+id = 3
+name = "Browser"
+kind = "virtual"
+layout = "stereo"
+
+[[strips]]
+id = 4
+name = "Soundboard"
+kind = "virtual"
+layout = "stereo"
+
+[[buses]]
+id = 1
+name = "Headset"
+kind = "hardware"
+layout = "stereo"
+
+[[buses]]
+id = 2
+name = "Speakers"
+kind = "hardware"
+layout = "stereo"
+
+[[buses]]
+id = 3
+name = "Stream Mic"
+kind = "virtual"
+layout = "stereo"

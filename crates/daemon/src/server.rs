@@ -14,7 +14,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::broadcast::error::RecvError;
 use tracing::{debug, info, warn};
@@ -66,10 +66,54 @@ pub async fn serve(listener: UnixListener, controller: Arc<Controller>) {
     }
 }
 
+/// The longest line a client may send. Far more than any request takes,
+/// and a limit all the same: one that never ends would otherwise be kept
+/// in memory for ever.
+const LINE_MAX: usize = 16 << 20;
+
+/// What reading the next line from a client found.
+enum Line {
+    /// A whole line, without its newline.
+    Whole(String),
+    /// More than [`LINE_MAX`] bytes with no newline.
+    TooLong,
+    /// The client is gone.
+    End,
+}
+
+/// Read up to the next newline into `buf`, at most [`LINE_MAX`] bytes.
+/// What is read stays in `buf` if this is dropped part way, as it is when
+/// a notification goes out first in a `select!`, so nothing is lost.
+async fn next_line<R: AsyncBufRead + Unpin>(r: &mut R, buf: &mut Vec<u8>) -> Result<Line> {
+    loop {
+        let room = (LINE_MAX + 1).saturating_sub(buf.len()) as u64;
+        let n = r.take(room).read_until(b'\n', buf).await?;
+        if buf.last() == Some(&b'\n') {
+            buf.pop();
+            let line = String::from_utf8_lossy(buf).into_owned();
+            buf.clear();
+            return Ok(Line::Whole(line));
+        }
+        if buf.len() > LINE_MAX {
+            return Ok(Line::TooLong);
+        }
+        if n == 0 {
+            // Whatever came last without a newline is a line too.
+            if buf.is_empty() {
+                return Ok(Line::End);
+            }
+            let line = String::from_utf8_lossy(buf).into_owned();
+            buf.clear();
+            return Ok(Line::Whole(line));
+        }
+    }
+}
+
 /// Serve one connection until it closes.
 async fn handle_conn(stream: UnixStream, controller: Arc<Controller>) -> Result<()> {
     let (r, mut w) = stream.into_split();
-    let mut lines = BufReader::new(r).lines();
+    let mut reader = BufReader::new(r);
+    let mut buf = Vec::new();
     let mut rx = controller.subscribe();
     let mut subs = Subscriptions::default();
     // Track whether this connection has claimed to be the mixer window, so
@@ -84,9 +128,24 @@ async fn handle_conn(stream: UnixStream, controller: Arc<Controller>) -> Result<
     let mut meters = MeterThrottle::default();
     loop {
         tokio::select! {
-            line = lines.next_line() => {
+            line = next_line(&mut reader, &mut buf) => {
                 match line? {
-                    Some(line) => {
+                    Line::TooLong => {
+                        warn!("a client sent a line longer than {LINE_MAX} bytes; closing it");
+                        let err = RpcResponse::err(
+                            Value::Null,
+                            RpcError::invalid_request(format!(
+                                "a request may be {} MB at most",
+                                LINE_MAX >> 20
+                            )),
+                        );
+                        if let Ok(text) = serde_json::to_string(&err) {
+                            w.write_all(text.as_bytes()).await?;
+                            w.write_all(b"\n").await?;
+                        }
+                        break;
+                    }
+                    Line::Whole(line) => {
                         if let Some(resp) = process_line(&line, &controller, &mut subs) {
                             w.write_all(resp.as_bytes()).await?;
                             w.write_all(b"\n").await?;
@@ -104,7 +163,7 @@ async fn handle_conn(stream: UnixStream, controller: Arc<Controller>) -> Result<
                         }
                         spectra.set(&subs.spectrum);
                     }
-                    None => break,
+                    Line::End => break,
                 }
             }
             n = rx.recv() => {
@@ -314,5 +373,33 @@ impl Drop for WindowClient {
         if self.attached {
             self.controller.remove_window_client();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn lines_are_read_whole_and_too_long_ones_refused() {
+        let text = b"{\"a\": 1}\r\n\nlast without a newline";
+        let mut r = BufReader::new(&text[..]);
+        let mut buf = Vec::new();
+        let mut got = Vec::new();
+        loop {
+            match next_line(&mut r, &mut buf).await.unwrap() {
+                Line::Whole(l) => got.push(l),
+                Line::TooLong => panic!("not too long"),
+                Line::End => break,
+            }
+        }
+        assert_eq!(got, ["{\"a\": 1}\r", "", "last without a newline"]);
+
+        let long = vec![b'x'; LINE_MAX + 10];
+        let mut r = BufReader::new(&long[..]);
+        assert!(matches!(
+            next_line(&mut r, &mut Vec::new()).await.unwrap(),
+            Line::TooLong
+        ));
     }
 }

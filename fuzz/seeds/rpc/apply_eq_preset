@@ -1,0 +1,2 @@
+{"jsonrpc": "2.0", "id": 1, "method": "apply_eq_preset", "params": {"name": "Voice: clarity", "strip": "Mic"}}
+{"jsonrpc": "2.0", "id": 1, "method": "apply_eq_preset", "params": {"name": "Voice: remove rumble", "bus": "B1"}}

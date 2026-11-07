@@ -1,0 +1,18 @@
+{
+  "weir": "preferences",
+  "format": 1,
+  "weir_version": "1.3.0",
+  "exported": "2026-11-03T17-04-33Z",
+  "mixer": {
+    "meter_rate_hz": 30,
+    "startup": "window",
+    "tray": true,
+    "tray_icon": "color",
+    "solo": "exclusive"
+  },
+  "audio_timing": {},
+  "hotkey_feedback": {
+    "popup": "popup",
+    "sounds_volume_db": -12.0
+  }
+}

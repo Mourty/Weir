@@ -1,0 +1,9 @@
+{"jsonrpc": "2.0", "id": 1, "method": "set_settings", "params": {"solo": {"cue": "A1"}}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_settings", "params": {"sample_rate": 48000, "quantum": 256}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_settings", "params": {"sample_rate": 0, "quantum": 0}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_settings", "params": {"startup": "tray_only"}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_settings", "params": {"hotkey_popup": "notification", "sounds_volume_db": -18}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_settings", "params": {"sounds_device": null}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_settings", "params": {"start_at_login": true}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_settings", "params": {"update_check": true}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_settings", "params": {"skipped_version": "1.3.1"}}

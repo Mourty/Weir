@@ -1,0 +1,3 @@
+{"jsonrpc": "2.0", "id": 1, "method": "add_bus", "params": {"name": "Recording", "kind": "virtual"}}
+{"jsonrpc": "2.0", "id": 1, "method": "add_bus", "params": {"name": "Living room", "kind": "hardware", "layout": "surround_5_1"}}
+{"jsonrpc": "2.0", "id": 1, "method": "add_bus", "params": {"name": "Recording", "kind": "virtual"}}

@@ -82,3 +82,49 @@ pub fn default_socket_path() -> std::path::PathBuf {
         .unwrap_or(0);
     std::path::PathBuf::from(format!("/tmp/weir-{uid}")).join("control.sock")
 }
+
+/// This program's own file, to start it or its partner again.
+///
+/// An update replaces the file while the old copy keeps running, and Linux
+/// then names the running one's file `PATH (deleted)`. Starting that fails,
+/// so this gives `PATH` instead, where the new version now is.
+pub fn own_exe() -> std::io::Result<std::path::PathBuf> {
+    std::env::current_exe().map(|exe| without_deleted(exe, |p| p.exists()))
+}
+
+/// `exe` without the ` (deleted)` Linux adds to a replaced file's name,
+/// when the file at the plain name `exists`.
+fn without_deleted(
+    exe: std::path::PathBuf,
+    exists: impl Fn(&std::path::Path) -> bool,
+) -> std::path::PathBuf {
+    use std::os::unix::ffi::OsStrExt;
+    let plain = exe
+        .as_os_str()
+        .as_bytes()
+        .strip_suffix(b" (deleted)")
+        .map(|b| std::path::PathBuf::from(std::ffi::OsStr::from_bytes(b)));
+    match plain {
+        Some(plain) if exists(&plain) => plain,
+        _ => exe,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::{Path, PathBuf};
+
+    #[test]
+    fn a_replaced_program_is_found_at_its_plain_name() {
+        let replaced = PathBuf::from("/usr/bin/weir-daemon (deleted)");
+        assert_eq!(
+            without_deleted(replaced.clone(), |_| true),
+            Path::new("/usr/bin/weir-daemon")
+        );
+        // Removed rather than replaced: nothing better to start.
+        assert_eq!(without_deleted(replaced.clone(), |_| false), replaced);
+        let plain = PathBuf::from("/usr/bin/weir-daemon");
+        assert_eq!(without_deleted(plain.clone(), |_| true), plain);
+    }
+}

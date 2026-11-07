@@ -1,7 +1,8 @@
 [workspace]
 resolver = "2"
-# LAME's bindings, built by Weir's own copy: see vendor/mp3lame-sys.
-exclude = ["vendor"]
+# LAME's bindings, built by Weir's own copy: see vendor/mp3lame-sys. The
+# fuzz targets are a workspace of their own, built with nightly.
+exclude = ["vendor", "fuzz"]
 members = [
     "crates/protocol",
     "crates/engine",

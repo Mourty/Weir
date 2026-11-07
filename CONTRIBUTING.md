@@ -130,6 +130,21 @@ cat /dev/zero | pw-cat --playback --target weir.input.3 -P '{ application.name =
 docs/check_examples.py --socket /tmp/weir-docs/c.sock
 ```
 
+## Fuzzing
+
+`fuzz/` hands made-up and damaged input to everything that reads what
+comes from outside: control socket lines, settings to import, Weir's own
+files, hotkey sounds, other text, and mixers for the mixing code. It
+needs Rust nightly and cargo-fuzz, and is run by hand, not in the checks:
+
+```sh
+make fuzz TARGET=import      # ten minutes; fuzz/README.md has the rest
+```
+
+Run the targets for what a change reads, when it reads something new from
+outside. [fuzz/README.md](fuzz/README.md) says what counts as a crash and
+where a found input goes once it is fixed.
+
 ## Rules that keep Weir working
 
 * **The real-time thread** (`engine/src/dsp/process.rs` and everything it
@@ -162,6 +177,13 @@ docs/check_examples.py --socket /tmp/weir-docs/c.sock
   `crash::Locked::locked` rather than `lock().unwrap()`, and run work done
   for someone else, or a loop that must keep going, inside
   `crash::caught`, with `crash::doing` naming it for the report.
+* **Input from outside is someone else's.** Read files a person names
+  with `config::read_limited`, which takes only ordinary files of a
+  bounded size (`/dev/zero` says it is empty and never ends). Run other
+  people's parsers of such files (Symphonia, the zip crate) inside
+  `crash::guarded`, which turns their panics into an error about the file
+  without a crash report. Limit what a file may unpack to, counted as it
+  is read.
 
 ## Adding a feature, end to end
 

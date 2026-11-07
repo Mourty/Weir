@@ -1,0 +1,2 @@
+{"jsonrpc": "2.0", "id": 1, "method": "set_hotkey", "params": {"name": "Push to talk", "keys": ["F9", "Ctrl+Alt+T"], "steps": [{"method": "set_strip", "params": {"id": "Mic", "mute": false}}], "on_release": "restore"}}
+{"jsonrpc": "2.0", "id": 1, "method": "set_hotkey", "params": {"name": "Talk", "keys": ["F9"], "steps": [{"method": "set_strip", "params": {"id": "Mic", "mute": false}}], "on_release": "restore", "sounds": {"press": "Beep up", "release": "Beep down"}}}

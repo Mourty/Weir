@@ -151,6 +151,9 @@ thread_local! {
     /// What this thread is, for threads Weir did not start and name, such
     /// as PipeWire's real-time one.
     static PART: Cell<Option<&'static str>> = const { Cell::new(None) };
+    /// How deep this thread is in [`guarded`] work, whose panics are not
+    /// Weir's bugs.
+    static GUARDED: Cell<u32> = const { Cell::new(0) };
 }
 
 /// Set the panic hook that keeps reports, for `program` (`window` or
@@ -160,6 +163,11 @@ pub fn install(program: &'static str) {
     let _ = START.set(Instant::now());
     let before = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
+        // Other people's code giving up on a bad file: said where it is
+        // caught, and not a crash.
+        if GUARDED.try_with(Cell::get).unwrap_or(0) > 0 {
+            return;
+        }
         let place = info
             .location()
             .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
@@ -218,6 +226,17 @@ impl Drop for Doing {
 /// said every cycle.
 pub fn name_part(name: &'static str) {
     let _ = PART.try_with(|p| p.set(Some(name)));
+}
+
+/// `f`'s result, or what it said when it panicked, with no crash report:
+/// for other people's code reading a file from outside, such as a sound
+/// decoder, where a panic means the file is bad rather than that Weir has
+/// a bug. The caller says what went wrong.
+pub fn guarded<T>(f: impl FnOnce() -> T) -> Result<T, String> {
+    let _ = GUARDED.try_with(|g| g.set(g.get().saturating_add(1)));
+    let result = caught(f);
+    let _ = GUARDED.try_with(|g| g.set(g.get().saturating_sub(1)));
+    result
 }
 
 /// `f`'s result, or what it said when it panicked: for work done for
@@ -952,6 +971,14 @@ mod tests {
             );
         }
         assert_eq!(DOING.with(|d| d.borrow().clone()), None);
+    }
+
+    #[test]
+    fn a_guarded_panic_is_an_error_about_the_input() {
+        let r: Result<u8, String> = guarded(|| panic!("TimeBase cannot have 0 numerator"));
+        assert_eq!(r.unwrap_err(), "TimeBase cannot have 0 numerator");
+        assert_eq!(GUARDED.with(Cell::get), 0, "the guard is let go");
+        assert_eq!(guarded(|| 5), Ok(5));
     }
 
     #[test]

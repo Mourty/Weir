@@ -1,0 +1,2 @@
+{"jsonrpc": "2.0", "id": 1, "method": "move_hotkey", "params": {"hotkey": "Mute mic", "group": "Streaming"}}
+{"jsonrpc": "2.0", "id": 1, "method": "move_hotkey", "params": {"hotkey": "Mute mic", "group": 0, "index": 0}}

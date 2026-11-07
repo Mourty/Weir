@@ -119,6 +119,8 @@ every change, whoever made it.
 
 Each message is one line of JSON, UTF-8, ending in a newline, in both
 directions. They follow [JSON-RPC 2.0](https://www.jsonrpc.org/specification).
+A line to the daemon may be 16 MB at most: past that it answers with an
+error (`-32600`) and closes the connection.
 
 A **request** names a method, carries its parameters, and has an `id` of
 your choosing, a number or a string:
@@ -3064,7 +3066,7 @@ What the daemon knows about Weir's newest release: in [FullState](#fullstate),
  "latest": {"version": "1.3.0", "name": "Weir 1.3.0", "notes": "## New\n- A recorder",
             "url": "https://github.com/Mourty/Weir/releases/tag/v1.3.0",
             "published_at": "2026-10-20T18:04:11Z"},
- "how_to_update": "Weir came from COPR: Discover offers the update, or run sudo dnf upgrade --refresh weir"}
+ "how_to_update": "Weir came from COPR: Discover offers the update, or run sudo dnf upgrade --refresh weir. Then choose Restart Weir in Weir's tray menu"}
 ```
 
 | Field | Type | |

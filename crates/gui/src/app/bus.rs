@@ -450,7 +450,9 @@ impl App {
             // on a half-drawn name. max_height alone does not do it:
             // auto_shrink(false) makes the area take the space it is
             // offered, so the space itself has to be the right size.
-            let whole = (fits as f32 * pitch - gap).clamp(row_h, height);
+            let min_h = row_h.min(height);
+            let max_h = row_h.max(height);
+            let whole = (fits as f32 * pitch - gap).clamp(min_h, max_h);
             let (view, _) = ui.allocate_exact_size(vec2(width, whole), egui::Sense::hover());
             let mut sui = ui.new_child(egui::UiBuilder::new().max_rect(view).layout(*ui.layout()));
             sui.set_clip_rect(view);

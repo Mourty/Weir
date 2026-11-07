@@ -1016,6 +1016,10 @@ way you installed Weir (Discover or `dnf` for COPR, the new `.rpm` or
 `.deb` from the release page, your AUR helper, or `make install` again).
 **Weir never installs anything itself.**
 
+After installing it, choose **Restart Weir** in the tray menu, or log out
+and back in. The old version keeps running until Weir starts again, and a
+mixer window opened in between may not work with it.
+
 * **Remind me later** asks again the next time Weir starts.
 * **Skip this version** says nothing more about it; the next one is told
   about again. Preferences › General can undo it.

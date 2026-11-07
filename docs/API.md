@@ -3066,7 +3066,7 @@ What the daemon knows about Weir's newest release: in [FullState](#fullstate),
  "latest": {"version": "1.3.0", "name": "Weir 1.3.0", "notes": "## New\n- A recorder",
             "url": "https://github.com/Mourty/Weir/releases/tag/v1.3.0",
             "published_at": "2026-10-20T18:04:11Z"},
- "how_to_update": "Weir came from COPR: Discover offers the update, or run sudo dnf upgrade --refresh weir"}
+ "how_to_update": "Weir came from COPR: Discover offers the update, or run sudo dnf upgrade --refresh weir. Then choose Restart Weir in Weir's tray menu"}
 ```
 
 | Field | Type | |

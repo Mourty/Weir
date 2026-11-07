@@ -92,6 +92,11 @@ A downloaded package does not update itself, but Weir can tell you when
 a new version is out: it asks the first time it starts, and only ever
 tells you, never installs anything. Or choose **Watch → Custom →
 Releases** at the top of Weir's GitHub page.
+
+**After installing a new version**, choose **Restart Weir** in Weir's
+tray menu, or log out and back in. Until then the old version keeps
+running, and a mixer window opened in between may not work with it.
+
 To remove Weir, run `sudo dnf remove weir`, `sudo apt remove weir` or
 `sudo pacman -R weir`.
 
@@ -161,7 +166,9 @@ from the `Weir` folder.
 
 After `make install`, the `weirctl` command works from your next login.
 To update, run `git pull` in the `Weir` folder, then the last line you
-installed with again. To remove it, `sudo dnf remove weir` on Fedora and
+installed with again, then choose **Restart Weir** in Weir's tray menu
+(the same goes the first time, if an older Weir was already running).
+To remove it, `sudo dnf remove weir` on Fedora and
 Nobara, or `make uninstall` in the `Weir` folder elsewhere.
 
 ### Then

@@ -273,9 +273,30 @@ impl Prefs {
         changed
     }
 
+    /// Tell crash reports the window settings that most often matter.
+    pub fn note_for_crashes(&self) {
+        let on = |b: bool| if b { "on" } else { "off" }.to_string();
+        let number = if self.meter_peak {
+            format!("{:?}", self.meter_number).to_lowercase()
+        } else {
+            "off".into()
+        };
+        weir_protocol::crash::note_settings(vec![
+            ("look".into(), self.appearance.label().to_lowercase()),
+            ("desktop font".into(), on(self.system_font)),
+            ("desktop accent".into(), on(self.system_accent)),
+            ("bus list".into(), self.bus_sources.label().to_lowercase()),
+            ("app volumes".into(), on(self.show_app_volume)),
+            ("meter scale".into(), on(self.meter_scale)),
+            ("meter number".into(), number),
+            ("meter colors".into(), self.meter_colors.clone()),
+        ]);
+    }
+
     /// Save the preferences. Failing to is logged, not fatal: the window
     /// works the same, and only forgets them when it closes.
     pub fn save(&self) {
+        self.note_for_crashes();
         let path = Self::path();
         if let Some(dir) = path.parent() {
             if let Err(e) = std::fs::create_dir_all(dir) {

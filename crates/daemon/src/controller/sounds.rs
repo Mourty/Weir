@@ -7,12 +7,13 @@ use crate::sounds::{decode, sound_extension, sound_file, Library};
 use serde_json::Value;
 use std::path::Path;
 use tracing::{debug, info, warn};
+use weir_protocol::crash::Locked;
 use weir_protocol::*;
 
 impl Controller {
     /// Hand the controller what shows popups.
     pub fn set_popups(&self, popups: Popups) {
-        *self.popups.lock().unwrap() = Some(popups);
+        *self.popups.locked() = Some(popups);
     }
 
     /// Give the engine every sound there is now.
@@ -20,7 +21,7 @@ impl Controller {
         let Some(engine) = &self.engine else {
             return;
         };
-        let bank = self.inner.lock().unwrap().sounds.bank();
+        let bank = self.inner.locked().sounds.bank();
         if let Err(e) = engine.set_sounds(bank) {
             warn!("engine rejected the hotkey sounds: {e}");
         }
@@ -31,7 +32,7 @@ impl Controller {
     /// the settings, the mixer or the devices change.
     pub(super) fn update_sounds_device(&self) {
         let device = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.locked();
             let now = sounds_device(
                 inner.settings.sounds_device.as_deref(),
                 &inner.mixer,
@@ -53,7 +54,7 @@ impl Controller {
     /// Play the sound called `name` where hotkeys' sounds play.
     pub(super) fn play_sound(&self, name: &str) -> Result<Value, RpcError> {
         let (index, gain, device) = {
-            let inner = self.inner.lock().unwrap();
+            let inner = self.inner.locked();
             let index = inner
                 .sounds
                 .index(name)
@@ -62,11 +63,9 @@ impl Controller {
             (index, gain, inner.sounds_device.clone().flatten())
         };
         #[cfg(test)]
-        self.played.lock().unwrap().push(
-            self.inner.lock().unwrap().sounds.infos()[index]
-                .name
-                .clone(),
-        );
+        self.played
+            .locked()
+            .push(self.inner.locked().sounds.infos()[index].name.clone());
         if device.is_none() {
             return Err(RpcError::application(
                 "sounds have nowhere to play: pick a device for them in Preferences, \
@@ -97,12 +96,12 @@ impl Controller {
         if !h.popup {
             return;
         }
-        let Some(popups) = self.popups.lock().unwrap().clone() else {
+        let Some(popups) = self.popups.locked().clone() else {
             return;
         };
         let recording = self.recording_now();
         let (mixer, recorder, how) = {
-            let inner = self.inner.lock().unwrap();
+            let inner = self.inner.locked();
             (
                 inner.mixer.clone(),
                 inner.recorder.clone(),
@@ -121,14 +120,14 @@ impl Controller {
     /// The name of the sound called `name` as the library has it, ignoring
     /// case, or `None` when there is none.
     pub(super) fn sound_named(&self, name: &str) -> Option<String> {
-        self.inner.lock().unwrap().sounds.info(name).map(|s| s.name)
+        self.inner.locked().sounds.info(name).map(|s| s.name)
     }
 
     /// Read the sound files again, give the engine the sounds, and tell
     /// clients.
     pub(super) fn sounds_changed(&self) {
         let library = Library::load(&self.paths.sounds_dir);
-        self.inner.lock().unwrap().sounds = library;
+        self.inner.locked().sounds = library;
         self.push_sounds();
         self.announce(Notification::HotkeysChanged(self.hotkeys_info()));
     }
@@ -164,8 +163,7 @@ impl Controller {
         info!("added the sound '{name}'");
         self.sounds_changed();
         self.inner
-            .lock()
-            .unwrap()
+            .locked()
             .sounds
             .info(&name)
             .map(|s| to_json(&s))
@@ -176,7 +174,7 @@ impl Controller {
     /// of every hotkey that plays it.
     pub(super) fn remove_sound(&self, p: NameParams) -> Result<Value, RpcError> {
         let name = {
-            let inner = self.inner.lock().unwrap();
+            let inner = self.inner.locked();
             let info = inner
                 .sounds
                 .info(&p.name)
@@ -243,7 +241,7 @@ impl Controller {
     /// Hotkeys that play sounds Weir no longer has, such as a file removed
     /// by hand.
     pub(super) fn sound_problems(&self, hotkeys: &[Hotkey]) -> Vec<HotkeyProblem> {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.locked();
         hotkeys
             .iter()
             .filter_map(|h| {

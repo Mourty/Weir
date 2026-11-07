@@ -6,6 +6,7 @@ use super::Controller;
 use crate::config;
 use serde_json::Value;
 use tracing::{debug, info};
+use weir_protocol::crash::Locked;
 use weir_protocol::*;
 
 /// `c` as it is kept: a trimmed name, colors written alike. Refused when
@@ -39,7 +40,7 @@ impl Controller {
     /// Weir's own way of coloring meters first, then the user's.
     pub(super) fn meter_colors(&self) -> Vec<MeterColors> {
         let mut all = vec![MeterColors::weir_default()];
-        if let Ok(user) = &self.inner.lock().unwrap().user_meter_colors {
+        if let Ok(user) = &self.inner.locked().user_meter_colors {
             all.extend(user.iter().cloned());
         }
         all
@@ -52,7 +53,7 @@ impl Controller {
         f: impl FnOnce(&mut Vec<MeterColors>) -> Result<(), RpcError>,
     ) -> Result<Value, RpcError> {
         {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.locked();
             let user = inner.user_meter_colors.as_mut().map_err(|e| {
                 RpcError::application(format!(
                     "meter colors are read-only until this is fixed: {e}"

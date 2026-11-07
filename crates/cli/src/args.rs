@@ -126,6 +126,12 @@ pub enum Cmd {
     },
     /// Bring the mixer window to the front, starting it if needed.
     Show,
+    /// Restart Weir's service, as the tray's Restart Weir does.
+    Restart {
+        /// Open the mixer window once it is back.
+        #[arg(long)]
+        window: bool,
+    },
     /// Take back the most recent change to the mixer, or several.
     Undo {
         /// How many steps to take back.

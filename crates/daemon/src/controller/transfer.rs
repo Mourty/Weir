@@ -18,6 +18,7 @@ use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use tracing::info;
+use weir_protocol::crash::Locked;
 use weir_protocol::*;
 
 /// A failure, as the client is told it.
@@ -417,7 +418,7 @@ impl Controller {
             ));
         }
 
-        let rules = self.inner.lock().unwrap().app_rules.clone();
+        let rules = self.inner.locked().app_rules.clone();
         if p.app_rules || (p.all && !rules.is_empty()) {
             let rules = rules
                 .iter()
@@ -647,7 +648,7 @@ impl Controller {
             presets: self.eq_presets(),
             meter_colors: self.meter_colors(),
             hotkeys: self.hotkey_list(),
-            rules: self.inner.lock().unwrap().app_rules.clone(),
+            rules: self.inner.locked().app_rules.clone(),
             sounds,
         }
     }
@@ -1111,8 +1112,7 @@ impl Controller {
         if let Some(feedback) = prefs.hotkey_feedback {
             let plugged = |d: &str| {
                 self.inner
-                    .lock()
-                    .unwrap()
+                    .locked()
                     .devices
                     .iter()
                     .any(|x| x.kind == DeviceKind::Sink && x.name == d)

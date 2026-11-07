@@ -15,6 +15,7 @@ use serde_json::{json, Value};
 use std::collections::BTreeSet;
 use std::sync::atomic::Ordering;
 use tracing::info;
+use weir_protocol::crash::Locked;
 use weir_protocol::*;
 
 /// Longest a strip's, bus's or equalizer preset's name may be.
@@ -73,7 +74,7 @@ impl Controller {
         record: bool,
     ) -> Result<Value, RpcError> {
         let step = if record {
-            undo_step(&req, &self.inner.lock().unwrap().mixer)
+            undo_step(&req, &self.inner.locked().mixer)
         } else {
             None
         };
@@ -83,10 +84,15 @@ impl Controller {
                 daemon_version: env!("CARGO_PKG_VERSION").into(),
                 capabilities: CAPABILITIES.iter().map(|c| c.to_string()).collect(),
             })),
-            Request::Ping => Ok(json!("pong")),
+            Request::Ping => {
+                if crate::crash_test().as_deref() == Some("request") {
+                    panic!("a crash on purpose (WEIR_CRASH_TEST=request), answering ping");
+                }
+                Ok(json!("pong"))
+            }
             Request::GetState => Ok(to_json(&self.full_state())),
-            Request::ListDevices => Ok(to_json(&self.inner.lock().unwrap().devices)),
-            Request::ListApps => Ok(to_json(&self.inner.lock().unwrap().apps)),
+            Request::ListDevices => Ok(to_json(&self.inner.locked().devices)),
+            Request::ListApps => Ok(to_json(&self.inner.locked().apps)),
             Request::ListSeenApps => Ok(to_json(&self.seen_apps())),
             Request::ForgetSeenApp(p) => self.forget_seen_app(&p.name),
             Request::ClearSeenApps => self.clear_seen_apps(),
@@ -110,6 +116,7 @@ impl Controller {
             Request::SetAppVolume(p) => self.set_app_volume(p),
             Request::SetSettings(p) => self.set_settings(p),
             Request::ShowWindow => self.show_window_request(),
+            Request::Restart(p) => self.restart_request(p),
             Request::ListSetups => Ok(to_json(&config::list_saved(&self.paths.setups_dir))),
             Request::ListScenes => Ok(to_json(&config::list_saved(&self.paths.scenes_dir))),
             Request::SaveSetup(p) => self.save_setup(p),
@@ -150,7 +157,7 @@ impl Controller {
             Request::WatchSpectrum(p) => watch_spectrum(subs, p),
             Request::Undo(p) => self.step_history(p.steps, true),
             Request::Redo(p) => self.step_history(p.steps, false),
-            Request::History => Ok(to_json(&self.inner.lock().unwrap().history.info())),
+            Request::History => Ok(to_json(&self.inner.locked().history.info())),
             Request::Describe => Ok(weir_protocol::describe()),
             Request::CheckForUpdate => self.check_for_update(),
             Request::Diagnostics => Ok(to_json(&crate::diagnostics::gather(
@@ -169,7 +176,7 @@ impl Controller {
         let hotkeys = self.hotkeys_info();
         let update = self.update_status();
         let recording = self.recording_status();
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.locked();
         FullState {
             mixer: inner.mixer.clone(),
             devices: inner.devices.clone(),
@@ -223,7 +230,7 @@ impl Controller {
             }
         }
         let (rules, moves) = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.locked();
             inner.app_rules = rules.clone();
             // A new rule applies to what is already playing too.
             inner.rules_done.clear();
@@ -239,7 +246,7 @@ impl Controller {
 
     fn move_app(&self, p: MoveAppParams) -> Result<Value, RpcError> {
         {
-            let inner = self.inner.lock().unwrap();
+            let inner = self.inner.locked();
             match inner.mixer.strip(p.strip) {
                 None => return Err(unknown("strip", p.strip)),
                 Some(s) if s.kind != StripKind::Virtual => {
@@ -263,7 +270,7 @@ impl Controller {
     fn set_app_volume(&self, p: AppVolumeParams) -> Result<Value, RpcError> {
         // Toggles and steps start from what the stream reports now.
         let (now_db, now_mute) = {
-            let inner = self.inner.lock().unwrap();
+            let inner = self.inner.locked();
             let app = inner
                 .apps
                 .iter()
@@ -295,7 +302,7 @@ impl Controller {
         // changed outside the daemon, and a later field failing could not
         // take that back.
         if let Some(SoloMode::Cue(bus)) = p.solo {
-            if self.inner.lock().unwrap().mixer.bus(bus).is_none() {
+            if self.inner.locked().mixer.bus(bus).is_none() {
                 return Err(unknown("bus", bus));
             }
         }
@@ -335,7 +342,7 @@ impl Controller {
             .transpose()?;
         let mut check_now = false;
         let settings = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.locked();
             let s = &mut inner.settings;
             if let Some(flag) = p.update_check {
                 let was = s.update_check == Some(true);
@@ -392,13 +399,14 @@ impl Controller {
         if check_now {
             self.update_wanted.notify_one();
         }
+        crate::diagnostics::note_for_crashes(&settings);
         Ok(to_json(&settings))
     }
 
     /// Start Weir at login or stop doing so, and return what systemd says
     /// afterwards. Runs `systemctl`, so the lock is not held meanwhile.
     fn set_start_at_login(&self, flag: Flag) -> Result<Option<bool>, RpcError> {
-        let Some(now) = self.inner.lock().unwrap().settings.start_at_login else {
+        let Some(now) = self.inner.locked().settings.start_at_login else {
             return Err(RpcError::application(
                 "Weir cannot start at login here: its service is not installed, or \
                  systemd is not running",
@@ -411,10 +419,23 @@ impl Controller {
         Ok(self.login.get())
     }
 
+    /// Restart the service through the main loop, as the tray does.
+    fn restart_request(&self, p: RestartParams) -> Result<Value, RpcError> {
+        let command = if p.window {
+            TrayCommand::RestartWithWindow
+        } else {
+            TrayCommand::Restart
+        };
+        match self.window_tx.locked().as_ref() {
+            Some(tx) if tx.send(command).is_ok() => Ok(Value::Null),
+            _ => Err(RpcError::application("this daemon cannot restart itself")),
+        }
+    }
+
     fn show_window_request(&self) -> Result<Value, RpcError> {
         if self.window_attached() {
             self.show_window();
-        } else if let Some(tx) = self.window_tx.lock().unwrap().as_ref() {
+        } else if let Some(tx) = self.window_tx.locked().as_ref() {
             let _ = tx.send(TrayCommand::Show);
         } else {
             return Err(RpcError::application(
@@ -458,7 +479,7 @@ impl Controller {
         {
             // Another setup: app rules apply afresh, to strips of their
             // names here, when the applications show up on its devices.
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.locked();
             inner.rules_done.clear();
             inner.rules_tried.clear();
         }
@@ -480,14 +501,14 @@ impl Controller {
     fn delete_setup(&self, p: NameParams) -> Result<Value, RpcError> {
         config::delete_saved(&self.paths.setups_dir, &p.name, "setup").map_err(app_error)?;
         // Deleting the current setup leaves none current.
-        let current = self.inner.lock().unwrap().setup.clone();
+        let current = self.inner.locked().setup.clone();
         let clear = (current.as_deref() == Some(p.name.as_str())).then_some(None);
         Ok(to_json(&self.library_changed(None, clear)))
     }
 
     fn delete_scene(&self, p: NameParams) -> Result<Value, RpcError> {
         config::delete_saved(&self.paths.scenes_dir, &p.name, "scene").map_err(app_error)?;
-        let current = self.inner.lock().unwrap().scene.clone();
+        let current = self.inner.locked().scene.clone();
         let clear = (current.as_deref() == Some(p.name.as_str())).then_some(None);
         Ok(to_json(&self.library_changed(clear, None)))
     }

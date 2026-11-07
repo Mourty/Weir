@@ -24,6 +24,14 @@ use client::Client;
 use commands::SettingsArgs;
 
 fn main() {
+    // Rust ignores SIGPIPE, so printing into a pipe whose reader has gone,
+    // as `weirctl state | head` does, panicked. Like other command-line
+    // tools, weirctl now just stops there.
+    // SAFETY: setting a signal's handler back to the default, before any
+    // other thread exists.
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
     if let Err(e) = run() {
         eprintln!("error: {e:#}");
         std::process::exit(1);
@@ -82,6 +90,7 @@ fn run() -> Result<()> {
             mute,
         } => commands::app_volume(c, app, gain, gain_by, mute.as_deref()),
         Cmd::Show => commands::show_window(c),
+        Cmd::Restart { window } => commands::restart(c, window),
         Cmd::Undo { steps } => commands::step_history(c, steps, true, json),
         Cmd::Redo { steps } => commands::step_history(c, steps, false, json),
         Cmd::History => commands::history(c, json),

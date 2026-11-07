@@ -41,6 +41,7 @@ use tokio::sync::broadcast;
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::{debug, info, warn};
 use weir_engine::{EngineEvent, EngineHandle, EngineOptions};
+use weir_protocol::crash::Locked;
 use weir_protocol::*;
 
 /// What one connection asked to be told about.
@@ -250,7 +251,13 @@ impl Controller {
     /// tests do not ask the machine they run on.
     pub fn refresh_start_at_login(&self) {
         let now = self.login.get();
-        self.inner.lock().unwrap().settings.start_at_login = now;
+        self.inner.locked().settings.start_at_login = now;
+    }
+
+    /// Tell the window that part of the service stopped because of a bug,
+    /// with the report of it.
+    pub fn tell_crash(&self, report: weir_protocol::crash::Report) {
+        self.announce(Notification::Crashed(report));
     }
 
     /// Tell every connection that subscribed to this kind of news.
@@ -278,7 +285,7 @@ impl Controller {
     /// One connection started watching `added` and stopped watching
     /// `removed`.
     pub fn adjust_spectrum_watch(&self, added: &[StripOrBus], removed: &[StripOrBus]) {
-        let mut w = self.spectrum_watchers.lock().unwrap();
+        let mut w = self.spectrum_watchers.locked();
         for t in added {
             *w.entry(*t).or_default() += 1;
         }
@@ -296,12 +303,12 @@ impl Controller {
     /// Hand the controller a way to reach the main loop, which is what can
     /// actually start a window process.
     pub fn set_window_sender(&self, tx: UnboundedSender<TrayCommand>) {
-        *self.window_tx.lock().unwrap() = Some(tx);
+        *self.window_tx.locked() = Some(tx);
     }
 
     /// The daemon's settings now.
     pub fn settings(&self) -> Settings {
-        self.inner.lock().unwrap().settings.clone()
+        self.inner.locked().settings.clone()
     }
 
     /// True when a mixer window is connected right now.
@@ -360,7 +367,7 @@ impl Controller {
 
     /// The mixer now.
     pub fn mixer(&self) -> MixerState {
-        self.inner.lock().unwrap().mixer.clone()
+        self.inner.locked().mixer.clone()
     }
 
     /// The audio engine, when there is one.
@@ -372,7 +379,7 @@ impl Controller {
     pub fn save_if_dirty(&self) {
         if self.dirty.swap(false, Ordering::AcqRel) {
             let cfg = {
-                let inner = self.inner.lock().unwrap();
+                let inner = self.inner.locked();
                 config::Config {
                     settings: inner.settings.clone(),
                     mixer: inner.mixer.clone(),
@@ -390,7 +397,7 @@ impl Controller {
         }
         if self.seen_dirty.swap(false, Ordering::AcqRel) {
             let saved = {
-                let inner = self.inner.lock().unwrap();
+                let inner = self.inner.locked();
                 inner.seen_apps.save(&self.paths.seen_apps_file)
             };
             if let Err(e) = saved {
@@ -403,7 +410,7 @@ impl Controller {
     /// Take in something the engine reports, and pass it on to clients.
     pub fn on_engine_event(&self, ev: EngineEvent) {
         let (n, moves, seen) = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.locked();
             match ev {
                 EngineEvent::Status(s) => {
                     inner.engine = s.clone();
@@ -446,7 +453,7 @@ impl Controller {
 
     /// Remember which scene and setup were in use, from the config file.
     pub fn restore_current(&self, scene: Option<String>, setup: Option<String>) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.locked();
         inner.scene = scene;
         inner.setup = setup;
     }
@@ -454,7 +461,7 @@ impl Controller {
     /// The saved scenes and setups, and which of each is current.
     fn library(&self) -> Library {
         let (scene, setup) = {
-            let inner = self.inner.lock().unwrap();
+            let inner = self.inner.locked();
             (inner.scene.clone(), inner.setup.clone())
         };
         let scenes = config::list_saved(&self.paths.scenes_dir);
@@ -493,7 +500,7 @@ impl Controller {
         setup: Option<Option<String>>,
     ) -> Library {
         {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.locked();
             if let Some(v) = scene {
                 inner.scene = v;
             }
@@ -511,7 +518,7 @@ impl Controller {
     /// [`names::resolve_names`].
     pub fn resolve_names(&self, method: &str, params: &mut Option<Value>) -> Result<(), RpcError> {
         match params {
-            Some(p) => names::resolve_names(method, p, &self.inner.lock().unwrap().mixer),
+            Some(p) => names::resolve_names(method, p, &self.inner.locked().mixer),
             None => Ok(()),
         }
     }
@@ -527,19 +534,14 @@ impl Controller {
         }
         // Called even when nobody watches, since that is also what tells
         // the engine to stop feeding the analyzer.
-        let watched: BTreeSet<StripOrBus> = self
-            .spectrum_watchers
-            .lock()
-            .unwrap()
-            .keys()
-            .copied()
-            .collect();
+        let watched: BTreeSet<StripOrBus> =
+            self.spectrum_watchers.locked().keys().copied().collect();
         for spectrum in engine.take_spectra(&watched) {
             self.announce(Notification::Spectrum(spectrum));
         }
         let status = engine.status();
         let changed = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.locked();
             let prev = &inner.engine;
             let changed = prev.state != status.state
                 || prev.sample_rate != status.sample_rate
@@ -588,7 +590,7 @@ impl Controller {
         f: impl FnOnce(&mut MixerState) -> Result<T, RpcError>,
     ) -> Result<Value, RpcError> {
         let (result, state, history, renamed) = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.locked();
             let mut candidate = inner.mixer.clone();
             let result = f(&mut candidate)?;
             candidate.normalize();
@@ -621,7 +623,7 @@ impl Controller {
     fn step_history(&self, steps: Option<u32>, back: bool) -> Result<Value, RpcError> {
         let steps = steps.unwrap_or(1).clamp(1, 100);
         let (state, info, labels, renamed) = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.locked();
             let start = inner.mixer.clone();
             let mut whole = false;
             let mut labels = Vec::new();
@@ -691,7 +693,7 @@ impl Controller {
     /// Built-in presets first, then the user's own.
     fn eq_presets(&self) -> Vec<EqPreset> {
         let mut all = builtin_eq_presets();
-        if let Ok(user) = &self.inner.lock().unwrap().user_eq_presets {
+        if let Ok(user) = &self.inner.locked().user_eq_presets {
             all.extend(user.iter().cloned());
         }
         all
@@ -711,7 +713,7 @@ impl Controller {
         f: impl FnOnce(&mut Vec<EqPreset>) -> Result<(), RpcError>,
     ) -> Result<Value, RpcError> {
         {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.locked();
             let user = inner.user_eq_presets.as_mut().map_err(|e| {
                 RpcError::application(format!(
                     "equalizer presets are read-only until this is fixed: {e}"

@@ -11,6 +11,7 @@ use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use tracing::{info, warn};
+use weir_protocol::crash::Locked;
 use weir_protocol::*;
 
 /// What a client asks of a hotkey.
@@ -35,6 +36,7 @@ fn allowed_in_hotkey(req: &Request) -> bool {
             | Request::Ping
             | Request::Describe
             | Request::Diagnostics
+            | Request::Restart(_)
             | Request::CheckForUpdate
             | Request::GetState
             | Request::ListDevices
@@ -95,17 +97,17 @@ fn fadeable(step: &HotkeyStep) -> bool {
 impl Controller {
     /// Hand the controller the runner, so presses from clients reach it.
     pub fn set_hotkey_runner(&self, runner: Arc<Mutex<Runner>>) {
-        *self.hotkey_runner.lock().unwrap() = Some(runner);
+        *self.hotkey_runner.locked() = Some(runner);
     }
 
     /// Have the runner act on `command`, if hotkeys run in this daemon.
     /// Never called with the controller's own state locked: the runner
     /// changes the mixer.
     fn tell_runner(&self, command: Command) -> bool {
-        let runner = self.hotkey_runner.lock().unwrap().clone();
+        let runner = self.hotkey_runner.locked().clone();
         match runner {
             Some(runner) => {
-                runner.lock().unwrap().handle(command);
+                runner.locked().handle(command);
                 true
             }
             None => false,
@@ -114,12 +116,7 @@ impl Controller {
 
     /// Every hotkey and group now.
     pub(super) fn hotkey_list(&self) -> HotkeyList {
-        self.inner
-            .lock()
-            .unwrap()
-            .hotkeys
-            .clone()
-            .unwrap_or_default()
+        self.inner.locked().hotkeys.clone().unwrap_or_default()
     }
 
     /// Every hotkey now.
@@ -139,7 +136,7 @@ impl Controller {
 
     /// Every hotkey, how keys reach Weir, and what is wrong.
     pub fn hotkeys_info(&self) -> HotkeysInfo {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.locked();
         let HotkeyList {
             hotkeys,
             groups,
@@ -179,7 +176,7 @@ impl Controller {
     /// not work and why.
     pub fn set_keys_status(&self, status: KeysStatus, problems: BTreeMap<HotkeyId, String>) {
         {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.locked();
             if inner.keys_status == status && inner.key_problems == problems {
                 return;
             }
@@ -210,7 +207,7 @@ impl Controller {
     /// Have the desktop open its shortcut settings at Weir's hotkeys, when
     /// it can.
     pub(super) fn open_shortcut_settings(&self) -> Result<Value, RpcError> {
-        let status = self.inner.lock().unwrap().keys_status.clone();
+        let status = self.inner.locked().keys_status.clone();
         if status.method == KeysMethod::Desktop && status.configurable {
             self.shortcut_settings.notify_one();
             return Ok(Value::Null);
@@ -231,7 +228,7 @@ impl Controller {
     /// mixer state.
     pub(super) fn check_hotkey_targets(&self, mixer: &MixerState) {
         let changed = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.locked();
             let hotkeys = inner.hotkeys.clone().unwrap_or_default().hotkeys;
             let now = target_problems(&hotkeys, mixer);
             let changed = now != inner.target_problems;
@@ -533,7 +530,7 @@ impl Controller {
         &self,
         f: impl FnOnce(&mut HotkeyList) -> Result<T, RpcError>,
     ) -> Result<(T, bool), RpcError> {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.locked();
         let list = inner.hotkeys.as_mut().map_err(|e| {
             RpcError::application(format!("hotkeys are read-only until this is fixed: {e}"))
         })?;
@@ -687,7 +684,7 @@ impl Controller {
         let step = Step::single(label);
         let step = if whole { step.whole_mixer() } else { step };
         let info = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.locked();
             inner
                 .history
                 .record(step, before, after)
@@ -705,7 +702,7 @@ impl Controller {
         since: std::time::Instant,
         f: impl FnMut(&MixerState) -> MixerState,
     ) {
-        self.inner.lock().unwrap().history.rewrite_since(since, f);
+        self.inner.locked().history.rewrite_since(since, f);
     }
 
     /// Replace the mixer with `state`, without an undo step: putting back

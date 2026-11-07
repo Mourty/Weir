@@ -382,6 +382,12 @@ pub fn show_window(c: &mut Client) -> Result<()> {
     Ok(())
 }
 
+pub fn restart(c: &mut Client, window: bool) -> Result<()> {
+    c.call(&Request::Restart(RestartParams { window }))?;
+    println!("restarting Weir");
+    Ok(())
+}
+
 pub fn rules(c: &mut Client, json: bool) -> Result<()> {
     let st = c.state()?;
     if json {

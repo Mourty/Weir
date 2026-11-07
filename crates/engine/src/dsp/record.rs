@@ -15,6 +15,7 @@
 
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Mutex;
+use weir_protocol::crash::Locked;
 use weir_protocol::TrackSource;
 
 /// How long a tap holds, in seconds of audio at 48 kHz: how long the
@@ -69,17 +70,17 @@ impl RecordTap {
 
     /// What it records.
     pub fn source(&self) -> TrackSource {
-        self.source.lock().unwrap().clone()
+        self.source.locked().clone()
     }
 
     /// Whether it records `source`.
     pub fn records(&self, source: &TrackSource) -> bool {
-        self.source.lock().unwrap().same(source)
+        self.source.locked().same(source)
     }
 
     /// Keep recording its strip or bus under the name it was given.
     pub fn rename(&self, name: &str) {
-        let mut source = self.source.lock().unwrap();
+        let mut source = self.source.locked();
         *source = match &*source {
             TrackSource::Strip(_) => TrackSource::Strip(name.into()),
             TrackSource::Bus(_) => TrackSource::Bus(name.into()),

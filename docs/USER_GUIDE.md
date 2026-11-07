@@ -1099,6 +1099,7 @@ Your settings, which are kept when Weir is uninstalled:
 | `~/.config/weir/gui.toml` | The window's own preferences, and the names of your devices, for showing them while they are unplugged. |
 | `~/.config/weir/backups/` | Copies of `config.toml` from the last ten times Weir started with a changed one. To go back to one, quit Weir and copy it over `config.toml`. Also, in `import-` folders, copies of what each import replaced, and in `setups-before-scenes`, your setups as they were before Weir 1.2.0. |
 | `~/.local/state/weir/daemon.log` | What the service said, when the window started it. |
+| `~/.local/state/weir/crash.log` | Every crash report in full, newest last; past 2 MB it keeps its newer half. `crash-pending.json` beside it holds the reports the crash window has not shown yet. |
 
 Recordings go to `Weir recordings` in your Music folder, or the folder
 picked in the [recorder](#recording).
@@ -1116,6 +1117,32 @@ over (your home folder's name shows as `~`) and change anything you like.
 GitHub's page for a new issue in your browser with them filled in, for you
 to say what went wrong. Nothing is sent until you send it there, and you
 need a GitHub account. Without the window, `weirctl report` prints the same.
+
+**When Weir crashes.** A crash is a bug in Weir, and Weir keeps a report of
+it. When part of Weir stops while the rest runs on, the crash window opens
+at once; when the window itself closed, or the whole service stopped, it
+opens the next time Weir starts. If the service started the window, it
+also shows a notification saying the window closed. The crash window
+says what went wrong and where in Weir's code, with the last lines of
+Weir's log and the few settings that most often matter:
+
+* **Hide personal details** (ticked) shows your home folder as `~`, and
+  hides your user name, the names of your files and folders, and web
+  addresses past their site. What it hid is listed under it.
+* **Report on GitHub** opens a new crash report on GitHub with the report
+  filled in, for you to say what you were doing. Nothing is sent until
+  you press Create there, and you need a GitHub account. A report too long
+  for a link is copied instead, for you to paste.
+* **Copy report** copies it, to send any other way.
+* **Open the crash log** opens `~/.local/state/weir/crash.log`, which
+  keeps every report in full, with nothing hidden, on this computer.
+* **Restart Weir**, when part of it stopped, starts it again: the safest
+  way to get everything working again. When the part that mixes the sound
+  stopped, Weir stays silent until it restarts.
+
+A request from `weirctl` or a plugin that runs into a bug is answered with
+an error saying so, and Weir carries on. The same bug happening again in
+one run is reported once.
 
 **The window says Weir's service stopped.** It shows what the service said
 about why, with **Copy the message** for a bug report and **Try again**.

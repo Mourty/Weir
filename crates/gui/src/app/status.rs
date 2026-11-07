@@ -5,6 +5,7 @@ use super::App;
 use crate::client::DaemonExit;
 use crate::theme;
 use egui::{Align, Frame, Layout, RichText, Ui};
+use weir_protocol::crash::Locked;
 
 impl App {
     /// Waiting to connect.
@@ -84,7 +85,7 @@ impl App {
                     .on_hover_text("Start the daemon again")
                     .clicked()
                 {
-                    let mut sh = self.client.shared.lock().unwrap();
+                    let mut sh = self.client.shared.locked();
                     sh.daemon_exit = None;
                     sh.retry_spawn = true;
                 }

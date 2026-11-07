@@ -18,6 +18,7 @@ pub use runner::{Command, Runner};
 use crate::controller::Controller;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc::UnboundedSender;
+use weir_protocol::crash::Locked;
 
 /// Start the runner and the keys, for as long as the daemon runs.
 pub fn start(controller: &Arc<Controller>) {
@@ -37,7 +38,10 @@ pub fn start_runner(controller: &Arc<Controller>) -> UnboundedSender<Command> {
     controller.set_hotkey_runner(runner.clone());
     tokio::spawn(async move {
         while let Some(command) = rx.recv().await {
-            runner.lock().unwrap().handle(command);
+            // A bug in one hotkey's steps is kept as a crash report, and
+            // the others go on working.
+            let _doing = weir_protocol::crash::doing("hotkeys");
+            let _ = weir_protocol::crash::caught(|| runner.locked().handle(command));
         }
     });
     tx

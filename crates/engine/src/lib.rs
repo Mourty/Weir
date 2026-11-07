@@ -17,4 +17,7 @@ mod pw;
 
 pub use dsp::record::RecordTap;
 pub use dsp::sounds::{builtin_sound, SoundBank, SoundData};
-pub use pw::{library_version, Engine, EngineError, EngineEvent, EngineHandle, EngineOptions};
+pub use pw::{
+    crash_on_purpose, library_version, Engine, EngineError, EngineEvent, EngineHandle,
+    EngineOptions,
+};

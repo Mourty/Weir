@@ -539,6 +539,7 @@ mod tests {
     use crate::controller::Subscriptions;
     use serde_json::json;
     use tokio::time::sleep;
+    use weir_protocol::crash::Locked;
 
     /// A controller with Mic (muted) and Music, a runner working for it,
     /// and the runner's mailbox.
@@ -694,11 +695,11 @@ mod tests {
         assert_eq!(text(shown.try_recv().ok()), "Mic unmuted");
         r.send(Command::Release(id)).await;
         assert_eq!(text(shown.try_recv().ok()), "Mic muted", "put back");
-        assert_eq!(*r.c.played.lock().unwrap(), ["Beep up", "Beep down"]);
+        assert_eq!(*r.c.played.locked(), ["Beep up", "Beep down"]);
         // Run by name, it is a tap: one sound.
-        r.c.played.lock().unwrap().clear();
+        r.c.played.locked().clear();
         r.send(Command::Run(id)).await;
-        assert_eq!(*r.c.played.lock().unwrap(), ["Beep up"]);
+        assert_eq!(*r.c.played.locked(), ["Beep up"]);
         // A hotkey can keep quiet.
         let quiet = r.add(json!({
             "name": "Quiet", "popup": false,

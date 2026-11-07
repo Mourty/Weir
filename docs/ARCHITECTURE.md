@@ -450,6 +450,37 @@ About window and `weirctl report` say the same, the home folder written as
 (`.github/ISSUE_TEMPLATE/bug_report.yml`) with the details in its `details`
 field, cut short if the address would grow too long for a browser.
 
+**Crashes** are reported, not just suffered (`weir_protocol::crash`).
+Both programs install a panic hook at the start. It writes a report to
+`~/.local/state/weir/crash.log` in full (the version, the system, which
+program and which part, the message and where, Weir's own frames picked
+from the backtrace, a few settings that matter, and the last 20 log lines
+a logging layer keeps) and adds it to `crash-pending.json` until the
+window has shown it. The same place panicking again in one run is
+reported once, since some loops carry on past a panic. The window shows a
+report at once when the daemon sends `crashed` or one of its own threads
+panicked, and otherwise at its next start; hiding personal details
+(`Report::text`) replaces the home folder with `~` and hides the user
+name, file and folder names in the home folder outside Weir's own, and
+web addresses past their site. **Report on GitHub** fills in
+`.github/ISSUE_TEMPLATE/crash.yml`.
+
+The daemon keeps going past a bug where it can: each request runs inside
+`crash::caught`, so a panic becomes an error answer, and so do the
+loops that take the engine's news, tick the meters, save, and run
+hotkeys. Locks are taken with `crash::Locked::locked`, which ignores
+poisoning, so one caught panic does not make every later request panic
+too. A panic cannot unwind out of PipeWire's real-time callback (it
+would end the process), so `on_process` catches it, keeps the report, and
+from then on fills the outputs with silence until a restart, since the
+mixer's state may be half updated. The daemon also waits on the windows
+it starts: one that ends with 101, a panic, gets a desktop notification
+saying so. `restart` (and the window's **Restart Weir**) restarts the
+daemon through its main loop, as the tray does, and can ask the new one
+to open the window. `WEIR_CRASH_TEST` makes Weir crash on purpose:
+`service`, `part`, `audio` or `request` in the daemon, `window` or
+`window-part` in the window.
+
 ## The protocol
 
 The protocol crate's types *are* the protocol. `describe` returns JSON
@@ -523,7 +554,7 @@ a Stop item; its "Open the recorder" asks the window with
 * `cargo test --workspace` runs over 250 unit tests without PipeWire:
   the real-time processor through its test rig, every effect,
   the protocol's parsing and maths, the daemon's request handling, undo,
-  configuration migrations, and the window's logic.
+  configuration migrations, crash reports, and the window's logic.
 * A headless PipeWire runs everything but real devices; `CONTRIBUTING.md`
   says how. The daemon, the window and `weirctl` all work against it.
 * `docs/check_examples.py` runs every example in the API and command line

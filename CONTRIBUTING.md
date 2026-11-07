@@ -7,10 +7,12 @@ all welcome.
 instead. **Report a problem…** in Weir's About window opens a new report
 with the details one needs filled in: Weir's version, your system,
 PipeWire's version and the latest problems Weir noticed. **Copy details
-for a bug report** there copies the same. If the daemon stopped, the
-window's **Copy the message** button copies what it said; the whole log
-is in `~/.local/state/weir/daemon.log`, or `journalctl --user -u weir` if
-it runs as a service. Weir has mostly been developed against a headless
+for a bug report** there copies the same. When Weir crashed, its crash
+window has **Report on GitHub**, which fills in a crash report; every
+report is also kept in `~/.local/state/weir/crash.log`. If the daemon
+stopped, the window's **Copy the message** button copies what it said;
+the whole log is in `~/.local/state/weir/daemon.log`, or `journalctl
+--user -u weir` if it runs as a service. Weir has mostly been developed against a headless
 PipeWire, so reports from real sound cards, USB headsets and unusual
 setups are especially useful.
 
@@ -105,6 +107,11 @@ Things that trip this up:
   and `xdotool windowfocus --sync` is needed before typing.
 * `xdotool windowclose` destroys the window under winit, which crashes it;
   that is the test, not Weir.
+* `WEIR_CRASH_TEST` makes Weir crash on purpose, to try crash reports:
+  `service` (the whole daemon), `part` (one of its threads), `audio` (the
+  real-time thread) or `request` (answering `ping`) for the daemon, a few
+  seconds after it starts; `window` or `window-part` for the window. Point
+  `XDG_STATE_HOME` somewhere else to keep the reports out of your own.
 
 ## Checking the documentation's examples
 
@@ -148,6 +155,10 @@ docs/check_examples.py --socket /tmp/weir-docs/c.sock
   by `object.serial`, and applications by id and name together.
 * **Renaming a strip, or changing its layout, recreates its device.** The
   runner moves its applications back afterwards (`pending_moves`).
+* **A bug should cost one request, not the daemon.** Lock with
+  `crash::Locked::locked` rather than `lock().unwrap()`, and run work done
+  for someone else, or a loop that must keep going, inside
+  `crash::caught`, with `crash::doing` naming it for the report.
 
 ## Adding a feature, end to end
 

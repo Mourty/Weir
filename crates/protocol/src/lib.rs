@@ -18,6 +18,7 @@
 //! * [`targets`]: where requests name strips and buses, and finding them.
 //! * [`transfer`]: exporting settings to files, and importing them.
 //! * [`report`]: what a bug report says, worded alike by every client.
+//! * [`crash`]: crash reports, and locks a panic cannot spoil.
 //! * [`updates`]: whether a newer Weir is out.
 //! * [`rpc`]: every request, response and notification.
 //!
@@ -27,6 +28,7 @@
 
 #![warn(missing_docs)]
 
+pub mod crash;
 pub mod fx;
 pub mod hotkeys;
 pub mod keys;

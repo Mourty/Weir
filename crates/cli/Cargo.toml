@@ -21,3 +21,4 @@ clap.workspace = true
 # For the window look, kept in the window's gui.toml.
 toml.workspace = true
 dirs.workspace = true
+libc.workspace = true

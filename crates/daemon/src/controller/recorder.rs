@@ -10,6 +10,7 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Weak};
 use tracing::{info, warn};
 use weir_engine::RecordTap;
+use weir_protocol::crash::Locked;
 use weir_protocol::*;
 use weir_record::TrackSpec;
 
@@ -23,17 +24,17 @@ impl Controller {
     /// The recorder's settings, as the configuration had them.
     pub fn set_recorder_settings(&self, mut settings: RecorderSettings) {
         settings.normalize();
-        self.inner.lock().unwrap().recorder = settings;
+        self.inner.locked().recorder = settings;
     }
 
     pub(super) fn recorder_settings(&self) -> RecorderSettings {
-        self.inner.lock().unwrap().recorder.clone()
+        self.inner.locked().recorder.clone()
     }
 
     /// What the recorder is doing; when idle, where the next recording
     /// goes.
     pub(super) fn recording_status(&self) -> RecordingStatus {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.locked();
         let mut status = inner.recording.clone();
         if !status.recording {
             if let Ok(folder) = recorder::resolve_folder(&inner.recorder.folder) {
@@ -74,7 +75,7 @@ impl Controller {
             )));
         }
         let folder_changed = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.locked();
             let s = &mut inner.recorder;
             let before = s.folder.clone();
             if let Some(v) = p.tracks {
@@ -119,7 +120,7 @@ impl Controller {
 
     pub(super) fn set_record_track(&self, p: SetRecordTrackParams) -> Result<Value, RpcError> {
         let source = {
-            let inner = self.inner.lock().unwrap();
+            let inner = self.inner.locked();
             match (p.strip, p.bus) {
                 (Some(id), None) => inner
                     .mixer
@@ -135,7 +136,7 @@ impl Controller {
             }
         };
         {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.locked();
             let s = &mut inner.recorder;
             let on = p.on.apply(s.records(&source));
             s.tracks.retain(|t| !t.same(&source));
@@ -169,14 +170,13 @@ impl Controller {
 
     /// Whether any strip or bus is ticked for recording.
     pub fn can_record(&self) -> bool {
-        !self.inner.lock().unwrap().recorder.tracks.is_empty()
+        !self.inner.locked().recorder.tracks.is_empty()
     }
 
     /// Whether a recording is under way.
     pub(super) fn recording_now(&self) -> bool {
         self.recording
-            .lock()
-            .unwrap()
+            .locked()
             .as_ref()
             .is_some_and(|r| !r.finished())
     }
@@ -188,7 +188,7 @@ impl Controller {
             ));
         };
         let (settings, mixer, setup) = {
-            let inner = self.inner.lock().unwrap();
+            let inner = self.inner.locked();
             (
                 inner.recorder.clone(),
                 inner.mixer.clone(),
@@ -287,9 +287,9 @@ impl Controller {
                 )));
             }
         };
-        *self.recording.lock().unwrap() = Some(recording);
+        *self.recording.locked() = Some(recording);
         {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.locked();
             inner.recording = status.clone();
             inner.recorder.next_number = inner.recorder.next_number.saturating_add(1);
         }
@@ -302,7 +302,7 @@ impl Controller {
     /// finished.
     pub fn stop_recording(&self) {
         // Out of the lock first: the thread's last word takes it too.
-        let recording = self.recording.lock().unwrap().take();
+        let recording = self.recording.locked().take();
         if let Some(r) = recording {
             if let Some(engine) = &self.engine {
                 let _ = engine.set_record_taps(Vec::new());
@@ -328,14 +328,14 @@ impl Controller {
                 let _ = engine.set_record_taps(Vec::new());
             }
         }
-        self.inner.lock().unwrap().recording = status;
+        self.inner.locked().recording = status;
         self.announce(Notification::RecordingChanged(self.recording_status()));
     }
 
     /// Ticked strips and buses keep their names when renamed, and so does
     /// a recording under way, before the engine hears of the new names.
     pub(super) fn recorder_follow_renames(&self, renamed: &[Rename]) {
-        if let Some(r) = &*self.recording.lock().unwrap() {
+        if let Some(r) = &*self.recording.locked() {
             for (kind, old, new) in renamed {
                 let old = match kind {
                     TargetKind::Strip => TrackSource::Strip(old.clone()),
@@ -345,7 +345,7 @@ impl Controller {
             }
         }
         let changed = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.locked();
             let mut changed = false;
             for t in &mut inner.recorder.tracks {
                 let (kind, name) = match t {

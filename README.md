@@ -126,7 +126,9 @@ computer.
 
 These systems' own Rust is too old to build Weir, so this gets a current
 one from [rustup](https://rustup.rs), the Rust project's installer, which
-keeps it in your home folder:
+keeps it in your home folder. If it says Rust is already installed (the
+system's own, from an earlier build), type `y` and press Enter: pressing
+Enter alone cancels. Both can stay installed.
 
 ```sh
 sudo apt update

@@ -483,7 +483,7 @@ impl Shown {
                         continue;
                     }
                     let ticked = ids.iter().filter(|id| self.picked.contains(*id)).count();
-                    let id = egui::Id::new(("import-section", kind));
+                    let id = egui::Id::unique(("import-section", kind));
                     let asked = section(ui, id, kind.heading(), ticked, ids.len(), |ui| {
                         if kind == ExportKind::Hotkey {
                             self.hotkey_mode(ui, state);

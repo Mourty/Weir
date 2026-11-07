@@ -66,34 +66,26 @@ pub(crate) fn window_sized(
         .with_icon(crate::icon())
         .with_inner_size(size.size)
         .with_min_inner_size(size.min);
-    ctx.show_viewport_immediate(id, builder, |ctx, class| {
-        if class == egui::ViewportClass::Embedded {
-            let mut open = true;
-            egui::Window::new(title)
-                .id(egui::Id::new((key, "embedded")))
-                .open(&mut open)
-                .default_size([size.size[0] - 40.0, size.size[1] - 60.0])
-                .show(ctx, |ui| {
-                    draw(ui, Pane::Body);
-                    ui.separator();
-                    draw(ui, Pane::Footer);
-                });
-            if !open {
-                *closed = true;
-            }
+    ctx.show_viewport_immediate(id, builder, |ui, class| {
+        if class == egui::ViewportClass::EmbeddedWindow {
+            // egui shows it as a window inside the mixer; every footer has
+            // a way to close it.
+            draw(ui, Pane::Body);
+            ui.separator();
+            draw(ui, Pane::Footer);
             return;
         }
-        egui::TopBottomPanel::bottom(egui::Id::new((key, "footer")))
+        egui::Panel::bottom((key, "footer"))
             .frame(
                 egui::Frame::new()
                     .fill(theme::p().bg)
                     .inner_margin(egui::Margin::symmetric(16, 10)),
             )
-            .show(ctx, |ui| draw(ui, Pane::Footer));
+            .show(ui, |ui| draw(ui, Pane::Footer));
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(theme::p().bg).inner_margin(16))
-            .show(ctx, |ui| draw(ui, Pane::Body));
-        if ctx.input(|i| i.viewport().close_requested()) {
+            .show(ui, |ui| draw(ui, Pane::Body));
+        if ui.input(|i| i.viewport().close_requested()) {
             *closed = true;
         }
     });

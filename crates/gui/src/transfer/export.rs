@@ -236,7 +236,7 @@ impl ExportWindow {
                         .iter()
                         .filter(|l| self.picked.contains(&l.item))
                         .count();
-                    let id = egui::Id::new(("export-section", *kind));
+                    let id = egui::Id::unique(("export-section", *kind));
                     let asked = section(ui, id, kind.heading(), ticked, lines.len(), |ui| {
                         if *kind == ExportKind::Sound {
                             ui.label(

@@ -348,7 +348,7 @@ pub(super) fn caption(ui: &mut Ui, text: &str) {
 /// the whole line can be grabbed, not just the words. While it is recorded,
 /// a red REC badge ends the line.
 pub(super) fn drag_caption(ui: &mut Ui, text: &str, item: StripOrBus, recording: bool) {
-    let id = egui::Id::new(("drag", item));
+    let id = egui::Id::unique(("drag", item));
     let hovered = ui
         .ctx()
         .read_response(id)

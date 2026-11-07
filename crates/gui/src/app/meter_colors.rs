@@ -382,7 +382,7 @@ fn editor(ui: &mut Ui, c: &mut MeterColors, dragging: &mut Option<usize>) -> boo
     // Clicking the meter adds a line there; the new band takes the color
     // of the one it splits, ready to change.
     if editable {
-        let meter_r = ui.interact(meter, ui.id().with("meter-click"), Sense::click());
+        let meter_r = ui.interact(meter, ui.scope_id().with("meter-click"), Sense::click());
         if meter_r.clicked() && c.colors.len() < METER_BANDS_MAX {
             if let Some(pos) = meter_r.interact_pointer_pos() {
                 let db = db_at(pos.y);
@@ -423,7 +423,7 @@ fn editor(ui: &mut Ui, c: &mut MeterColors, dragging: &mut Option<usize>) -> boo
             );
             let [r, g, b] = parse_hex_color(&c.colors[k]).unwrap_or([128, 128, 128]);
             let mut color = Color32::from_rgb(r, g, b);
-            let button = pencil_color_button(ui, ui.id().with(("band", k)), at, &mut color)
+            let button = pencil_color_button(ui, ui.scope_id().with(("band", k)), at, &mut color)
                 .on_hover_text(format!(
                     "Click to change the color {}",
                     band_words(lo, hi, k == 0, k + 1 == c.colors.len())
@@ -454,7 +454,7 @@ fn editor(ui: &mut Ui, c: &mut MeterColors, dragging: &mut Option<usize>) -> boo
         let r = editable.then(|| {
             ui.interact(
                 tab,
-                ui.id().with(("meter-line", k)),
+                ui.scope_id().with(("meter-line", k)),
                 Sense::click_and_drag(),
             )
         });

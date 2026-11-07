@@ -111,9 +111,7 @@ struct Snapshot {
     /// The daemon's last error and when it came, for the hotkey editor to
     /// tell whether it answers what it sent.
     error_at: Option<(String, Instant)>,
-    show_seq: u64,
     recorder_seq: u64,
-    quit_requested: bool,
     /// Recent spectra, by strip or bus.
     spectra: HashMap<StripOrBus, Spectrum>,
     history: HistoryInfo,
@@ -249,6 +247,10 @@ impl App {
     ) -> Self {
         // The first frame puts the right palette in; see `palette`.
         theme::apply(&cc.egui_ctx, theme::DARK);
+        // egui closes the window on Ctrl+Q since 0.34, after everything
+        // else has seen the key: it would close the mixer while the hotkey
+        // editor records Ctrl+Q as a hotkey's keys.
+        cc.egui_ctx.options_mut(|o| o.quit_shortcuts.clear());
         appearance::set_context(&cc.egui_ctx);
         let client = Client::spawn(socket.clone(), cc.egui_ctx.clone(), allow_spawn);
         // A daemon this window starts starts in safe mode too.
@@ -340,9 +342,7 @@ impl App {
                 .last_error
                 .as_ref()
                 .and_then(|(m, t)| t.map(|t| (m.clone(), t))),
-            show_seq: sh.show_seq,
             recorder_seq: sh.recorder_seq,
-            quit_requested: sh.quit_requested,
             // Anything older than this stopped coming; do not draw it frozen.
             spectra: sh
                 .spectra
@@ -588,7 +588,22 @@ fn key_request(key: Key, v: f32) -> Request {
 }
 
 impl eframe::App for App {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    /// Runs before every frame, and also while the window is hidden
+    /// (minimized, or on another desktop) whenever the connection asks for
+    /// a repaint, which it does for every message from the service. So the
+    /// service's asks that cannot wait for the window to be shown are
+    /// handled here: closing as the session ends, and coming forward from
+    /// the tray.
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        let (quit_requested, show_seq) = {
+            let sh = self.client.shared.locked();
+            (sh.quit_requested, sh.show_seq)
+        };
+        self.window_requests(ctx, quit_requested, show_seq);
+    }
+
+    fn ui(&mut self, root: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = &root.ctx().clone();
         self.follow_desktop(ctx);
         let now = Instant::now();
         let dt = now.duration_since(self.last_frame).as_secs_f32().min(0.25);
@@ -603,9 +618,7 @@ impl eframe::App for App {
             spawned,
             daemon_exit,
             error_at,
-            show_seq,
             recorder_seq,
-            quit_requested,
             spectra,
             history,
             window_look,
@@ -631,7 +644,6 @@ impl eframe::App for App {
                 self.step_history(key);
             }
         }
-        self.window_requests(ctx, quit_requested, show_seq);
         if recorder_seq != self.last_recorder_seq {
             self.last_recorder_seq = recorder_seq;
             self.open_recorder();
@@ -642,15 +654,15 @@ impl eframe::App for App {
         }
         self.animate_meters(dt, now);
 
-        self.top_bar(ctx, connected, &state, last_error.as_deref());
+        self.top_bar(root, connected, &state, last_error.as_deref());
         if connected {
-            self.safe_bar(ctx, &state);
-            self.update_question(ctx, &state);
-            self.mix_bar(ctx, &state);
+            self.safe_bar(root, &state);
+            self.update_question(root, &state);
+            self.mix_bar(root, &state);
         }
         egui::CentralPanel::default()
             .frame(Frame::new().fill(theme::p().bg).inner_margin(8))
-            .show(ctx, |ui| {
+            .show(root, |ui| {
                 if !connected {
                     match &daemon_exit {
                         Some(exit) => self.daemon_stopped_view(ui, exit),

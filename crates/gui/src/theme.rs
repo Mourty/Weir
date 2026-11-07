@@ -287,9 +287,22 @@ pub fn apply(ctx: &egui::Context, palette: Palette) {
     visuals.widgets.active.bg_fill = palette.active_fill;
     visuals.selection.bg_fill = palette.accent.linear_multiply(0.6);
     visuals.override_text_color = Some(palette.text);
+    // The corners Weir's buttons have always had: egui 0.37 rounds them
+    // more by default, which made the top bar's buttons look like pills
+    // beside strips drawn for the old ones.
+    let w = &mut visuals.widgets;
+    for state in [
+        &mut w.noninteractive,
+        &mut w.inactive,
+        &mut w.active,
+        &mut w.open,
+    ] {
+        state.corner_radius = egui::CornerRadius::same(2);
+    }
+    w.hovered.corner_radius = egui::CornerRadius::same(3);
     ctx.set_visuals(visuals);
-    let mut style = (*ctx.style()).clone();
+    let mut style = (*ctx.global_style()).clone();
     style.spacing.item_spacing = egui::vec2(4.0, 4.0);
     style.spacing.button_padding = egui::vec2(6.0, 3.0);
-    ctx.set_style(style);
+    ctx.set_global_style(style);
 }

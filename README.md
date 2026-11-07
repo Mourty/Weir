@@ -117,48 +117,21 @@ other.
 </details>
 
 <details>
-<summary><b>Ubuntu 25.10 and newer</b></summary>
+<summary><b>Ubuntu, Linux Mint, Pop!_OS and Debian</b></summary>
+
+If `sudo` says you are not in the sudoers file (Debian leaves it off your
+account when a root password is chosen during installation), run `su - -c
+"usermod -aG sudo $USER"`, give the root password, and restart the
+computer.
+
+These systems' own Rust is too old to build Weir, so this gets a current
+one from [rustup](https://rustup.rs), the Rust project's installer, which
+keeps it in your home folder. If it says Rust is already installed (the
+system's own, from an earlier build), type `y` and press Enter: pressing
+Enter alone cancels. Both can stay installed.
 
 ```sh
 sudo apt update
-sudo apt install git build-essential clang cmake pkg-config libpipewire-0.3-dev cargo rustc
-git clone https://github.com/Mourty/Weir
-cd Weir
-make install
-```
-
-</details>
-
-<details>
-<summary><b>Linux Mint 22, Pop!_OS 24.04 and Ubuntu 24.04</b></summary>
-
-These come with Rust 1.75, which is too old to build Weir, but offer a
-newer one alongside it. The `PATH=…` at the start of the last line tells
-the build to use it:
-
-```sh
-sudo apt update
-sudo apt install git build-essential clang cmake pkg-config libpipewire-0.3-dev cargo-1.91 rustc-1.91
-git clone https://github.com/Mourty/Weir
-cd Weir
-PATH=/usr/lib/rust-1.91/bin:$PATH make install
-```
-
-</details>
-
-<details>
-<summary><b>Debian 13</b></summary>
-
-If `sudo` says you are not in the sudoers file, Debian left it off your
-account, which it does when a root password is chosen during
-installation. Run `su - -c "usermod -aG sudo $USER"`, give the root
-password, and restart the computer.
-
-Debian's own Rust is too old to build Weir, so this gets a current one
-from [rustup](https://rustup.rs), the Rust project's installer, which
-keeps it in your home folder:
-
-```sh
 sudo apt install git curl build-essential clang cmake pkg-config libpipewire-0.3-dev
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh     # press Enter to accept the default
 . "$HOME/.cargo/env"
@@ -182,7 +155,7 @@ make install
 </details>
 
 **On another system**, Weir needs PipeWire 0.3.77 or newer with
-WirePlumber. Install Rust 1.88 or newer, clang, a C compiler, `make`, CMake,
+WirePlumber. Install Rust 1.95 or newer, clang, a C compiler, `make`, CMake,
 `pkg-config` and PipeWire's development files, then run `make install`
 from the `Weir` folder.
 

@@ -35,7 +35,7 @@ jobs:
       - run: cargo test --workspace --locked
 
   msrv:
-    name: Builds with Rust 1.88
+    name: Builds with Rust 1.95
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -43,13 +43,13 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends clang cmake pkg-config libpipewire-0.3-dev
-      # rust-version in Cargo.toml. Distributions such as Ubuntu 24.04 offer
-      # this version and not much newer, so a dependency update that needs
-      # more should be a decision, not an accident.
-      - name: Install Rust 1.88
-        run: rustup toolchain install 1.88 --profile minimal
+      # rust-version in Cargo.toml, the oldest egui supports, so a
+      # dependency update that needs more should be a decision, not an
+      # accident.
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95 --profile minimal
       - uses: Swatinem/rust-cache@v2
-      - run: cargo +1.88 build --workspace --locked
+      - run: cargo +1.95 build --workspace --locked
 
   licenses:
     name: License notices are current

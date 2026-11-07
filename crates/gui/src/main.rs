@@ -87,8 +87,11 @@ fn main() -> eframe::Result {
         // window is minimized or on another desktop. The window then hung
         // until it was shown again: it could not even close at logout, and
         // was killed. Weir paces its own redraws (about 30 a second, see
-        // `App::update`), so it does not need vsync to keep from spinning.
-        vsync: false,
+        // `App::ui`), so it does not need vsync to keep from spinning.
+        glow_options: eframe::egui_glow::GlowConfiguration {
+            vsync: false,
+            ..Default::default()
+        },
         ..Default::default()
     };
     eframe::run_native(

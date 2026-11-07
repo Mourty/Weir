@@ -92,13 +92,21 @@ pub(super) fn section_header_with(
         pos2(rect.left() + 24.0, rect.top() + 22.0),
         pos2(right, rect.bottom()),
     );
-    ui.painter_at(summary_rect).text(
-        pos2(summary_rect.left(), rect.top() + 30.0),
-        Align2::LEFT_CENTER,
-        summary,
+    // A summary too long for the room ends in "…" rather than being cut
+    // through a letter by the switch.
+    let mut job = egui::text::LayoutJob::simple_singleline(
+        summary.to_string(),
         FontId::proportional(11.0),
         summary_color,
     );
+    job.wrap = egui::text::TextWrapping::truncate_at_width(summary_rect.width());
+    let galley = ui.painter().layout_job(job);
+    let at = pos2(
+        summary_rect.left(),
+        rect.top() + 30.0 - galley.size().y / 2.0,
+    );
+    ui.painter_at(summary_rect)
+        .galley(at, galley, summary_color);
     if switch.is_some() {
         let fill = if on {
             color

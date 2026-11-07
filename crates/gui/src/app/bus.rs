@@ -502,7 +502,7 @@ impl App {
         let names: Vec<String> = feeders.iter().map(|s| format!("• {}", s.name)).collect();
         ui.interact(
             inner.response.rect,
-            ui.id().with(("bus_sources", b.id)),
+            ui.scope_id().with(("bus_sources", b.id)),
             egui::Sense::hover(),
         )
         .on_hover_text(format!("Receives from:\n{}", names.join("\n")));

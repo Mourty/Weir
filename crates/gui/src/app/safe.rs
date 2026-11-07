@@ -201,20 +201,20 @@ impl App {
 
     /// The bar under the top bar while in safe mode: why, and the quickest
     /// ways out of it.
-    pub(super) fn safe_bar(&mut self, ctx: &egui::Context, state: &FullState) {
+    pub(super) fn safe_bar(&mut self, root: &mut Ui, state: &FullState) {
         if !self.safe.on() {
             return;
         }
         let p = theme::p();
         let safe = self.safe.now.clone();
         let held = shown_held(&safe, &state.mixer);
-        egui::TopBottomPanel::top("safe_bar")
+        egui::Panel::top("safe_bar")
             .frame(
                 Frame::new()
                     .fill(p.section_fill)
                     .inner_margin(egui::Margin::symmetric(10, 6)),
             )
-            .show(ctx, |ui| {
+            .show(root, |ui| {
                 ui.horizontal_wrapped(|ui| {
                     ui.label(RichText::new("Safe mode").strong().color(p.warning));
                     if !safe.on {

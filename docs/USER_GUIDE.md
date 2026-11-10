@@ -23,6 +23,7 @@ look up when you need it.
 * [Undo](#undo)
 * [Preferences](#preferences)
 * [New versions](#new-versions)
+* [Running Weir as an AppImage](#running-weir-as-an-appimage)
 * [Weir in the background](#weir-in-the-background)
 * [Mouse and keyboard](#mouse-and-keyboard)
 * [Where Weir keeps things](#where-weir-keeps-things)
@@ -1027,6 +1028,39 @@ mixer window opened in between may not work with it.
 
 `weirctl update` says the same in a terminal, and `weirctl update --check`
 asks GitHub now.
+
+## Running Weir as an AppImage
+
+The file ending in `.AppImage` on the release page is Weir in one file,
+for any distribution with PipeWire: nothing is installed. Take the one for
+your computer (`x86_64` for most PCs, `aarch64` for 64-bit ARM ones such as
+a Raspberry Pi 5), allow it to run once (in the file manager,
+**Properties › Permissions › Allow executing as program**, or `chmod +x
+Weir-*.AppImage` in a terminal), and open it.
+
+* **The application menu.** Nothing is in it at first, so the first time a
+  line under the top bar asks whether to add Weir. That writes a menu
+  entry and Weir's icons into your home folder (`~/.local/share`).
+  **Preferences › General › AppImage** adds or removes it later. On
+  desktops other than KDE Plasma, hotkeys need the entry too. If an
+  installed Weir is in the menu already, nothing is asked.
+* **Start at login** works as in an installed Weir: Weir writes its own
+  login service, `~/.config/systemd/user/weir.service`, naming the
+  AppImage.
+* **Moving it.** If you move or rename the AppImage, open it once from its
+  new place: Weir points the menu entry and start at login there.
+* **weirctl** runs as `./Weir-*.AppImage weirctl …`, or as plain `weirctl`
+  once you make a link to the AppImage. Preferences › General › AppImage
+  shows the command to copy. Make the link again if you move the AppImage.
+* **Updating.** Download the new AppImage and put it in place of the old
+  one, or let an AppImage manager such as Gear Lever or AppImageUpdate do
+  it. Then choose **Restart Weir** in the tray menu.
+* **What it needs:** PipeWire 0.3.77 or newer with WirePlumber, and a
+  system from 2024 or newer, such as Ubuntu 24.04, Fedora 40, Debian 13 or
+  Linux Mint 22. It needs FUSE to open, which desktops have.
+* **With an installed Weir too,** both share your settings, and only one
+  service runs at a time: a window opened from either one shows the
+  service already running. Quit Weir from the tray before switching.
 
 ## Weir in the background
 

@@ -384,6 +384,30 @@ changing it with `enable` or `disable` (in `login.rs`), so the setting
 cannot drift from what systemd will actually do. It never uses `--now`:
 the daemon asking is already running.
 
+**From an AppImage** (`weir_protocol::appimage`), nothing is installed.
+The AppImage's starter mounts the image, sets `APPIMAGE` (the file) and
+`APPDIR` (the mount), and runs `packaging/appimage/AppRun`, which starts
+the window, the service (`weir-daemon` as first word) or `weirctl` (that
+word, or a link of that name). The mount stays while any process holds
+the read end of a pipe the starter hands down, so the service the window
+starts outlives the window. Those variables count only when Weir's own
+file is inside `APPDIR`, since a terminal opened from another AppImage
+passes them on too. Then:
+
+* `login::AppImageLogin` writes its own `~/.config/systemd/user/weir.service`
+  from the installed one's template, with `ExecStart` naming the AppImage
+  (quoted for systemd) and a first line marking it as Weir's. At each
+  start it points that unit at the AppImage's current path.
+* `restart` starts the AppImage file, not the mounted copy, so a newer
+  AppImage put in its place is what runs. It marks every inherited file
+  to close first, letting go of the old mount.
+* The window offers once to write a menu entry (`app/appimage.rs`:
+  `~/.local/share/applications/weir.desktop`, marked `X-Weir-AppImage`,
+  and the icons), which the desktop portal's hotkeys need off Plasma. It
+  also keeps that entry pointing at the AppImage's current path.
+* `diagnostics::Install::AppImage` gives bug reports and the update
+  notifier their words.
+
 **Export and import** (`transfer.rs` for the files,
 `controller/transfer.rs` for the requests) is the daemon's, so `weirctl`
 and plugins get it as the window does. A `.zip` holds a manifest and one

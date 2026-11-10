@@ -1,0 +1,32 @@
+#!/bin/sh
+# The first thing the AppImage runs. The AppImage's starter mounts its
+# contents, sets APPDIR to where, and ARGV0 to the name the AppImage was
+# started by, then runs this.
+#
+# It runs one of Weir's three programs:
+#   - weirctl, when started through a link named weirctl, or as
+#     "Weir.AppImage weirctl ...";
+#   - the service, as "Weir.AppImage weir-daemon ...", which the login
+#     unit Weir writes for an AppImage uses;
+#   - otherwise the mixer window, which starts the service itself.
+#
+# The mount stays as long as any program started from it runs, so the
+# service can outlive the window that started it.
+
+here=${APPDIR:-$(dirname "$(readlink -f "$0")")}
+
+case $(basename "${ARGV0:-$0}") in
+    weirctl | weir-daemon)
+        exec "$here/usr/bin/$(basename "${ARGV0:-$0}")" "$@"
+        ;;
+esac
+
+case $1 in
+    weirctl | weir-daemon)
+        program=$1
+        shift
+        exec "$here/usr/bin/$program" "$@"
+        ;;
+esac
+
+exec "$here/usr/bin/weir" "$@"

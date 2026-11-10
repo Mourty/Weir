@@ -234,11 +234,20 @@ Makefile. `make rpm-install` numbers its package by date and time, so dnf
 counts it as newer than a released package of the same version: run
 `sudo dnf remove weir` before installing a downloaded one.
 
+`make appimage-dir` lays out an AppImage's contents in
+`target/appimage/AppDir`: what `make install` puts down under `/usr`,
+less the guides and the login unit, plus `packaging/appimage/AppRun`.
+`make appimage` packs them with
+[appimagetool](https://github.com/AppImage/appimagetool), which it does
+not install (`make appimage APPIMAGETOOL=/path/to/appimagetool`), and
+with `zsyncmake` (`sudo apt install zsync`) also writes the `.zsync` file
+updaters use. It builds for the computer it runs on.
+
 GitHub builds the packages whenever a pull request changes the
 packaging, and on demand from **Actions → Packages → Run workflow**. Each
 run keeps them as downloads on its page for two weeks, for trying before a
-release. It builds the RPM and the `.deb` twice, for x86_64 and for
-64-bit ARM (on GitHub's ARM runners, free for public repositories), and
+release. It builds the RPM, the `.deb` and the AppImage twice, for x86_64
+and for 64-bit ARM (on GitHub's ARM runners, free for public repositories), and
 an Arch Linux package for x86_64 in an Arch container, from
 `packaging/aur/PKGBUILD`, which is also the recipe for the
 [AUR](https://aur.archlinux.org/packages/weir). The **Checks** workflow
@@ -265,8 +274,9 @@ branch fails instead of publishing unreleased code as a release.
    tag**, type `v1.1.0` (the version with a `v` in front) and pick
    **Create new tag on publish**. Give it a title, write what changed (or
    press **Generate release notes**), and press **Publish release**.
-4. The **Packages** workflow builds the RPMs, the `.deb` files and the
-   Arch package and attaches them to the release, with a `SHA256SUMS` file, in
+4. The **Packages** workflow builds the RPMs, the `.deb` files, the
+   AppImages (with their `.zsync` files, for updaters) and the Arch
+   package and attaches them to the release, with a `SHA256SUMS` file, in
    about twenty minutes.
    It refuses to start if the tag and the version numbers disagree.
    It also signs an attestation for each package (listed on the

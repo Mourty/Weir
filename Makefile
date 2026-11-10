@@ -52,7 +52,7 @@ CARGO ?= cargo
 CARGO_FLAGS ?= --release
 BINARIES := weir-daemon weir weirctl
 
-.PHONY: all build test fuzz install uninstall clean help rpm rpm-install deb icons licenses
+.PHONY: all build test fuzz install uninstall clean help rpm rpm-install deb appimage appimage-dir icons licenses
 
 all: build
 
@@ -66,6 +66,8 @@ help:
 	@echo "make rpm        build an RPM package into $(RPMTOP)/RPMS"
 	@echo "make rpm-install  build the RPM and install it with dnf"
 	@echo "make deb        build a .deb package into target/deb"
+	@echo "make appimage   build an AppImage into target/appimage (needs appimagetool)"
+	@echo "make appimage-dir  lay out the AppImage's contents, without packing them"
 	@echo "make icons      redraw the window icon (needs rsvg-convert)"
 	@echo "make licenses   gather the libraries' license notices (needs cargo-about)"
 
@@ -260,3 +262,59 @@ deb:
 	dpkg-deb --root-owner-group -Zxz --build $(DEBROOT) $(DEB)
 	@echo ""
 	@echo "Package built: $(DEB)"
+
+# ---- AppImage ------------------------------------------------------------
+#
+# One file holding Weir's programs, for any distribution with PipeWire,
+# for the computer it is built on (x86_64 or aarch64). `make appimage-dir`
+# lays out its contents in target/appimage/AppDir; `make appimage` packs
+# them with appimagetool, which it does not install: put it on the PATH or
+# point APPIMAGETOOL at it, and point APPIMAGE_RUNTIME at the AppImage
+# runtime to put in front, or appimagetool downloads the newest. Both come
+# from github.com/AppImage; the Packages workflow uses pinned versions.
+#
+# The programs need only the C library and PipeWire's library from the
+# system, so nothing else is bundled. PipeWire's own library stays the
+# system's: it loads its plugins from the system's folders.
+
+APPIMAGE_ARCH := $(shell uname -m)
+APPIMAGE_DIR := target/appimage
+APPIMAGE_ROOT := $(APPIMAGE_DIR)/AppDir
+APPIMAGE_FILE := $(APPIMAGE_DIR)/Weir-$(VERSION)-$(APPIMAGE_ARCH).AppImage
+APPIMAGETOOL ?= appimagetool
+APPIMAGE_RUNTIME ?=
+# Where updaters such as Gear Lever and AppImageUpdate look for the next
+# version: the .zsync file beside it on GitHub's latest release.
+APPIMAGE_UPDATE := gh-releases-zsync|Mourty|Weir|latest|Weir-*-$(APPIMAGE_ARCH).AppImage.zsync
+
+appimage-dir:
+	rm -rf $(APPIMAGE_DIR)
+	$(MAKE) install DESTDIR=$(CURDIR)/$(APPIMAGE_ROOT) PREFIX=/usr
+	@# Nothing an AppImage uses: the guides are online, and Weir writes its
+	@# own login unit, naming the AppImage, when asked to start at login.
+	rm -rf $(APPIMAGE_ROOT)/usr/share/doc $(APPIMAGE_ROOT)/usr/share/systemd
+	strip --strip-unneeded $(addprefix $(APPIMAGE_ROOT)/usr/bin/,$(BINARIES))
+	install -m755 packaging/appimage/AppRun $(APPIMAGE_ROOT)/AppRun
+	@# Inside an AppImage the menu entry names the program, not a path.
+	sed -i 's|^Exec=.*|Exec=weir|' $(APPIMAGE_ROOT)/usr/share/applications/weir.desktop
+	cp $(APPIMAGE_ROOT)/usr/share/applications/weir.desktop $(APPIMAGE_ROOT)/weir.desktop
+	cp packaging/weir.svg $(APPIMAGE_ROOT)/weir.svg
+	cp crates/gui/assets/weir.png $(APPIMAGE_ROOT)/.DirIcon
+	@echo ""
+	@echo "Laid out in $(APPIMAGE_ROOT)"
+
+appimage: appimage-dir
+	@command -v $(APPIMAGETOOL) >/dev/null 2>&1 || { \
+		echo "appimagetool not found. Get it from"; \
+		echo "  https://github.com/AppImage/appimagetool/releases"; \
+		echo "and run make appimage APPIMAGETOOL=/path/to/appimagetool"; \
+		exit 1; }
+	@command -v zsyncmake >/dev/null 2>&1 || \
+		echo "zsyncmake not found: no .zsync file for updaters (sudo apt install zsync)"
+	@# From the AppImage's folder: zsyncmake writes the .zsync file where it runs.
+	tool=$$(realpath "$$(command -v $(APPIMAGETOOL))") && cd $(APPIMAGE_DIR) && \
+		ARCH=$(APPIMAGE_ARCH) "$$tool" \
+		$(if $(APPIMAGE_RUNTIME),--runtime-file $(abspath $(APPIMAGE_RUNTIME))) \
+		-u '$(APPIMAGE_UPDATE)' AppDir $(notdir $(APPIMAGE_FILE))
+	@echo ""
+	@echo "AppImage built: $(APPIMAGE_FILE)"

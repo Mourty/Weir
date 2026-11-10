@@ -210,7 +210,7 @@ jobs:
             "$base/appimagetool/releases/download/$APPIMAGETOOL_VERSION/appimagetool-${{ matrix.arch }}.AppImage"
           curl -fsSL -o tools/runtime \
             "$base/type2-runtime/releases/download/$RUNTIME_VERSION/runtime-${{ matrix.arch }}"
-          sha256sum -c <<EOF
+          sha256sum -c <<EOF || { sha256sum tools/appimagetool tools/runtime; exit 1; }
           ${{ matrix.appimagetool_sha256 }}  tools/appimagetool
           ${{ matrix.runtime_sha256 }}  tools/runtime
           EOF

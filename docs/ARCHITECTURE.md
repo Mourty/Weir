@@ -397,7 +397,11 @@ passes them on too. Then:
 * `login::AppImageLogin` writes its own `~/.config/systemd/user/weir.service`
   from the installed one's template, with `ExecStart` naming the AppImage
   (quoted for systemd) and a first line marking it as Weir's. At each
-  start it points that unit at the AppImage's current path.
+  start it points that unit at the AppImage's current path. Being in the
+  person's folder, that unit hides an installed one, so an installed
+  Weir's `login::InstalledLogin` removes it at startup once the AppImage
+  it names is gone (keeping start at login on, now with the installed
+  unit), and when start at login is turned on there.
 * `restart` starts the AppImage file, not the mounted copy, so a newer
   AppImage put in its place is what runs. It marks every inherited file
   to close first, letting go of the old mount.

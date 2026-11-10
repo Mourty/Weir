@@ -1061,6 +1061,9 @@ Weir-*.AppImage` in a terminal), and open it.
 * **With an installed Weir too,** both share your settings, and only one
   service runs at a time: a window opened from either one shows the
   service already running. Quit Weir from the tray before switching.
+  Start at login starts the copy it was last turned on in; if that was
+  the AppImage and you delete it, the installed Weir takes over again
+  the next time it starts.
 
 ## Weir in the background
 

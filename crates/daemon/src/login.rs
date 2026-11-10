@@ -9,6 +9,9 @@
 //!
 //! An AppImage installs nothing, so [`AppImageLogin`] writes the unit
 //! itself, naming the AppImage file, and keeps it naming the right one.
+//! That unit, in the person's own folder, takes the place of an installed
+//! one, so an installed Weir ([`InstalledLogin`]) clears it away once its
+//! AppImage is gone, or when the person turns start at login on there.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -60,18 +63,24 @@ impl LoginStart for Systemd {
 /// Where Weir is started at login, for this copy of it: a unit of its own
 /// when it runs from an AppImage, the installed one otherwise.
 pub fn here(appimage: Option<&AppImage>) -> Box<dyn LoginStart> {
-    match appimage.and_then(|a| AppImageLogin::new(a.file.clone())) {
-        Some(own) => {
-            own.follow();
-            Box::new(own)
-        }
-        None => Box::new(Systemd),
+    if let Some(own) = appimage.and_then(|a| AppImageLogin::new(a.file.clone())) {
+        own.follow();
+        return Box::new(own);
     }
+    let installed = InstalledLogin::new();
+    installed.tidy();
+    Box::new(installed)
 }
 
 /// The first line of a unit Weir wrote for an AppImage. Weir only ever
 /// changes or removes a unit that starts with it.
 const MARK: &str = "# Written by Weir to start its AppImage at login.";
+
+/// The second line of such a unit names the AppImage between these.
+const STARTS: (&str, &str) = (
+    "# It starts ",
+    "; Weir rewrites this line if the AppImage moves.",
+);
 
 /// The installed unit, the model for the one an AppImage writes.
 const TEMPLATE: &str = include_str!("../../../packaging/weir.service.in");
@@ -95,9 +104,7 @@ impl AppImageLogin {
 
     /// The unit there now, if Weir wrote it.
     fn ours(&self) -> Option<String> {
-        std::fs::read_to_string(&self.unit)
-            .ok()
-            .filter(|text| text.starts_with(MARK))
+        appimage_unit(&self.unit)
     }
 
     /// Point the unit Weir wrote at this AppImage, if it names another
@@ -140,13 +147,105 @@ impl LoginStart for AppImageLogin {
         } else {
             Systemd.set(false)?;
             if self.ours().is_some() {
-                std::fs::remove_file(&self.unit)
-                    .map_err(|e| format!("could not remove {}: {e}", self.unit.display()))?;
-                daemon_reload();
+                remove_unit(&self.unit)?;
             }
             Ok(())
         }
     }
+}
+
+/// Starting an installed Weir at login: the installed unit, through
+/// systemd. An AppImage's unit in the person's folder hides it, so this
+/// takes that one away when it can only get in the way.
+pub struct InstalledLogin {
+    /// Where an AppImage's unit would be.
+    unit: Option<PathBuf>,
+}
+
+impl InstalledLogin {
+    fn new() -> Self {
+        Self {
+            unit: dirs::config_dir().map(|dir| dir.join("systemd/user").join(UNIT)),
+        }
+    }
+
+    /// An AppImage's unit, if one is there.
+    fn appimage_unit(&self) -> Option<&Path> {
+        self.unit
+            .as_deref()
+            .filter(|unit| appimage_unit(unit).is_some())
+    }
+
+    /// Run at startup. An AppImage's unit whose AppImage is gone (deleted
+    /// after trying it, say) would start nothing at the next login, and
+    /// the installed Weir neither, so it goes, and if it was switched on,
+    /// the installed unit is switched on in its place.
+    fn tidy(&self) {
+        let Some(unit) = self.appimage_unit() else {
+            return;
+        };
+        let names = appimage_unit(unit).and_then(|text| started_file(&text));
+        if names.is_none_or(|file| file.exists()) {
+            return;
+        }
+        if let Err(e) = self.replace_appimage_unit(unit) {
+            tracing::warn!("{e}");
+            return;
+        }
+        tracing::info!(
+            "removed {}: the AppImage it started is gone",
+            unit.display()
+        );
+    }
+
+    /// Take an AppImage's unit away, keeping start at login as it was.
+    fn replace_appimage_unit(&self, unit: &Path) -> Result<(), String> {
+        let was_on = Systemd.get() == Some(true);
+        if was_on {
+            // While the file is still there, so its links go with it.
+            Systemd.set(false)?;
+        }
+        remove_unit(unit)?;
+        if was_on {
+            Systemd.set(true)?;
+        }
+        Ok(())
+    }
+}
+
+impl LoginStart for InstalledLogin {
+    fn get(&self) -> Option<bool> {
+        Systemd.get()
+    }
+
+    fn set(&self, on: bool) -> Result<(), String> {
+        // Turning it on here means this Weir, not an AppImage.
+        if let Some(unit) = self.appimage_unit().filter(|_| on) {
+            remove_unit(unit)?;
+        }
+        Systemd.set(on)
+    }
+}
+
+/// The unit at `path`, if Weir wrote it for an AppImage.
+fn appimage_unit(path: &Path) -> Option<String> {
+    std::fs::read_to_string(path)
+        .ok()
+        .filter(|text| text.starts_with(MARK))
+}
+
+/// The AppImage an AppImage's unit starts, from its second line.
+fn started_file(unit: &str) -> Option<PathBuf> {
+    let line = unit.lines().nth(1)?;
+    let file = line.strip_prefix(STARTS.0)?.strip_suffix(STARTS.1)?;
+    Some(PathBuf::from(file))
+}
+
+/// Remove a unit and tell systemd.
+fn remove_unit(unit: &Path) -> Result<(), String> {
+    std::fs::remove_file(unit).map_err(|e| format!("could not remove {}: {e}", unit.display()))?;
+    daemon_reload();
+    Ok(())
 }
 
 /// The unit that starts the AppImage `file`, from the installed one's
@@ -162,10 +261,7 @@ fn unit_for(file: &Path) -> Result<String, String> {
     let body = TEMPLATE
         .find("[Unit]")
         .map_or(TEMPLATE, |at| &TEMPLATE[at..]);
-    let mut out = format!(
-        "{MARK}\n# It starts {}; Weir rewrites this line if the AppImage moves.\n\n",
-        file.display()
-    );
+    let mut out = format!("{MARK}\n{}{}{}\n\n", STARTS.0, file.display(), STARTS.1);
     for line in body.lines() {
         if line.starts_with("ExecStart=") {
             out.push_str(&format!("ExecStart={exec} weir-daemon\n"));
@@ -279,5 +375,13 @@ mod tests {
             "the template's sections are kept"
         );
         assert_eq!(unit.matches("ExecStart=").count(), 1);
+    }
+
+    #[test]
+    fn an_installed_weir_can_tell_which_appimage_a_unit_starts() {
+        let file = Path::new("/home/me/My Apps/Weir; v2.AppImage");
+        let unit = unit_for(file).unwrap();
+        assert_eq!(started_file(&unit).as_deref(), Some(file));
+        assert_eq!(started_file("[Unit]\nDescription=Weir\n"), None);
     }
 }

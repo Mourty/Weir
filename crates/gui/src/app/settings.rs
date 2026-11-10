@@ -179,6 +179,9 @@ impl App {
                     card(ui, "Tray icon", |ui| self.tray_prefs(ui, state));
                 }
                 card(ui, "Updates", |ui| self.update_prefs(ui, state));
+                if self.appimage.is_some() {
+                    card(ui, "AppImage", |ui| self.appimage_prefs(ui));
+                }
             }
             PrefsPage::Audio => {
                 card(ui, "Sample rate and buffer size", |ui| {

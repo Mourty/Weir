@@ -34,6 +34,7 @@
 //! * `status`: what shows while there is no daemon to talk to.
 
 mod about;
+mod appimage;
 mod apps;
 mod bus;
 mod controls;
@@ -167,6 +168,11 @@ pub struct App {
     last_recorder_seq: u64,
     /// What the person said about a new version, for this run.
     updates: updates::Updates,
+    /// The AppImage Weir runs from, if it does.
+    appimage: Option<weir_protocol::appimage::AppImage>,
+    /// Whether the application menu has Weir, when it runs from an
+    /// AppImage.
+    menu: appimage::Menu,
     /// Preferences › Meters' meter colors, as being edited.
     meter_page: meter_colors::MeterColorsPage,
     show_prefs: bool,
@@ -257,6 +263,7 @@ impl App {
         client.shared.locked().safe_start = safe_mode;
         let prefs = Prefs::load();
         prefs.note_for_crashes();
+        let running_from = weir_protocol::appimage::appimage();
         Self {
             crash: crash::CrashUi::at_start(&cc.egui_ctx),
             safe: safe::SafeUi::at_start(safe_mode),
@@ -281,6 +288,14 @@ impl App {
             recorder: recorder::RecorderWindow::opened(open_recorder),
             last_recorder_seq: 0,
             updates: updates::Updates::default(),
+            appimage: running_from.clone(),
+            menu: match &running_from {
+                Some(a) => {
+                    appimage::follow(&a.file);
+                    appimage::menu_state()
+                }
+                None => appimage::Menu::Other,
+            },
             meter_page: meter_colors::MeterColorsPage::default(),
             show_prefs: false,
             raise_prefs: false,
@@ -658,6 +673,7 @@ impl eframe::App for App {
         if connected {
             self.safe_bar(root, &state);
             self.update_question(root, &state);
+            self.appimage_question(root);
             self.mix_bar(root, &state);
         }
         egui::CentralPanel::default()

@@ -205,7 +205,6 @@ jobs:
           curl -fsSL -o tools/runtime \
             "$base/type2-runtime/releases/download/$RUNTIME_VERSION/runtime-${{ matrix.arch }}"
           chmod +x tools/appimagetool
-          sha256sum tools/appimagetool tools/runtime
       # The runner may have no FUSE, so appimagetool unpacks itself to run.
       - name: Build the AppImage
         env:
@@ -228,6 +227,8 @@ jobs:
           # this without mounting, but only when not told to unpack itself.
           env -u APPIMAGE_EXTRACT_AND_RUN "./$image" --appimage-updateinformation | tee update-info
           grep -q "^gh-releases-zsync|Mourty|Weir|latest|Weir-\*-${{ matrix.arch }}.AppImage.zsync$" update-info
+          # What went into it, to pin.
+          sha256sum ../../tools/appimagetool ../../tools/runtime
       - uses: actions/upload-artifact@v4
         with:
           name: appimage-${{ matrix.arch }}

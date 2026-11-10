@@ -167,15 +167,21 @@ jobs:
           - name: AppImage
             runner: ubuntu-24.04
             arch: x86_64
+            appimagetool_sha256: ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
+            runtime_sha256: 2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
           - name: AppImage, arm64
             runner: ubuntu-24.04-arm
             arch: aarch64
+            appimagetool_sha256: f0837e7448a0c1e4e650a93bb3e85802546e60654ef287576f46c71c126a9158
+            runtime_sha256: 00cbdfcf917cc6c0ff6d3347d59e0ca1f7f45a6df1a428a0d6d8a78664d87444
     # Built on the oldest system it is for, like the .deb: it needs the C
     # library of Ubuntu 24.04 or newer, and PipeWire's from the system.
     runs-on: ${{ matrix.runner }}
     env:
-      # Pinned: appimagetool packs the AppImage, and the runtime is the
-      # small program at its front that mounts and starts it.
+      # Pinned, by version here and by checksum in the matrix:
+      # appimagetool packs the AppImage, and the runtime is the small
+      # program at its front that mounts and starts it, in every copy
+      # people download. A version changes both checksums.
       APPIMAGETOOL_VERSION: "1.9.1"
       RUNTIME_VERSION: "20251108"
     steps:
@@ -204,6 +210,10 @@ jobs:
             "$base/appimagetool/releases/download/$APPIMAGETOOL_VERSION/appimagetool-${{ matrix.arch }}.AppImage"
           curl -fsSL -o tools/runtime \
             "$base/type2-runtime/releases/download/$RUNTIME_VERSION/runtime-${{ matrix.arch }}"
+          sha256sum -c <<EOF
+          ${{ matrix.appimagetool_sha256 }}  tools/appimagetool
+          ${{ matrix.runtime_sha256 }}  tools/runtime
+          EOF
           chmod +x tools/appimagetool
       # The runner may have no FUSE, so appimagetool unpacks itself to run.
       - name: Build the AppImage
@@ -227,8 +237,6 @@ jobs:
           # this without mounting, but only when not told to unpack itself.
           env -u APPIMAGE_EXTRACT_AND_RUN "./$image" --appimage-updateinformation | tee update-info
           grep -q "^gh-releases-zsync|Mourty|Weir|latest|Weir-\*-${{ matrix.arch }}.AppImage.zsync$" update-info
-          # What went into it, to pin.
-          sha256sum ../../tools/appimagetool ../../tools/runtime
       - uses: actions/upload-artifact@v4
         with:
           name: appimage-${{ matrix.arch }}

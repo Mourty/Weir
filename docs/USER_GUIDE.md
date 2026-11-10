@@ -1052,9 +1052,11 @@ Weir-*.AppImage` in a terminal), and open it.
 * **weirctl** runs as `./Weir-*.AppImage weirctl …`, or as plain `weirctl`
   once you make a link to the AppImage. Preferences › General › AppImage
   shows the command to copy. Make the link again if you move the AppImage.
-* **Updating.** Download the new AppImage and put it in place of the old
-  one, or let an AppImage manager such as Gear Lever or AppImageUpdate do
-  it. Then choose **Restart Weir** in the tray menu.
+* **Updating.** Download the new AppImage. Either put it in place of the
+  old one, under the old name, and choose **Restart Weir** in the tray
+  menu (Weir allows the new file to run); or choose **Quit Weir** there,
+  open the new one, and delete the old one. An AppImage manager such as
+  Gear Lever or AppImageUpdate can do it for you.
 * **What it needs:** PipeWire 0.3.77 or newer with WirePlumber, and a
   system from 2024 or newer, such as Ubuntu 24.04, Fedora 40, Debian 13 or
   Linux Mint 22. It needs FUSE to open, which desktops have.

@@ -403,8 +403,12 @@ passes them on too. Then:
   it names is gone (keeping start at login on, now with the installed
   unit), and when start at login is turned on there.
 * `restart` starts the AppImage file, not the mounted copy, so a newer
-  AppImage put in its place is what runs. It marks every inherited file
-  to close first, letting go of the old mount.
+  AppImage put in its place is what runs. It allows the file to run (a
+  download never is) and marks every inherited file to close first,
+  letting go of the old mount. If the file still cannot be started, it
+  holds on to the mount and starts the mounted copy again.
+* The tray gives the folder of icons inside the AppImage as its icon
+  theme path, where the panel finds the one-color icon.
 * The window offers once to write a menu entry (`app/appimage.rs`:
   `~/.local/share/applications/weir.desktop`, marked `X-Weir-AppImage`,
   and the icons), which the desktop portal's hotkeys need off Plasma. It

@@ -631,11 +631,25 @@ async fn shut_down(
 /// one was started with `--safe`. Returns only if that fails.
 fn restart(window: bool, safe: bool) -> Result<()> {
     use std::os::unix::process::CommandExt;
-    let exe = weir_protocol::own_exe().context("finding our own binary to restart")?;
     let rest: Vec<String> = std::env::args().skip(1).filter(|a| a != "--safe").collect();
+    // From an AppImage, start the AppImage file again rather than the copy
+    // mounted from it, so that a newer AppImage put in its place is what
+    // runs, and let go of the old mount.
+    let appimage = weir_protocol::appimage::appimage().filter(|a| a.file.is_file());
+    let (exe, mut args) = match appimage {
+        Some(a) => {
+            let_go_of_the_mount();
+            (a.file, vec!["weir-daemon".to_string()])
+        }
+        None => (
+            weir_protocol::own_exe().context("finding our own binary to restart")?,
+            Vec::new(),
+        ),
+    };
+    args.extend(rest);
     let mut command = std::process::Command::new(&exe);
     // A crash on purpose is for the run it was asked of.
-    command.args(&rest).env_remove(CRASH_TEST_ENV);
+    command.args(&args).env_remove(CRASH_TEST_ENV);
     for (env, on) in [(OPEN_WINDOW_ENV, window), (SAFE_MODE_ENV, safe)] {
         if on {
             command.env(env, "1");
@@ -645,6 +659,31 @@ fn restart(window: bool, safe: bool) -> Result<()> {
     }
     let error = command.exec();
     anyhow::bail!("could not restart {}: {error}", exe.display());
+}
+
+/// Close, in the program this one becomes, every file it inherited past
+/// standard input, output and error. An AppImage stays mounted while any
+/// process holds the pipe its starter hands down; a restart that kept it
+/// would keep the old version mounted beside the new one until Weir quits.
+/// Weir's own files are already marked to close.
+fn let_go_of_the_mount() {
+    let Ok(fds) = std::fs::read_dir("/proc/self/fd") else {
+        return;
+    };
+    let fds: Vec<i32> = fds
+        .filter_map(|e| e.ok()?.file_name().to_str()?.parse().ok())
+        .filter(|fd| *fd > 2)
+        .collect();
+    for fd in fds {
+        // SAFETY: setting a flag on a descriptor number; one already
+        // closed (such as the one read_dir used) just fails.
+        unsafe {
+            let flags = libc::fcntl(fd, libc::F_GETFD);
+            if flags >= 0 {
+                libc::fcntl(fd, libc::F_SETFD, flags | libc::FD_CLOEXEC);
+            }
+        }
+    }
 }
 
 /// Open the window as the daemon starts, once there is a desktop to show it

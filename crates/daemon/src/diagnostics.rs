@@ -127,6 +127,8 @@ pub enum Install {
     Make(PathBuf),
     /// Run from where it was built.
     BuildFolder(PathBuf),
+    /// From an AppImage: the AppImage file.
+    AppImage(PathBuf),
     /// Somewhere else, or nobody knows.
     Elsewhere(Option<PathBuf>),
 }
@@ -136,9 +138,14 @@ impl Install {
     /// moment, so it is asked once.
     pub fn here() -> Install {
         static HERE: OnceLock<Install> = OnceLock::new();
-        HERE.get_or_init(|| match weir_protocol::own_exe() {
-            Ok(exe) => Install::of(&exe, dirs::home_dir().as_deref(), package),
-            Err(_) => Install::Elsewhere(None),
+        HERE.get_or_init(|| {
+            if let Some(a) = weir_protocol::appimage::appimage() {
+                return Install::AppImage(a.file);
+            }
+            match weir_protocol::own_exe() {
+                Ok(exe) => Install::of(&exe, dirs::home_dir().as_deref(), package),
+                Err(_) => Install::Elsewhere(None),
+            }
         })
         .clone()
     }
@@ -171,6 +178,7 @@ impl Install {
             Install::Unpackaged(exe) => format!("{}, in no package", exe.display()),
             Install::Make(exe) => format!("make install, {}", exe.display()),
             Install::BuildFolder(exe) => format!("a build folder, {}", exe.display()),
+            Install::AppImage(file) => format!("AppImage, {}", file.display()),
             Install::Elsewhere(Some(exe)) => exe.display().to_string(),
             Install::Elsewhere(None) => "unknown".into(),
         }
@@ -200,6 +208,14 @@ impl Install {
                  release's source download) and run make install again"
             }
             Install::BuildFolder(_) => "Get the new source and build it again",
+            Install::AppImage(file) => {
+                return format!(
+                    "Download the new AppImage for your computer from the release page and put \
+                     it in place of this one ({}), or let Gear Lever or AppImageUpdate update \
+                     it. Then choose Restart Weir in Weir's tray menu",
+                    file.display()
+                );
+            }
             Install::Unpackaged(_) | Install::Elsewhere(_) => "Download it from the release page",
         };
         // Installing replaces the files, but the old version keeps running
@@ -361,6 +377,17 @@ mod tests {
         assert_eq!(
             at("/home/sam/src/Weir/target/release/weir-daemon", &copr).describe(),
             "a build folder, /home/sam/src/Weir/target/release/weir-daemon"
+        );
+        let appimage = Install::AppImage("/home/sam/Apps/Weir-1.5.0-x86_64.AppImage".into());
+        assert_eq!(
+            appimage.describe(),
+            "AppImage, /home/sam/Apps/Weir-1.5.0-x86_64.AppImage"
+        );
+        let how = appimage.how_to_update();
+        assert!(how.contains("in place of this one (/home/sam/Apps/Weir-1.5.0-x86_64.AppImage)"));
+        assert!(
+            how.ends_with("Then choose Restart Weir in Weir's tray menu"),
+            "{how}"
         );
     }
 

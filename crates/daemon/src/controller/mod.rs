@@ -273,7 +273,7 @@ impl Controller {
             window_clients: AtomicUsize::new(0),
             window_tx: Mutex::new(None),
             spectrum_watchers: Mutex::new(BTreeMap::new()),
-            login: Box::new(login::Systemd),
+            login: login::here(weir_protocol::appimage::appimage().as_ref()),
             hotkey_runner: Mutex::new(None),
             shortcut_settings: tokio::sync::Notify::new(),
             popups: Mutex::new(None),

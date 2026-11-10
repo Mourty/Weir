@@ -237,9 +237,12 @@ counts it as newer than a released package of the same version: run
 GitHub builds the packages whenever a pull request changes the
 packaging, and on demand from **Actions → Packages → Run workflow**. Each
 run keeps them as downloads on its page for two weeks, for trying before a
-release. Besides the RPM and the `.deb`, it builds an Arch Linux package in
-an Arch container, from `packaging/aur/PKGBUILD`, which is also the recipe
-for the [AUR](https://aur.archlinux.org/packages/weir).
+release. It builds the RPM and the `.deb` twice, for x86_64 and for
+64-bit ARM (on GitHub's ARM runners, free for public repositories), and
+an Arch Linux package for x86_64 in an Arch container, from
+`packaging/aur/PKGBUILD`, which is also the recipe for the
+[AUR](https://aur.archlinux.org/packages/weir). The **Checks** workflow
+runs clippy and the tests on ARM too.
 
 [COPR](https://copr.fedorainfracloud.org/coprs/mourt/Weir/), Fedora's
 build service, also builds the RPM for every current Fedora release and
@@ -262,8 +265,8 @@ branch fails instead of publishing unreleased code as a release.
    tag**, type `v1.1.0` (the version with a `v` in front) and pick
    **Create new tag on publish**. Give it a title, write what changed (or
    press **Generate release notes**), and press **Publish release**.
-4. The **Packages** workflow builds the RPM, the `.deb` and the Arch
-   package and attaches them to the release, with a `SHA256SUMS` file, in
+4. The **Packages** workflow builds the RPMs, the `.deb` files and the
+   Arch package and attaches them to the release, with a `SHA256SUMS` file, in
    about twenty minutes.
    It refuses to start if the tag and the version numbers disagree.
    It also signs an attestation for each package (listed on the

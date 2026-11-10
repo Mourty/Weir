@@ -1,6 +1,7 @@
-# Builds Weir's packages: an RPM for Fedora and Nobara, a .deb for
-# Ubuntu, Linux Mint, Pop!_OS and Debian, and a package for Arch Linux and
-# the systems built on it, whose recipe also goes to the AUR.
+# Builds Weir's packages: an RPM for Fedora and Nobara and a .deb for
+# Ubuntu, Linux Mint, Pop!_OS and Debian, each for x86_64 and for 64-bit
+# ARM, and a package for Arch Linux and the systems built on it (x86_64
+# only), whose recipe also goes to the AUR.
 #
 # * Publishing a release on GitHub builds them and attaches them to the
 #   release, with a SHA256SUMS file. GitHub also signs a record that this
@@ -65,9 +66,19 @@ jobs:
           fi
 
   rpm:
-    name: RPM (Fedora, Nobara)
+    name: ${{ matrix.name }}
     needs: version
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: RPM (Fedora, Nobara)
+            runner: ubuntu-24.04
+            arch: x86_64
+          - name: RPM (Fedora, Nobara), arm64
+            runner: ubuntu-24.04-arm
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
     # Like the .deb, built on the oldest release it is for, so it installs
     # on newer ones too.
     container: fedora:44
@@ -91,18 +102,28 @@ jobs:
           cp rpmbuild/RPMS/*/weir-*.rpm dist/
       - uses: actions/upload-artifact@v4
         with:
-          name: rpm
+          name: rpm-${{ matrix.arch }}
           path: dist/*.rpm
           if-no-files-found: error
           retention-days: 14
 
   deb:
-    name: .deb (Ubuntu, Mint, Pop!_OS, Debian)
+    name: ${{ matrix.name }}
     needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: .deb (Ubuntu, Mint, Pop!_OS, Debian)
+            runner: ubuntu-24.04
+            arch: amd64
+          - name: .deb (Ubuntu, Mint, Pop!_OS, Debian), arm64
+            runner: ubuntu-24.04-arm
+            arch: arm64
     # The oldest system the package is for. Built here, it asks for no
     # newer libraries than Ubuntu 24.04 has, so it installs on the newer
     # ones too.
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - name: Install the build tools
@@ -110,8 +131,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             clang cmake pkg-config libpipewire-0.3-dev dpkg-dev desktop-file-utils appstream
+      # The ARM image may come without rustup; install it if so.
       - name: Install Rust
         run: |
+          if ! command -v rustup >/dev/null; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+            export PATH="$HOME/.cargo/bin:$PATH"
+          fi
           rustup toolchain install stable --profile minimal
           rustup default stable
       - name: Build the package
@@ -124,7 +151,7 @@ jobs:
           appstreamcli validate --no-net $root/usr/share/metainfo/io.github.mourty.weir.metainfo.xml
       - uses: actions/upload-artifact@v4
         with:
-          name: deb
+          name: deb-${{ matrix.arch }}
           path: target/deb/*.deb
           if-no-files-found: error
           retention-days: 14
@@ -252,11 +279,13 @@ jobs:
       # By name: the AUR recipe is not for the release page.
       - uses: actions/download-artifact@v4
         with:
-          name: rpm
+          pattern: rpm-*
+          merge-multiple: true
           path: dist
       - uses: actions/download-artifact@v4
         with:
-          name: deb
+          pattern: deb-*
+          merge-multiple: true
           path: dist
       - uses: actions/download-artifact@v4
         with:

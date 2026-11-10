@@ -106,6 +106,14 @@ impl Tray for MixerTray {
         }
     }
 
+    /// A folder the desktop searches for the icon named above, besides
+    /// its icon theme. An AppImage installs nothing (its menu entry adds
+    /// icons, but only if asked for), so it points inside the AppImage,
+    /// which stays mounted while the service runs.
+    fn icon_theme_path(&self) -> String {
+        appimage_icons().unwrap_or_default()
+    }
+
     fn icon_pixmap(&self) -> Vec<Icon> {
         match self.icon {
             TrayIcon::Color => color_pixmaps().to_vec(),
@@ -329,6 +337,18 @@ fn red_dot(size: i32) -> Icon {
         height: size,
         data,
     }
+}
+
+/// The icon folder inside the AppImage Weir runs from, if it does.
+fn appimage_icons() -> Option<String> {
+    static DIR: OnceLock<Option<String>> = OnceLock::new();
+    DIR.get_or_init(|| {
+        let dir = weir_protocol::appimage::appimage()?
+            .dir
+            .join("usr/share/icons");
+        dir.is_dir().then(|| dir.to_string_lossy().into_owned())
+    })
+    .clone()
 }
 
 /// Weir's color icon in the sizes panels use, made once from the 256 px

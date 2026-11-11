@@ -71,6 +71,11 @@ const OPEN_WINDOW_ENV: &str = "WEIR_OPEN_WINDOW";
 /// `--safe` does.
 const SAFE_MODE_ENV: &str = "WEIR_SAFE_MODE";
 
+/// Set on the program a restart starts. It keeps the process id, so the
+/// tray's usual bus name would be the one the old icon just gave up, and
+/// GNOME's tray, seeing it come back at once, lost the icon altogether.
+const RESTARTED_ENV: &str = "WEIR_RESTARTED";
+
 /// The longest the daemon may take to shut down before it is ended by force.
 /// Comfortably above the sum of the limits of the individual steps.
 const SHUTDOWN_LIMIT: Duration = Duration::from_secs(5);
@@ -369,7 +374,14 @@ async fn start_tray(
     (tray.strips, tray.buses) = (mixer.strips.len(), mixer.buses.len());
     tray.can_record = controller.can_record();
     tray.safe_mode = controller.safe_mode().on;
-    match tray.assume_sni_available(true).spawn().await {
+    // After a restart, the connection's own unique name, which is new.
+    let restarted = std::env::var_os(RESTARTED_ENV).is_some();
+    match tray
+        .assume_sni_available(true)
+        .disable_dbus_name(restarted)
+        .spawn()
+        .await
+    {
         Ok(h) => {
             info!("tray icon started");
             Some(h)
@@ -662,7 +674,11 @@ fn restart_command(
 ) -> std::process::Command {
     let mut command = std::process::Command::new(exe);
     // A crash on purpose is for the run it was asked of.
-    command.args(first).args(rest).env_remove(CRASH_TEST_ENV);
+    command
+        .args(first)
+        .args(rest)
+        .env_remove(CRASH_TEST_ENV)
+        .env(RESTARTED_ENV, "1");
     for (env, on) in [(OPEN_WINDOW_ENV, window), (SAFE_MODE_ENV, safe)] {
         if on {
             command.env(env, "1");
@@ -816,6 +832,7 @@ fn spawn_window(socket: &Path, opening: Opening, env: &[(String, String)]) -> bo
             }
         }
         cmd.envs(env.iter().map(|(key, value)| (key, value)));
+        cmd.env_remove(RESTARTED_ENV);
         match cmd
             .stdin(std::process::Stdio::null())
             .kill_on_drop(false)

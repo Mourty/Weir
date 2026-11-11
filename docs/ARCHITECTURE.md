@@ -283,7 +283,12 @@ and turns app rules' ids into names.
 
 **The tray icon** is in the daemon, because the daemon is what keeps
 running when the window is closed. It talks to the rest through a channel,
-since its callbacks run on their own task.
+since its callbacks run on their own task. Its bus name is normally
+`org.kde.StatusNotifierItem-PID-1`, but a restart keeps the process id, and
+GNOME's tray extension lost the icon when that name came back at once. So
+after a restart (`WEIR_RESTARTED`) the tray registers under its
+connection's unique name, which Plasma, GNOME, Cinnamon and COSMIC all
+accept.
 
 **Hotkeys** (`hotkeys/`) are steps, each an ordinary request, so a hotkey
 can do whatever the protocol can and needs nothing of its own in the

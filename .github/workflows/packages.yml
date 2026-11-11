@@ -15,7 +15,9 @@
 #   a first upload or after a change to the PKGBUILD alone.
 #
 # The last two keep the packages as downloads on the run's own page, for
-# trying them before a release.
+# trying them before a release: each a zip named after the one file in it,
+# the name it has on a release page, with a table on the run's summary
+# saying which is for which system.
 
 name: Packages
 
@@ -65,6 +67,25 @@ jobs:
             [ "$tag" = "v$version" ] ||
               fail "The release's tag is $tag, but Cargo.toml says $version, so it should be v$version."
           fi
+      # Shown on the run's page above its downloads, whose names say the
+      # format but not who it is for.
+      - name: Say which download is for which system
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+          ### Which download is for your computer
+
+          | Your system | Download | On a 64-bit ARM computer |
+          |---|---|---|
+          | Fedora, Nobara | `weir-….x86_64.rpm` | `weir-….aarch64.rpm` |
+          | Ubuntu, Linux Mint, Pop!_OS, Debian | `weir_…_amd64.deb` | `weir_…_arm64.deb` |
+          | Arch Linux, CachyOS | `weir-…-x86_64.pkg.tar.zst` | none |
+          | Anything else | `Weir-…-x86_64.AppImage` | `Weir-…-aarch64.AppImage` |
+
+          Each download is a zip with that one file in it. x86_64 and amd64
+          mean an ordinary Intel or AMD computer. The `.zsync` files are
+          for AppImage updaters, and `aur-recipe` is the recipe for the
+          AUR; neither is for installing.
+          EOF
 
   rpm:
     name: ${{ matrix.name }}
@@ -95,16 +116,19 @@ jobs:
       # The RPM is copied out of its architecture folder: upload-artifact
       # keeps any folders after a wildcard, and the release job needs the
       # packages side by side.
-      - name: Build the package
+      - id: build
+        name: Build the package
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           make rpm RPM_RELEASE=1 RPMTOP="$GITHUB_WORKSPACE/rpmbuild"
           mkdir -p dist
           cp rpmbuild/RPMS/*/weir-*.rpm dist/
+          echo "file=$(cd dist && ls weir-*.rpm)" >> "$GITHUB_OUTPUT"
+      # Each download is named after the file in it, as on a release page.
       - uses: actions/upload-artifact@v4
         with:
-          name: rpm-${{ matrix.arch }}
-          path: dist/*.rpm
+          name: ${{ steps.build.outputs.file }}
+          path: dist/${{ steps.build.outputs.file }}
           if-no-files-found: error
           retention-days: 14
 
@@ -142,8 +166,11 @@ jobs:
           fi
           rustup toolchain install stable --profile minimal
           rustup default stable
-      - name: Build the package
-        run: make deb
+      - id: build
+        name: Build the package
+        run: |
+          make deb
+          echo "file=$(cd target/deb && ls weir*.deb)" >> "$GITHUB_OUTPUT"
       - name: Check the package
         run: |
           dpkg-deb --info target/deb/*.deb
@@ -152,8 +179,8 @@ jobs:
           appstreamcli validate --no-net $root/usr/share/metainfo/io.github.mourty.weir.metainfo.xml
       - uses: actions/upload-artifact@v4
         with:
-          name: deb-${{ matrix.arch }}
-          path: target/deb/*.deb
+          name: ${{ steps.build.outputs.file }}
+          path: target/deb/${{ steps.build.outputs.file }}
           if-no-files-found: error
           retention-days: 14
 
@@ -220,7 +247,8 @@ jobs:
         env:
           APPIMAGE_EXTRACT_AND_RUN: 1
         run: make appimage APPIMAGETOOL="$PWD/tools/appimagetool" APPIMAGE_RUNTIME=tools/runtime
-      - name: Check the AppImage
+      - id: check
+        name: Check the AppImage
         env:
           APPIMAGE_EXTRACT_AND_RUN: 1
         run: |
@@ -229,6 +257,7 @@ jobs:
           desktop-file-validate AppDir/weir.desktop
           appstreamcli validate --no-net AppDir/usr/share/metainfo/io.github.mourty.weir.metainfo.xml
           image=$(ls Weir-*-${{ matrix.arch }}.AppImage)
+          echo "image=$image" >> "$GITHUB_OUTPUT"
           test -s "$image.zsync"
           # It starts, and runs the program asked for.
           "./$image" weirctl --version
@@ -237,12 +266,17 @@ jobs:
           # this without mounting, but only when not told to unpack itself.
           env -u APPIMAGE_EXTRACT_AND_RUN "./$image" --appimage-updateinformation | tee update-info
           grep -q "^gh-releases-zsync|Mourty|Weir|latest|Weir-\*-${{ matrix.arch }}.AppImage.zsync$" update-info
+      # Apart, so each download holds the one file its name says.
       - uses: actions/upload-artifact@v4
         with:
-          name: appimage-${{ matrix.arch }}
-          path: |
-            target/appimage/Weir-*.AppImage
-            target/appimage/Weir-*.AppImage.zsync
+          name: ${{ steps.check.outputs.image }}
+          path: target/appimage/${{ steps.check.outputs.image }}
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.check.outputs.image }}.zsync
+          path: target/appimage/${{ steps.check.outputs.image }}.zsync
           if-no-files-found: error
           retention-days: 14
 
@@ -290,24 +324,26 @@ jobs:
       # namcap is Arch's packaging linter. Its findings are advice to read
       # in the log, some of them wrong for Rust programs, so they do not
       # fail the job. .SRCINFO is the PKGBUILD's summary the AUR reads.
-      - name: Check the package and write .SRCINFO
+      - id: check
+        name: Check the package and write .SRCINFO
         run: |
           cd /home/builder/weir
           su builder -c 'namcap PKGBUILD weir-*.pkg.tar.zst' || true
           su builder -c 'makepkg --printsrcinfo > .SRCINFO'
           cat .SRCINFO
+          echo "file=$(ls weir-[0-9]*.pkg.tar.zst)" >> "$GITHUB_OUTPUT"
       # The package, for the release page. The pattern leaves out the
       # weir-debug package that makepkg's debug option may add.
       - uses: actions/upload-artifact@v4
         with:
-          name: arch
-          path: /home/builder/weir/weir-[0-9]*.pkg.tar.zst
+          name: ${{ steps.check.outputs.file }}
+          path: /home/builder/weir/${{ steps.check.outputs.file }}
           if-no-files-found: error
           retention-days: 14
       # The recipe, for the AUR.
       - uses: actions/upload-artifact@v4
         with:
-          name: aur
+          name: aur-recipe
           path: |
             /home/builder/weir/PKGBUILD
             /home/builder/weir/.SRCINFO
@@ -325,7 +361,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: aur
+          name: aur-recipe
           path: recipe
       # Needs the AUR_SSH_KEY secret: the private half of an SSH key whose
       # public half is on the maintainer's AUR account. CONTRIBUTING.md
@@ -356,9 +392,11 @@ jobs:
             commit -m "Update to $version"
           git push origin HEAD:master
 
+  # Gathers and checks the files on every run, so a mistake here shows up
+  # before a release, when fixing it means publishing the release again.
+  # Only a release signs and attaches them.
   publish:
-    name: Attach to the release
-    if: github.event_name == 'release'
+    name: Release files
     needs: [rpm, deb, appimage, arch]
     runs-on: ubuntu-24.04
     permissions:
@@ -366,34 +404,33 @@ jobs:
       id-token: write # get a signing certificate for the attestation
       attestations: write # store the attestation with the repository
     steps:
-      # By name: the AUR recipe is not for the release page.
+      # Every download is named after its file, so this takes them by
+      # type, leaving out the AUR recipe, which is not for the release page.
       - uses: actions/download-artifact@v4
         with:
-          pattern: rpm-*
+          pattern: "*.{rpm,deb,AppImage,zsync,zst}"
           merge-multiple: true
-          path: dist
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: deb-*
-          merge-multiple: true
-          path: dist
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: appimage-*
-          merge-multiple: true
-          path: dist
-      - uses: actions/download-artifact@v4
-        with:
-          name: arch
           path: dist
       # The .zsync files are for updaters, which check what they download
       # against them; they are attached but not listed.
       - name: Write checksums
-        run: cd dist && sha256sum -- *.rpm *.deb *.AppImage *.pkg.tar.zst > SHA256SUMS && cat SHA256SUMS
+        run: |
+          cd dist
+          ls -l
+          # Two of each but the Arch package, and an updater's file for
+          # each AppImage. A missing one fails here rather than leaving a
+          # release without it.
+          [ "$(ls *.rpm | wc -l)" = 2 ] && [ "$(ls *.deb | wc -l)" = 2 ] &&
+            [ "$(ls *.AppImage | wc -l)" = 2 ] && [ "$(ls *.zsync | wc -l)" = 2 ] &&
+            [ "$(ls *.pkg.tar.zst | wc -l)" = 1 ] ||
+            { echo "::error::The files above are not two RPMs, two .debs, two AppImages with their .zsync files and one Arch package."; exit 1; }
+          sha256sum -- *.rpm *.deb *.AppImage *.pkg.tar.zst > SHA256SUMS
+          cat SHA256SUMS
       # Signed in the same run that built the packages, so it vouches for
       # exactly these files; a file swapped on the release later fails the
       # check. Attestations need a public repository (or GitHub Enterprise).
       - name: Sign a record of how the packages were built
+        if: github.event_name == 'release'
         uses: actions/attest@v4
         with:
           subject-path: |
@@ -402,6 +439,7 @@ jobs:
             dist/*.AppImage
             dist/*.pkg.tar.zst
       - name: Upload to the release
+        if: github.event_name == 'release'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

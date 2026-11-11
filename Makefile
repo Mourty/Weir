@@ -300,6 +300,9 @@ appimage-dir:
 	cp $(APPIMAGE_ROOT)/usr/share/applications/weir.desktop $(APPIMAGE_ROOT)/weir.desktop
 	cp packaging/weir.svg $(APPIMAGE_ROOT)/weir.svg
 	cp crates/gui/assets/weir.png $(APPIMAGE_ROOT)/.DirIcon
+	@# The tray names usr/share/icons for the one-color icon. GNOME's tray
+	@# looks only at the files right in that folder, Plasma in hicolor.
+	cp packaging/weir-symbolic.svg $(APPIMAGE_ROOT)/usr/share/icons/weir-symbolic.svg
 	@echo ""
 	@echo "Laid out in $(APPIMAGE_ROOT)"
 

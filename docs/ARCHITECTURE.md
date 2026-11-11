@@ -413,7 +413,9 @@ passes them on too. Then:
   letting go of the old mount. If the file still cannot be started, it
   holds on to the mount and starts the mounted copy again.
 * The tray gives the folder of icons inside the AppImage as its icon
-  theme path, where the panel finds the one-color icon.
+  theme path, where the panel finds the one-color icon. Plasma looks in
+  its `hicolor` folders; GNOME's tray extension only at files right in it
+  (it has no theme index), so `weir-symbolic.svg` is there as well.
 * The window offers once to write a menu entry (`app/appimage.rs`:
   `~/.local/share/applications/weir.desktop`, marked `X-Weir-AppImage`,
   and the icons), which the desktop portal's hotkeys need off Plasma. It

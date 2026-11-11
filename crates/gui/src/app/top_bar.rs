@@ -45,7 +45,9 @@ impl App {
                     }
                     // Right to left, so the first here is the rightmost.
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ui.menu_button("…", |ui| self.main_menu(ui));
+                        // Clicking "Recent changes" unfolds it: only a
+                        // click outside, or an item, closes this menu.
+                        widgets::field_menu(ui, "…", |ui| self.main_menu(ui));
                         if ui
                             .add_enabled(connected, egui::Button::new("Hotkeys"))
                             .on_hover_text(
@@ -110,22 +112,57 @@ impl App {
             self.step_history(HistoryKey::Redo);
             ui.close();
         }
-        ui.add_enabled_ui(!self.history.undo.is_empty(), |ui| {
-            ui.menu_button("Recent changes", |ui| {
-                ui.label(
-                    RichText::new("Click one to undo back to before it")
-                        .size(11.0)
-                        .color(theme::p().text_dim),
-                );
-                let entries = self.history.undo.clone();
-                for (k, e) in entries.iter().enumerate() {
-                    let r = ui.add(egui::Button::new(&e.label).shortcut_text(ago(e.at_ms)));
-                    if r.clicked() {
-                        self.undo_steps(k + 1);
-                        ui.close();
-                    }
-                }
-            });
+        // The list unfolds in place. As a side menu it opened on hover, and
+        // at the window's right edge it covered the items below it while
+        // the pointer passed on its way down. A long list scrolls, about
+        // ten changes tall, so the menu never grows past that.
+        // Each time the menu opens, the list starts folded and at its top,
+        // the newest change.
+        let pass = ui.ctx().cumulative_pass_nr();
+        let just_opened = pass > self.main_menu_pass + 1;
+        self.main_menu_pass = pass;
+        if just_opened {
+            self.main_menu_opens += 1;
+        }
+        let opens = self.main_menu_opens;
+        let any = !self.history.undo.is_empty();
+        ui.add_enabled_ui(any, |ui| {
+            egui::CollapsingHeader::new("Recent changes")
+                .id_salt("recent_changes")
+                .open((!any || just_opened).then_some(false))
+                .show(ui, |ui| {
+                    ui.label(
+                        RichText::new("Click one to undo back to before it")
+                            .size(11.0)
+                            .color(theme::p().text_dim),
+                    );
+                    let row = ui.spacing().interact_size.y + ui.spacing().item_spacing.y;
+                    let max_h = (10.0 * row).min(ui.content_rect().height() * 0.4);
+                    let entries = self.history.undo.clone();
+                    // A width of its own: sized by the text, a long name
+                    // would widen the whole menu. Long names are cut with
+                    // "…" and shown whole on hover.
+                    let list_w = 240.0;
+                    // A new list each opening, so it starts at the top.
+                    egui::ScrollArea::vertical()
+                        .id_salt(("recent_changes_list", opens))
+                        .max_height(max_h)
+                        .show(ui, |ui| {
+                            ui.set_width(list_w);
+                            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
+                            for (k, e) in entries.iter().enumerate() {
+                                let button = egui::Button::new(&e.label)
+                                    .shortcut_text(ago(e.at_ms))
+                                    .min_size(vec2(list_w, 0.0));
+                                let r = ui.add(button).on_hover_text(&e.label);
+                                if r.clicked() {
+                                    self.undo_steps(k + 1);
+                                    // The menu, not the fold this sits in.
+                                    ui.close_kind(egui::UiKind::Menu);
+                                }
+                            }
+                        });
+                });
         });
         ui.separator();
         if ui
@@ -158,6 +195,7 @@ impl App {
         }
         if ui.button("Quit window").clicked() {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+            ui.close();
         }
     }
 

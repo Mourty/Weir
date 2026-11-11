@@ -449,6 +449,14 @@ impl App {
                 }
             }
         });
+        // Otherwise the first two look like the same choice, and are.
+        if !crate::hotkeys::on_kde() {
+            explain(
+                ui,
+                "This desktop has no such popup for other programs, so Weir shows \
+                 a notification for either.",
+            );
+        }
     }
 
     /// Where and how loud hotkeys' sounds play.

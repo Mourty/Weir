@@ -157,11 +157,13 @@ async fn main() -> Result<()> {
     // Lets a client ask for the window over the control socket, not just the
     // tray, so a hotkey or a stream deck can raise the mixer.
     controller.set_window_sender(tray_tx.clone());
-    let tray = if !args.no_tray && controller.settings().tray {
-        start_tray(&controller, tray_tx).await
-    } else {
-        None
+    let mut tray = ShownTray {
+        handle: None,
+        tx: tray_tx.clone(),
     };
+    if !args.no_tray && controller.settings().tray {
+        tray.handle = start_tray(&controller, tray_tx).await;
+    }
 
     if std::env::var_os(OPEN_WINDOW_ENV).is_some() {
         open_window_when_ready(&controller, socket_path.clone(), false);
@@ -191,7 +193,7 @@ async fn main() -> Result<()> {
         &mut signals,
         serve,
         tray_rx,
-        tray.as_ref(),
+        &mut tray,
         &crashed,
     )
     .await;
@@ -200,7 +202,7 @@ async fn main() -> Result<()> {
     // anything that still manages to hang. The session manager waits for
     // this process before it can log out or power off.
     start_shutdown_watchdog(SHUTDOWN_LIMIT);
-    shut_down(&controller, tray, &socket_path).await;
+    shut_down(&controller, tray.handle, &socket_path).await;
 
     // A stop that arrived while shutting down for a restart cancels the
     // restart: coming back now would only hold up whoever asked us to stop.
@@ -393,6 +395,32 @@ async fn start_tray(
     }
 }
 
+/// The tray icon, if one is shown, and what its menu sends commands with.
+struct ShownTray {
+    handle: Option<ksni::Handle<MixerTray>>,
+    tx: UnboundedSender<TrayCommand>,
+}
+
+impl ShownTray {
+    /// Put up a new tray icon in place of the old one, for a new look.
+    ///
+    /// GNOME's AppIndicator extension, told that an icon shown as a
+    /// picture now has a name, draws the named one over the picture rather
+    /// than instead of it, until the icon is shown afresh. A new icon is
+    /// that, and does no harm elsewhere.
+    async fn renew(&mut self, controller: &Controller) {
+        if let Some(old) = self.handle.take() {
+            if tokio::time::timeout(Duration::from_secs(1), old.shutdown())
+                .await
+                .is_err()
+            {
+                warn!("the old tray icon did not go away in time");
+            }
+        }
+        self.handle = start_tray(controller, self.tx.clone()).await;
+    }
+}
+
 /// The signals that stop the daemon, and the one that restarts it.
 ///
 /// SIGTERM, SIGINT and SIGHUP all mean "stop". SIGHUP in particular is what
@@ -438,7 +466,7 @@ async fn run(
     signals: &mut StopSignals,
     mut serve: tokio::task::JoinHandle<()>,
     mut tray_rx: UnboundedReceiver<TrayCommand>,
-    tray: Option<&ksni::Handle<MixerTray>>,
+    tray: &mut ShownTray,
     crashed: &tokio::sync::Notify,
 ) -> Outcome {
     // Keeps the tray's icon, menu and tooltip in step with the mixer.
@@ -538,11 +566,20 @@ async fn run(
                 None => return Outcome::Exit,
 
             },
-            note = notes.recv(), if notes_open && tray.is_some() => {
-                let Some(handle) = tray else { continue };
+            note = notes.recv(), if notes_open && tray.handle.is_some() => {
+                let Some(handle) = tray.handle.as_ref() else { continue };
                 match note {
                     Ok(Notification::SettingsChanged(s)) => {
-                        handle.update(|t| (t.startup, t.icon) = (s.startup, s.tray_icon)).await;
+                        let new_look = handle
+                            .update(|t| {
+                                let new_look = t.icon != s.tray_icon;
+                                (t.startup, t.icon) = (s.startup, s.tray_icon);
+                                new_look
+                            })
+                            .await;
+                        if new_look == Some(true) {
+                            tray.renew(controller).await;
+                        }
                     }
                     Ok(Notification::EngineChanged(e)) => {
                         handle.update(|t| t.engine_state = e.state).await;

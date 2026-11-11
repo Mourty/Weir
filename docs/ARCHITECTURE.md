@@ -288,7 +288,8 @@ since its callbacks run on their own task. Its bus name is normally
 GNOME's tray extension lost the icon when that name came back at once. So
 after a restart (`WEIR_RESTARTED`) the tray registers under its
 connection's unique name, which Plasma, GNOME, Cinnamon and COSMIC all
-accept.
+accept. A new icon look puts up a new icon (`ShownTray::renew`), since
+GNOME's extension draws a named icon over the picture it showed before.
 
 **Hotkeys** (`hotkeys/`) are steps, each an ordinary request, so a hotkey
 can do whatever the protocol can and needs nothing of its own in the

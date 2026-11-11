@@ -828,9 +828,13 @@ lists them. A switched-off hotkey keeps its entry and keys there, and the
 desktop keeps those keys for it meanwhile.
 
 On an X11 desktop, Weir watches the keys itself, and a key another program
-already uses is reported in the list. Anywhere else, hotkeys work only by
-name: add a shortcut in your desktop's keyboard settings that runs
-`weirctl hotkey run "NAME"`.
+already uses is reported in the list. Anywhere else, such as COSMIC on
+Pop!_OS, hotkeys work only by name: add a shortcut in your desktop's
+keyboard settings that runs `weirctl hotkey run "NAME"`. Such a shortcut
+runs once per press, so a hotkey that acts while its keys are held, such
+as push to talk, works there only as a tap; use one that switches on one
+press and off the next instead. From an AppImage, link `weirctl` first
+(see [Running Weir as an AppImage](#running-weir-as-an-appimage)).
 
 ## Export and import
 

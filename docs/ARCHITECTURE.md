@@ -290,6 +290,8 @@ after a restart (`WEIR_RESTARTED`) the tray registers under its
 connection's unique name, which Plasma, GNOME, Cinnamon and COSMIC all
 accept. A new icon look puts up a new icon (`ShownTray::renew`), since
 GNOME's extension draws a named icon over the picture it showed before.
+Menu entries carry pictures or `-symbolic` names: COSMIC draws every named
+menu icon in one color, so a color icon becomes a white shape.
 
 **Hotkeys** (`hotkeys/`) are steps, each an ordinary request, so a hotkey
 can do whatever the protocol can and needs nothing of its own in the

@@ -179,7 +179,7 @@ impl Tray for MixerTray {
         vec![
             StandardItem {
                 label: "Show the mixer".into(),
-                icon_name: "weir".into(),
+                icon_data: menu_icon().to_vec(),
                 activate: Box::new(|this: &mut Self| this.send(TrayCommand::Show)),
                 ..Default::default()
             }
@@ -214,7 +214,7 @@ impl Tray for MixerTray {
             MenuItem::Separator,
             StandardItem {
                 label: "Restart Weir".into(),
-                icon_name: "view-refresh".into(),
+                icon_name: "view-refresh-symbolic".into(),
                 activate: Box::new(|this: &mut Self| {
                     this.send(TrayCommand::Restart {
                         window: false,
@@ -227,7 +227,7 @@ impl Tray for MixerTray {
             self.safe_mode_item(),
             StandardItem {
                 label: "Quit Weir".into(),
-                icon_name: "application-exit".into(),
+                icon_name: "application-exit-symbolic".into(),
                 activate: Box::new(|this: &mut Self| this.send(TrayCommand::Exit)),
                 ..Default::default()
             }
@@ -270,14 +270,14 @@ impl MixerTray {
             Some(r) => vec![
                 StandardItem {
                     label: recording_words(r),
-                    icon_name: "media-record".into(),
+                    icon_name: "media-record-symbolic".into(),
                     enabled: false,
                     ..Default::default()
                 }
                 .into(),
                 StandardItem {
                     label: "Stop recording".into(),
-                    icon_name: "media-playback-stop".into(),
+                    icon_name: "media-playback-stop-symbolic".into(),
                     activate: Box::new(|this: &mut Self| this.send(TrayCommand::StopRecording)),
                     ..Default::default()
                 }
@@ -285,7 +285,7 @@ impl MixerTray {
             ],
             None if self.can_record => vec![StandardItem {
                 label: "Start recording".into(),
-                icon_name: "media-record".into(),
+                icon_name: "media-record-symbolic".into(),
                 activate: Box::new(|this: &mut Self| this.send(TrayCommand::StartRecording)),
                 ..Default::default()
             }
@@ -350,6 +350,43 @@ fn appimage_icons() -> Option<String> {
         dir.is_dir().then(|| dir.to_string_lossy().into_owned())
     })
     .clone()
+}
+
+/// Weir's color icon for the menu, as a 32 px PNG; empty if it cannot be
+/// made.
+///
+/// Menus get pictures, not names: COSMIC draws every named menu icon in
+/// one color, so a color icon by name comes out as a white shape (Weir's
+/// as a white square), and an AppImage's icons are in no theme. The other
+/// entries' icons are named `-symbolic`, as one color is how COSMIC draws
+/// them, and where a theme lacks that name the desktop falls back to the
+/// plain one.
+fn menu_icon() -> &'static [u8] {
+    static PNG: OnceLock<Vec<u8>> = OnceLock::new();
+    PNG.get_or_init(|| {
+        let Some((side, rgba)) = decode_square(include_bytes!("../../gui/assets/weir.png")) else {
+            return Vec::new();
+        };
+        let icon = shrink(&rgba, side, 32);
+        // ARGB back to RGBA.
+        let pixels: Vec<u8> = icon
+            .data
+            .chunks_exact(4)
+            .flat_map(|p| [p[1], p[2], p[3], p[0]])
+            .collect();
+        let mut out = Vec::new();
+        let mut encoder = png::Encoder::new(&mut out, 32, 32);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        let written = encoder.write_header().and_then(|mut writer| {
+            writer.write_image_data(&pixels)?;
+            writer.finish()
+        });
+        if written.is_err() {
+            return Vec::new();
+        }
+        out
+    })
 }
 
 /// Weir's color icon in the sizes panels use, made once from the 256 px
@@ -428,6 +465,14 @@ fn shrink(rgba: &[u8], side: usize, size: i32) -> Icon {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_menu_gets_weirs_icon_as_a_small_png() {
+        let (side, rgba) = decode_square(menu_icon()).expect("a square RGBA PNG");
+        assert_eq!(side, 32);
+        let at = |x: usize, y: usize| &rgba[(y * 32 + x) * 4..][..4];
+        assert!(at(16, 16)[3] > 200, "solid in the middle");
+    }
 
     #[test]
     fn the_recording_dot_fills_its_square_and_the_corners_are_clear() {

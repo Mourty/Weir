@@ -27,7 +27,8 @@ pub enum TrayCommand {
     /// Stop recording.
     StopRecording,
     /// Stop everything and start again: opening the mixer window then
-    /// (`window`), in safe mode (`safe`).
+    /// (`window`; one that is open comes back anyway), in safe mode
+    /// (`safe`).
     Restart { window: bool, safe: bool },
     /// Bring back everything safe mode holds back, and leave it.
     LeaveSafeMode,

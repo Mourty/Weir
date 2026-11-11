@@ -1084,8 +1084,9 @@ sound keeps flowing. Opening the window again picks up where it was.
 if needed. Its menu has **Show the mixer**, **Start recording** (once
 something is ticked to record) or, while recording, how long it has been
 and **Stop recording**, **Open the recorder**, **When Weir starts**,
-**Restart Weir** and **Quit Weir**. While recording, the icon has a red
-dot. GNOME shows tray icons only with the **AppIndicator and
+**Restart Weir** and **Quit Weir**. **Restart Weir** brings the mixer back
+if it was open, and otherwise does as **When Weir starts** says. While
+recording, the icon has a red dot. GNOME shows tray icons only with the **AppIndicator and
 KStatusNotifierItem Support** extension, which Ubuntu has already; on
 other GNOME systems, install it from your software center or
 extensions.gnome.org.

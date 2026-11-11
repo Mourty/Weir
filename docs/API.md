@@ -2260,13 +2260,14 @@ await mixer.call("show_window");
 
 Restart the daemon, as the tray's **Restart Weir** does: windows get
 `quit`, and the daemon saves, stops, and starts again from its saved
-settings. Restarting is the safest way to get everything working again
-after part of the daemon stopped because of a bug (see `crashed` under
-[Notifications](#notifications)).
+settings. A window that was open is opened again once it is back; with
+none, the daemon opens one as `startup` says. Restarting is the safest
+way to get everything working again after part of the daemon stopped
+because of a bug (see `crashed` under [Notifications](#notifications)).
 
 | Parameter | Type | |
 |---|---|---|
-| `window` | boolean, *optional* | Open the mixer window once the daemon is back, whatever `startup` says. |
+| `window` | boolean, *optional* | Open the mixer window once the daemon is back, whatever `startup` says, even if none was open. |
 | `safe` | boolean, *optional* | Start again in [safe mode](#safe-mode), with everything held back that can be. Without it, the daemon starts normally, even if it is in safe mode now. |
 
 Returns `null`, then the daemon restarts: the connection closes, and the

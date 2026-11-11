@@ -467,7 +467,8 @@ async fn run(
             }
             _ = signals.usr1.recv() => {
                 info!("restarting on SIGUSR1");
-                return Outcome::Restart { window: false, safe: false };
+                let window = controller.window_attached();
+                return Outcome::Restart { window, safe: false };
             }
             _ = &mut serve => {
                 error!("server task ended");
@@ -524,6 +525,9 @@ async fn run(
                 Some(TrayCommand::SetStartup(mode)) => set_startup(controller, mode),
                 Some(TrayCommand::Restart { window, safe }) => {
                     info!("restarting{}", if safe { " in safe mode" } else { "" });
+                    // The window closes for the restart, so an open one
+                    // comes back with it.
+                    let window = window || controller.window_attached();
                     return Outcome::Restart { window, safe };
                 }
                 Some(TrayCommand::LeaveSafeMode) => controller.leave_safe_mode(),
@@ -638,12 +642,18 @@ async fn shut_down(
 /// Replace this process with a fresh copy of itself, with the same
 /// arguments. Replacing rather than forking means whatever started us (a
 /// shell, or systemd) keeps supervising the same pid. With `window`, the
-/// new one opens the mixer window whatever its startup setting says; with
-/// `safe`, it starts in safe mode, and without, it does not, even if this
-/// one was started with `--safe`. Returns only if that fails.
+/// new one opens the mixer window whatever its startup setting says, and
+/// without, as that setting says; with `safe`, it starts in safe mode, and
+/// without, it does not, even if this one was started with `--safe`.
+/// Returns only if that fails.
 fn restart(window: bool, safe: bool) -> Result<()> {
     use std::os::unix::process::CommandExt;
-    let rest: Vec<String> = std::env::args().skip(1).filter(|a| a != "--safe").collect();
+    // `--no-window` comes from a window that started the service, so as
+    // not to get a second one. That window has closed for the restart.
+    let rest: Vec<String> = std::env::args()
+        .skip(1)
+        .filter(|a| a != "--safe" && a != "--no-window")
+        .collect();
     // From an AppImage, start the AppImage file again rather than the copy
     // mounted from it, so that a newer AppImage put in its place is what
     // runs, and let go of the old mount.

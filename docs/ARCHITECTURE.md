@@ -516,7 +516,10 @@ mixer's state may be half updated. The daemon also waits on the windows
 it starts: one that ends with 101, a panic, gets a desktop notification
 saying so. `restart` (and the window's **Restart Weir**) restarts the
 daemon through its main loop, as the tray does, and can ask the new one
-to open the window. `WEIR_CRASH_TEST` makes Weir crash on purpose:
+to open the window. The window closes for a restart, so an open one is
+always asked back; a restart also drops `--no-window` (the window that
+started the service passes it), so with no window open the new one opens
+it as **When Weir starts** says. `WEIR_CRASH_TEST` makes Weir crash on purpose:
 `service`, `part`, `audio` or `request` in the daemon, `window` or
 `window-part` in the window.
 

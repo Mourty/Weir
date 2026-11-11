@@ -593,7 +593,8 @@ weirctl show
 
 Restarts Weir's service, as the tray's **Restart Weir** does: the safest
 way to get everything working again after part of Weir stopped because of
-a bug. With `--window`, the mixer window opens once it is back. With
+a bug. The mixer window comes back if it was open, and otherwise opens as
+**When Weir starts** says; with `--window`, it opens either way. With
 `--safe`, it starts in [safe mode](#safe-mode); without, it starts
 normally, even if it is in safe mode now.
 

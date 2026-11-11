@@ -87,7 +87,11 @@ you saved it to:
 
 On a 64-bit ARM computer, such as a Raspberry Pi 5, an Apple Silicon Mac
 running Fedora Asahi Remix, or an ARM laptop, take the `.aarch64.rpm` or
-the `_arm64.deb` instead. There is no ARM package for Arch.
+the `_arm64.deb` instead. There is no ARM package for Arch. The ARM
+packages pass the same automatic tests as the others, but have not yet
+been tried on an ARM computer, so if you try one, please report how it
+went. On a Raspberry Pi, Weir needs Raspberry Pi OS from late 2025 (based
+on Debian 13) or newer.
 
 GitHub builds the packages from the code here and signs a record of it.
 To check that a download is exactly what GitHub built, use the

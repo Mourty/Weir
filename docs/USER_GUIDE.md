@@ -1038,7 +1038,7 @@ asks GitHub now.
 The file ending in `.AppImage` on the release page is Weir in one file,
 for any distribution with PipeWire: nothing is installed. Take the one for
 your computer (`x86_64` for most PCs, `aarch64` for 64-bit ARM ones such as
-a Raspberry Pi 5), allow it to run once (in the file manager,
+a Raspberry Pi 5, not yet tried on one), allow it to run once (in the file manager,
 **Properties › Permissions › Allow executing as program**, or `chmod +x
 Weir-*.AppImage` in a terminal), and open it.
 

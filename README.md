@@ -95,8 +95,9 @@ on Debian 13) or newer.
 
 **On any other distribution**, or to try Weir without installing it, take
 the AppImage: `Weir-…-x86_64.AppImage`, or `Weir-…-aarch64.AppImage` on
-ARM. Allow it to run (`chmod +x Weir-*.AppImage`) and open it. It needs
-PipeWire with WirePlumber and a system from 2024 or newer; the
+ARM (like the ARM packages, not yet tried on an ARM computer). Allow it
+to run (`chmod +x Weir-*.AppImage`) and open it. It needs PipeWire with
+WirePlumber and a system from 2024 or newer; the
 [user guide](docs/USER_GUIDE.md#running-weir-as-an-appimage) has the rest.
 
 GitHub builds the packages from the code here and signs a record of it.

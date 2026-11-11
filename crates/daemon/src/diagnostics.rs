@@ -209,10 +209,13 @@ impl Install {
             }
             Install::BuildFolder(_) => "Get the new source and build it again",
             Install::AppImage(file) => {
+                // Quit first: while it runs, an AppImage cannot be written
+                // over (file managers say it is in use).
                 return format!(
-                    "Download the new AppImage for your computer from the release page and put \
-                     it in place of this one ({}), or let Gear Lever or AppImageUpdate update \
-                     it. Then choose Restart Weir in Weir's tray menu",
+                    "Download the new AppImage for your computer from the release page. Choose \
+                     Quit Weir in Weir's tray menu, allow the new file to run and open it, then \
+                     delete this one ({}). Or let Gear Lever or AppImageUpdate update it, then \
+                     choose Restart Weir in Weir's tray menu",
                     file.display()
                 );
             }
@@ -384,9 +387,10 @@ mod tests {
             "AppImage, /home/sam/Apps/Weir-1.5.0-x86_64.AppImage"
         );
         let how = appimage.how_to_update();
-        assert!(how.contains("in place of this one (/home/sam/Apps/Weir-1.5.0-x86_64.AppImage)"));
+        assert!(how.contains("Choose Quit Weir"), "{how}");
+        assert!(how.contains("delete this one (/home/sam/Apps/Weir-1.5.0-x86_64.AppImage)"));
         assert!(
-            how.ends_with("Then choose Restart Weir in Weir's tray menu"),
+            how.ends_with("then choose Restart Weir in Weir's tray menu"),
             "{how}"
         );
     }

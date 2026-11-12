@@ -395,8 +395,10 @@ fn png_of(icon: &Icon) -> Vec<u8> {
     // ARGB back to RGBA.
     let pixels: Vec<u8> = icon
         .data
-        .chunks_exact(4)
-        .flat_map(|p| [p[1], p[2], p[3], p[0]])
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .flat_map(|&[a, r, g, b]| [r, g, b, a])
         .collect();
     let (Ok(width), Ok(height)) = (u32::try_from(icon.width), u32::try_from(icon.height)) else {
         return Vec::new();

@@ -291,7 +291,12 @@ connection's unique name, which Plasma, GNOME, Cinnamon and COSMIC all
 accept. A new icon look puts up a new icon (`ShownTray::renew`), since
 GNOME's extension draws a named icon over the picture it showed before.
 Menu entries carry pictures or `-symbolic` names: COSMIC draws every named
-menu icon in one color, so a color icon becomes a white shape.
+menu icon in one color, so a color icon becomes a white shape. While
+recording, the color icon has the red dot drawn into its pictures: GNOME
+and Cinnamon draw no overlay icon, and Plasma cuts an overlay picture to
+its top-left quarter on a scaled display. The one-color icon, which goes
+by name, gets an overlay by name (`media-record`), which Plasma draws
+right.
 
 **Hotkeys** (`hotkeys/`) are steps, each an ordinary request, so a hotkey
 can do whatever the protocol can and needs nothing of its own in the

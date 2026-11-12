@@ -115,8 +115,10 @@ impl Tray for MixerTray {
         appimage_icons().unwrap_or_default()
     }
 
+    /// The color icon, with a red dot in its corner while recording.
     fn icon_pixmap(&self) -> Vec<Icon> {
         match self.icon {
+            TrayIcon::Color if self.recording.is_some() => recording_pixmaps().to_vec(),
             TrayIcon::Color => color_pixmaps().to_vec(),
             TrayIcon::OneColor => Vec::new(),
         }
@@ -126,13 +128,17 @@ impl Tray for MixerTray {
         Status::Active
     }
 
-    /// A red dot over the icon while recording. Desktops shrink it into a
-    /// corner of the icon themselves.
-    fn overlay_icon_pixmap(&self) -> Vec<Icon> {
-        if self.recording.is_none() {
-            return Vec::new();
+    /// While recording, a red dot over an icon that goes by name, which
+    /// Weir cannot draw on. Only Plasma shows these. It is given by name:
+    /// one given as a picture Plasma cuts to its top-left quarter on a
+    /// scaled display. The color icon has the dot drawn in instead
+    /// ([`Self::icon_pixmap`]), which every desktop shows.
+    fn overlay_icon_name(&self) -> String {
+        if self.recording.is_some() && !self.icon_name().is_empty() {
+            "media-record".into()
+        } else {
+            String::new()
         }
-        [16, 32].into_iter().map(red_dot).collect()
     }
 
     /// The desktop has no tray right now: at login before the panel is up,
@@ -270,7 +276,7 @@ impl MixerTray {
             Some(r) => vec![
                 StandardItem {
                     label: recording_words(r),
-                    icon_name: "media-record-symbolic".into(),
+                    icon_data: record_icon().to_vec(),
                     enabled: false,
                     ..Default::default()
                 }
@@ -285,7 +291,7 @@ impl MixerTray {
             ],
             None if self.can_record => vec![StandardItem {
                 label: "Start recording".into(),
-                icon_name: "media-record-symbolic".into(),
+                icon_data: record_icon().to_vec(),
                 activate: Box::new(|this: &mut Self| this.send(TrayCommand::StartRecording)),
                 ..Default::default()
             }
@@ -311,11 +317,11 @@ fn recording_words((seconds, tracks): (f64, usize)) -> String {
     format!("Recording · {} · {tracks} track{s}", clock(seconds))
 }
 
-/// A red dot filling a `size` square, with a thin dark ring so it shows on
-/// a red icon or panel too: ARGB in network order, not premultiplied.
-fn red_dot(size: i32) -> Icon {
+/// A red dot of radius `r` in the middle of a `size` square, with a thin
+/// dark ring a pixel further out so it shows on a red icon or panel too:
+/// ARGB in network order, not premultiplied.
+fn red_dot(size: i32, r: f32) -> Icon {
     let c = (size as f32 - 1.0) / 2.0;
-    let r = size as f32 / 2.0 - 1.0;
     let mut data = Vec::with_capacity((size * size * 4) as usize);
     for y in 0..size {
         for x in 0..size {
@@ -363,30 +369,87 @@ fn appimage_icons() -> Option<String> {
 /// plain one.
 fn menu_icon() -> &'static [u8] {
     static PNG: OnceLock<Vec<u8>> = OnceLock::new();
-    PNG.get_or_init(|| {
-        let Some((side, rgba)) = decode_square(include_bytes!("../../gui/assets/weir.png")) else {
-            return Vec::new();
-        };
-        let icon = shrink(&rgba, side, 32);
-        // ARGB back to RGBA.
-        let pixels: Vec<u8> = icon
-            .data
-            .chunks_exact(4)
-            .flat_map(|p| [p[1], p[2], p[3], p[0]])
-            .collect();
-        let mut out = Vec::new();
-        let mut encoder = png::Encoder::new(&mut out, 32, 32);
-        encoder.set_color(png::ColorType::Rgba);
-        encoder.set_depth(png::BitDepth::Eight);
-        let written = encoder.write_header().and_then(|mut writer| {
-            writer.write_image_data(&pixels)?;
-            writer.finish()
-        });
-        if written.is_err() {
-            return Vec::new();
+    PNG.get_or_init(
+        || match decode_square(include_bytes!("../../gui/assets/weir.png")) {
+            Some((side, rgba)) => png_of(&shrink(&rgba, side, 32)),
+            None => Vec::new(),
+        },
+    )
+}
+
+/// A red dot for the menu's recording entries, as a 32 px PNG, the size
+/// of a media-record icon. Every desktop's theme has one, but COSMIC,
+/// GNOME and Cinnamon draw it in one color.
+fn record_icon() -> &'static [u8] {
+    static PNG: OnceLock<Vec<u8>> = OnceLock::new();
+    PNG.get_or_init(|| png_of(&red_dot(32, 9.0)))
+}
+
+/// `icon` as a PNG; empty if it cannot be made.
+fn png_of(icon: &Icon) -> Vec<u8> {
+    // ARGB back to RGBA.
+    let pixels: Vec<u8> = icon
+        .data
+        .chunks_exact(4)
+        .flat_map(|p| [p[1], p[2], p[3], p[0]])
+        .collect();
+    let (Ok(width), Ok(height)) = (u32::try_from(icon.width), u32::try_from(icon.height)) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    let mut encoder = png::Encoder::new(&mut out, width, height);
+    encoder.set_color(png::ColorType::Rgba);
+    encoder.set_depth(png::BitDepth::Eight);
+    let written = encoder.write_header().and_then(|mut writer| {
+        writer.write_image_data(&pixels)?;
+        writer.finish()
+    });
+    if written.is_err() {
+        return Vec::new();
+    }
+    out
+}
+
+/// The color icon with a red dot in its bottom right quarter, as Plasma
+/// draws a recording program's icon, made once.
+fn recording_pixmaps() -> &'static [Icon] {
+    static ICONS: OnceLock<Vec<Icon>> = OnceLock::new();
+    ICONS.get_or_init(|| color_pixmaps().iter().map(with_dot).collect())
+}
+
+/// `icon` with a red dot laid over its bottom right quarter.
+fn with_dot(icon: &Icon) -> Icon {
+    let size = icon.width;
+    let side = (size + 1) / 2;
+    let dot = red_dot(side, side as f32 / 2.0 - 1.0);
+    let mut out = icon.clone();
+    let at = size - side;
+    for y in 0..side {
+        for x in 0..side {
+            let from = ((y * side + x) * 4) as usize;
+            let to = (((at + y) * size + at + x) * 4) as usize;
+            let (Some(top), Some(under)) =
+                (dot.data.get(from..from + 4), out.data.get_mut(to..to + 4))
+            else {
+                continue;
+            };
+            // The dot over the icon, with straight (not premultiplied)
+            // alpha.
+            let a = top[0] as f32 / 255.0;
+            let b = under[0] as f32 / 255.0;
+            let both = a + b * (1.0 - a);
+            if both <= 0.0 {
+                continue;
+            }
+            let mut mixed = [(both * 255.0).round() as u8, 0, 0, 0];
+            for c in 1..4 {
+                let v = (top[c] as f32 * a + under[c] as f32 * b * (1.0 - a)) / both;
+                mixed[c] = v.round() as u8;
+            }
+            under.copy_from_slice(&mixed);
         }
-        out
-    })
+    }
+    out
 }
 
 /// Weir's color icon in the sizes panels use, made once from the 256 px
@@ -475,8 +538,40 @@ mod tests {
     }
 
     #[test]
+    fn recording_draws_a_dot_into_the_bottom_right_of_the_color_icon() {
+        let plain = color_pixmaps();
+        let dotted = recording_pixmaps();
+        assert_eq!(plain.len(), dotted.len());
+        for (plain, dotted) in plain.iter().zip(dotted) {
+            let n = plain.width as usize;
+            assert_eq!((dotted.width, dotted.height), (plain.width, plain.height));
+            let at = |icon: &Icon, x: usize, y: usize| icon.data[(y * n + x) * 4..][..4].to_vec();
+            assert_eq!(
+                at(dotted, n / 4, n / 4),
+                at(plain, n / 4, n / 4),
+                "{n} px: top left as it was"
+            );
+            let middle = n - n.div_ceil(2) / 2 - 1;
+            assert_eq!(
+                at(dotted, middle, middle),
+                [255, 235, 75, 65],
+                "{n} px: red in the dot"
+            );
+        }
+    }
+
+    #[test]
+    fn the_menus_recording_dot_is_a_red_png_with_room_around_it() {
+        let (side, rgba) = decode_square(record_icon()).expect("a square RGBA PNG");
+        assert_eq!(side, 32);
+        let at = |x: usize, y: usize| &rgba[(y * 32 + x) * 4..][..4];
+        assert_eq!(at(16, 16), [235, 75, 65, 255], "red in the middle");
+        assert_eq!(at(2, 16)[3], 0, "clear at the sides");
+    }
+
+    #[test]
     fn the_recording_dot_fills_its_square_and_the_corners_are_clear() {
-        let icon = red_dot(16);
+        let icon = red_dot(16, 7.0);
         assert_eq!(icon.data.len(), 16 * 16 * 4);
         let at = |x: usize, y: usize| &icon.data[(y * 16 + x) * 4..][..4];
         assert_eq!(at(0, 0)[0], 0, "clear in the corners");

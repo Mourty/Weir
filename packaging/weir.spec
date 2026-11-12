@@ -29,7 +29,7 @@
 %global cargo_flags --release --locked
 
 Name:           weir
-Version:        1.4.0
+Version:        1.4.1
 Release:        %{?_release}%{!?_release:1}%{?dist}
 Summary:        Voicemeeter-style audio mixer for PipeWire
 
@@ -98,6 +98,23 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/io.github.mour
 %doc %{_datadir}/doc/%{name}/docs/
 
 %changelog
+* Thu Nov 12 2026 Mourty <Mourt2@proton.me> - 1.4.1-1
+- Ready-made AppImages for x86_64 and 64-bit ARM, and RPM and .deb
+  packages for 64-bit ARM. The ARM builds have not been tried on an ARM
+  computer yet.
+- From an AppImage, Weir starts at login, offers to add itself to the
+  application menu, and Restart Weir starts the AppImage file, so an
+  update takes effect.
+- Restart Weir brings the mixer back when it was open, and otherwise
+  does as When Weir starts says; it used to leave only the tray icon.
+- Logging out and straight back in opens the mixer again.
+- Tray: the icon stays after Restart Weir on GNOME, switching it to one
+  color draws cleanly, the recording dot sits right on scaled displays
+  and shows on GNOME and Cinnamon, and the menu's icons show on COSMIC.
+- Hotkey notifications show on GNOME.
+- Recent changes unfold inside the "…" menu instead of opening beside it.
+- The red outline around a strip being recorded is no longer cut off.
+
 * Sat Nov 07 2026 Mourty <Mourt2@proton.me> - 1.4.0-1
 - Show a crash report when part of Weir stops: what happened, ready to
   send as a GitHub issue with personal details hidden, and kept in

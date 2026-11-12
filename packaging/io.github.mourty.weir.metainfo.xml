@@ -70,6 +70,19 @@
   </provides>
 
   <releases>
+    <release version="1.4.1" date="2026-11-12">
+      <description>
+        <p>Ready-made AppImages and ARM packages, and fixes found while testing them.</p>
+        <ul>
+          <li>AppImages for x86_64 and 64-bit ARM, and RPM and .deb packages for 64-bit ARM. The ARM builds have not been tried on an ARM computer yet.</li>
+          <li>From an AppImage, Weir starts at login, offers to add itself to the application menu, and Restart Weir starts the new file after an update.</li>
+          <li>Restart Weir brings the mixer back when it was open, and logging out and straight back in opens it again.</li>
+          <li>The tray icon stays after Restart Weir on GNOME, its recording dot sits right on scaled displays and shows on GNOME and Cinnamon, and the tray menu's icons show on COSMIC.</li>
+          <li>Hotkey notifications show on GNOME, and Recent changes unfold inside the "…" menu.</li>
+          <li>The red outline around a strip being recorded is no longer cut off.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.4.0" date="2026-11-07">
       <description>
         <p>Crash reports, safe mode, and a sturdier Weir.</p>

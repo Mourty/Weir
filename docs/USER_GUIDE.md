@@ -907,8 +907,9 @@ out](API.md#exported-files).
 **Ctrl+Z** takes back the last change, and **Ctrl+Shift+Z** or **Ctrl+Y**
 brings it back, in the mixer and in settings windows alike. One fader drag
 is one step, however long it was. The **…** menu at the top names what the
-next undo and redo are, and **Recent changes** lists the last few, so you
-can jump back to before any of them. After removing a strip or bus, a
+next undo and redo are. Click **Recent changes** there to unfold the last
+changes, newest first (the list scrolls when it is long), and click one
+to jump back to before it. After removing a strip or bus, a
 message at the bottom of the window offers to undo it.
 
 The history covers changes made from anywhere, including `weirctl` and

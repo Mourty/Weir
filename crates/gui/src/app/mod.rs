@@ -225,6 +225,10 @@ pub struct App {
     clear_seen_asked: bool,
     /// What can be undone and redone, as of this frame.
     history: HistoryInfo,
+    /// The pass in which the "…" menu was last drawn, to tell when it
+    /// has just opened, and how often it has opened.
+    main_menu_pass: u64,
+    main_menu_opens: u64,
     /// Strips and buses that have clipped since their CLIP light was last
     /// cleared.
     clips: HashSet<StripOrBus>,
@@ -311,6 +315,8 @@ impl App {
             seen_filter: String::new(),
             clear_seen_asked: false,
             history: HistoryInfo::default(),
+            main_menu_pass: 0,
+            main_menu_opens: 0,
             reductions: HashMap::new(),
             desktop_font: None,
             spectrum_watch: Vec::new(),

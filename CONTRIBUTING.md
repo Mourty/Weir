@@ -246,7 +246,9 @@ updaters use. It builds for the computer it runs on.
 GitHub builds the packages whenever a pull request changes the
 packaging, and on demand from **Actions → Packages → Run workflow**. Each
 run keeps them as downloads on its page for two weeks, for trying before a
-release. It builds the RPM, the `.deb` and the AppImage twice, for x86_64
+release: each a zip named after the one file in it, under a table that
+says which is for which system. Every run also gathers and checks the
+files a release would get; only a release signs and attaches them. It builds the RPM, the `.deb` and the AppImage twice, for x86_64
 and for 64-bit ARM (on GitHub's ARM runners, free for public repositories), and
 an Arch Linux package for x86_64 in an Arch container, from
 `packaging/aur/PKGBUILD`, which is also the recipe for the

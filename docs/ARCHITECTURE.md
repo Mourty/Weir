@@ -397,6 +397,19 @@ changing it with `enable` or `disable` (in `login.rs`), so the setting
 cannot drift from what systemd will actually do. It never uses `--now`:
 the daemon asking is already running.
 
+A logout does not always stop the daemon: the systemd user manager, and
+everything the session started, outlives it when the next login comes
+within logind's `UserStopDelaySec` (10 s by default). Then nothing starts
+at that login, the unit included (the manager never left
+`default.target`), and the window closed with the old desktop. So the
+daemon watches logind for a new graphical login of its own user
+(`logins.rs`, `SessionNew` on the system bus) and treats it as a start:
+once the new desktop's tray is back (the desktop has handed the user
+manager its display by then), or 10 s on where there is no tray to wait
+for, it opens the window as `startup` says, unless one is open. It
+spawns the window with the manager's display variables, not its own,
+which belong to the old desktop.
+
 **From an AppImage** (`weir_protocol::appimage`), nothing is installed.
 The AppImage's starter mounts the image, sets `APPIMAGE` (the file) and
 `APPDIR` (the mount), and runs `packaging/appimage/AppRun`, which starts

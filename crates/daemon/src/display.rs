@@ -34,6 +34,14 @@ pub fn window_env() -> Option<Vec<(String, String)>> {
     session_from_manager(&manager_env())
 }
 
+/// The variables for a window on a desktop that began after the daemon
+/// started: the manager's, which that desktop has just handed over, since
+/// the daemon's own may name the desktop it started on, gone since. Where
+/// the manager has none, as [`window_env`].
+pub fn new_desktop_env() -> Option<Vec<(String, String)>> {
+    session_from_manager(&manager_env()).or_else(window_env)
+}
+
 /// The systemd user manager's environment, or nothing where there is no
 /// systemd or it cannot be asked.
 fn manager_env() -> String {

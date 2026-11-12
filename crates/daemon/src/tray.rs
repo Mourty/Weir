@@ -147,11 +147,16 @@ impl Tray for MixerTray {
     fn watcher_offline(&self, reason: OfflineReason) -> bool {
         info!("waiting for the desktop's tray to appear");
         debug!("tray unavailable: {reason:?}");
+        // It was there and has gone, rather than not there yet.
+        if matches!(reason, OfflineReason::No) {
+            crate::logins::tray_went_away();
+        }
         true
     }
 
     fn watcher_online(&self) {
         info!("the desktop's tray is there; showing the tray icon");
+        crate::logins::tray_appeared();
     }
 
     fn tool_tip(&self) -> ToolTip {

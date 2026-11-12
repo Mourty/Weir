@@ -5029,7 +5029,7 @@ checksum = "a28ac98ddc8b9274cb41bb4d9d4d5c425b6020c50c46f25559911905610b4a88"
 
 [[package]]
 name = "weir"
-version = "1.4.0"
+version = "1.4.1"
 dependencies = [
  "clap",
  "dirs",
@@ -5047,7 +5047,7 @@ dependencies = [
 
 [[package]]
 name = "weir-daemon"
-version = "1.4.0"
+version = "1.4.1"
 dependencies = [
  "anyhow",
  "ashpd",
@@ -5076,7 +5076,7 @@ dependencies = [
 
 [[package]]
 name = "weir-engine"
-version = "1.4.0"
+version = "1.4.1"
 dependencies = [
  "arc-swap",
  "libspa",
@@ -5092,7 +5092,7 @@ dependencies = [
 
 [[package]]
 name = "weir-protocol"
-version = "1.4.0"
+version = "1.4.1"
 dependencies = [
  "dirs",
  "libc",
@@ -5103,7 +5103,7 @@ dependencies = [
 
 [[package]]
 name = "weir-record"
-version = "1.4.0"
+version = "1.4.1"
 dependencies = [
  "flacenc",
  "mp3lame-encoder",
@@ -5117,7 +5117,7 @@ dependencies = [
 
 [[package]]
 name = "weirctl"
-version = "1.4.0"
+version = "1.4.1"
 dependencies = [
  "anyhow",
  "clap",

@@ -124,11 +124,29 @@ impl App {
             self.prefs.meter_scale && meters,
             self.prefs.meter_peak && meters,
         );
+        // The scroll area clips at its sides, and a strip being recorded
+        // has its outline outside its frame. So the scroll area reaches
+        // into the window's margin by the outline's room, and the row
+        // starts and ends that far in: the strips sit where they would
+        // without it, and starting a recording moves nothing.
+        let room = super::recorder::REC_OUTLINE_ROOM;
+        let area = ui
+            .available_rect_before_wrap()
+            .expand2(egui::vec2(room, 0.0));
+        ui.scope_builder(egui::UiBuilder::new().max_rect(area), |ui| {
+            self.mixer_row(ui, state, &lay, room);
+        });
+    }
+
+    /// The strips and buses, in a row that scrolls sideways, `room` kept
+    /// free at either end.
+    fn mixer_row(&mut self, ui: &mut Ui, state: &FullState, lay: &Metrics, room: f32) {
         egui::ScrollArea::horizontal()
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 ui.horizontal_top(|ui| {
                     ui.set_min_height(lay.strip_h);
+                    ui.add_space(room);
                     let strips = &state.mixer.strips;
                     if strips.is_empty() {
                         ui.label(
@@ -141,10 +159,10 @@ impl App {
                     for (i, s) in strips.iter().enumerate() {
                         let item = SafeItem::Strip(s.name.clone());
                         if self.held(&item) {
-                            self.held_view(ui, item, &s.name, "STRIP", &lay);
+                            self.held_view(ui, item, &s.name, "STRIP", lay);
                             continue;
                         }
-                        let resp = self.strip_view(ui, state, s, &lay);
+                        let resp = self.strip_view(ui, state, s, lay);
                         self.drop_target(ui, &resp, i, &order);
                     }
                     ui.add_space(4.0);
@@ -163,12 +181,13 @@ impl App {
                         let item = SafeItem::Bus(b.name.clone());
                         if self.held(&item) {
                             let caption = format!("BUS {}", super::bus_label(&state.mixer, b));
-                            self.held_view(ui, item, &b.name, &caption, &lay);
+                            self.held_view(ui, item, &b.name, &caption, lay);
                             continue;
                         }
-                        let resp = self.bus_view(ui, state, b, &lay);
+                        let resp = self.bus_view(ui, state, b, lay);
                         self.drop_target(ui, &resp, i, &order);
                     }
+                    ui.add_space(room);
                 });
             });
     }

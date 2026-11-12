@@ -771,7 +771,7 @@ fn status_line(ui: &mut Ui, keys: &KeysStatus) {
 }
 
 /// Whether the desktop is KDE Plasma, going by the session's variables.
-fn on_kde() -> bool {
+pub(crate) fn on_kde() -> bool {
     std::env::var("XDG_CURRENT_DESKTOP").is_ok_and(|d| d.to_ascii_uppercase().contains("KDE"))
 }
 

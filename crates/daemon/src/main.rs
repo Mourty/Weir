@@ -4,7 +4,7 @@
 //! them together and runs them.
 
 use weir_daemon::{
-    config, controller, defaults, diagnostics, display, hotkeys, server, tray, updates,
+    config, controller, defaults, diagnostics, display, hotkeys, logins, server, tray, updates,
 };
 
 use anyhow::{Context, Result};
@@ -70,6 +70,11 @@ const OPEN_WINDOW_ENV: &str = "WEIR_OPEN_WINDOW";
 /// Set for the restarted service when it is to start in safe mode, as
 /// `--safe` does.
 const SAFE_MODE_ENV: &str = "WEIR_SAFE_MODE";
+
+/// Set on the program a restart starts. It keeps the process id, so the
+/// tray's usual bus name would be the one the old icon just gave up, and
+/// GNOME's tray, seeing it come back at once, lost the icon altogether.
+const RESTARTED_ENV: &str = "WEIR_RESTARTED";
 
 /// The longest the daemon may take to shut down before it is ended by force.
 /// Comfortably above the sum of the limits of the individual steps.
@@ -152,11 +157,13 @@ async fn main() -> Result<()> {
     // Lets a client ask for the window over the control socket, not just the
     // tray, so a hotkey or a stream deck can raise the mixer.
     controller.set_window_sender(tray_tx.clone());
-    let tray = if !args.no_tray && controller.settings().tray {
-        start_tray(&controller, tray_tx).await
-    } else {
-        None
+    let mut tray = ShownTray {
+        handle: None,
+        tx: tray_tx.clone(),
     };
+    if !args.no_tray && controller.settings().tray {
+        tray.handle = start_tray(&controller, tray_tx).await;
+    }
 
     if std::env::var_os(OPEN_WINDOW_ENV).is_some() {
         open_window_when_ready(&controller, socket_path.clone(), false);
@@ -168,6 +175,19 @@ async fn main() -> Result<()> {
                 info!("starting without a window ({})", startup.label())
             }
         }
+    }
+
+    // A login after a logout the service lived through is a start too.
+    {
+        let controller = controller.clone();
+        let socket = socket_path.clone();
+        tokio::spawn(logins::watch(move |login| {
+            tokio::spawn(open_window_at_login(
+                controller.clone(),
+                socket.clone(),
+                login,
+            ));
+        }));
     }
 
     // A part that stops because of a bug says so to the window at once.
@@ -186,7 +206,7 @@ async fn main() -> Result<()> {
         &mut signals,
         serve,
         tray_rx,
-        tray.as_ref(),
+        &mut tray,
         &crashed,
     )
     .await;
@@ -195,7 +215,7 @@ async fn main() -> Result<()> {
     // anything that still manages to hang. The session manager waits for
     // this process before it can log out or power off.
     start_shutdown_watchdog(SHUTDOWN_LIMIT);
-    shut_down(&controller, tray, &socket_path).await;
+    shut_down(&controller, tray.handle, &socket_path).await;
 
     // A stop that arrived while shutting down for a restart cancels the
     // restart: coming back now would only hold up whoever asked us to stop.
@@ -369,7 +389,14 @@ async fn start_tray(
     (tray.strips, tray.buses) = (mixer.strips.len(), mixer.buses.len());
     tray.can_record = controller.can_record();
     tray.safe_mode = controller.safe_mode().on;
-    match tray.assume_sni_available(true).spawn().await {
+    // After a restart, the connection's own unique name, which is new.
+    let restarted = std::env::var_os(RESTARTED_ENV).is_some();
+    match tray
+        .assume_sni_available(true)
+        .disable_dbus_name(restarted)
+        .spawn()
+        .await
+    {
         Ok(h) => {
             info!("tray icon started");
             Some(h)
@@ -378,6 +405,32 @@ async fn start_tray(
             warn!("no tray icon: {e}");
             None
         }
+    }
+}
+
+/// The tray icon, if one is shown, and what its menu sends commands with.
+struct ShownTray {
+    handle: Option<ksni::Handle<MixerTray>>,
+    tx: UnboundedSender<TrayCommand>,
+}
+
+impl ShownTray {
+    /// Put up a new tray icon in place of the old one, for a new look.
+    ///
+    /// GNOME's AppIndicator extension, told that an icon shown as a
+    /// picture now has a name, draws the named one over the picture rather
+    /// than instead of it, until the icon is shown afresh. A new icon is
+    /// that, and does no harm elsewhere.
+    async fn renew(&mut self, controller: &Controller) {
+        if let Some(old) = self.handle.take() {
+            if tokio::time::timeout(Duration::from_secs(1), old.shutdown())
+                .await
+                .is_err()
+            {
+                warn!("the old tray icon did not go away in time");
+            }
+        }
+        self.handle = start_tray(controller, self.tx.clone()).await;
     }
 }
 
@@ -426,7 +479,7 @@ async fn run(
     signals: &mut StopSignals,
     mut serve: tokio::task::JoinHandle<()>,
     mut tray_rx: UnboundedReceiver<TrayCommand>,
-    tray: Option<&ksni::Handle<MixerTray>>,
+    tray: &mut ShownTray,
     crashed: &tokio::sync::Notify,
 ) -> Outcome {
     // Keeps the tray's icon, menu and tooltip in step with the mixer.
@@ -455,7 +508,8 @@ async fn run(
             }
             _ = signals.usr1.recv() => {
                 info!("restarting on SIGUSR1");
-                return Outcome::Restart { window: false, safe: false };
+                let window = controller.window_attached();
+                return Outcome::Restart { window, safe: false };
             }
             _ = &mut serve => {
                 error!("server task ended");
@@ -512,6 +566,9 @@ async fn run(
                 Some(TrayCommand::SetStartup(mode)) => set_startup(controller, mode),
                 Some(TrayCommand::Restart { window, safe }) => {
                     info!("restarting{}", if safe { " in safe mode" } else { "" });
+                    // The window closes for the restart, so an open one
+                    // comes back with it.
+                    let window = window || controller.window_attached();
                     return Outcome::Restart { window, safe };
                 }
                 Some(TrayCommand::LeaveSafeMode) => controller.leave_safe_mode(),
@@ -522,11 +579,20 @@ async fn run(
                 None => return Outcome::Exit,
 
             },
-            note = notes.recv(), if notes_open && tray.is_some() => {
-                let Some(handle) = tray else { continue };
+            note = notes.recv(), if notes_open && tray.handle.is_some() => {
+                let Some(handle) = tray.handle.as_ref() else { continue };
                 match note {
                     Ok(Notification::SettingsChanged(s)) => {
-                        handle.update(|t| (t.startup, t.icon) = (s.startup, s.tray_icon)).await;
+                        let new_look = handle
+                            .update(|t| {
+                                let new_look = t.icon != s.tray_icon;
+                                (t.startup, t.icon) = (s.startup, s.tray_icon);
+                                new_look
+                            })
+                            .await;
+                        if new_look == Some(true) {
+                            tray.renew(controller).await;
+                        }
                     }
                     Ok(Notification::EngineChanged(e)) => {
                         handle.update(|t| t.engine_state = e.state).await;
@@ -626,16 +692,53 @@ async fn shut_down(
 /// Replace this process with a fresh copy of itself, with the same
 /// arguments. Replacing rather than forking means whatever started us (a
 /// shell, or systemd) keeps supervising the same pid. With `window`, the
-/// new one opens the mixer window whatever its startup setting says; with
-/// `safe`, it starts in safe mode, and without, it does not, even if this
-/// one was started with `--safe`. Returns only if that fails.
+/// new one opens the mixer window whatever its startup setting says, and
+/// without, as that setting says; with `safe`, it starts in safe mode, and
+/// without, it does not, even if this one was started with `--safe`.
+/// Returns only if that fails.
 fn restart(window: bool, safe: bool) -> Result<()> {
     use std::os::unix::process::CommandExt;
+    // `--no-window` comes from a window that started the service, so as
+    // not to get a second one. That window has closed for the restart.
+    let rest: Vec<String> = std::env::args()
+        .skip(1)
+        .filter(|a| a != "--safe" && a != "--no-window")
+        .collect();
+    // From an AppImage, start the AppImage file again rather than the copy
+    // mounted from it, so that a newer AppImage put in its place is what
+    // runs, and let go of the old mount.
+    if let Some(appimage) = weir_protocol::appimage::appimage().filter(|a| a.file.is_file()) {
+        allow_to_run(&appimage.file);
+        let held = let_go_of_the_mount();
+        let error = restart_command(&appimage.file, &["weir-daemon"], &rest, window, safe).exec();
+        // Rather than stop, start this version again from its mount, which
+        // has to stay then.
+        warn!(
+            "could not start {}: {error}; starting this version again",
+            appimage.file.display()
+        );
+        hold_on_to(&held);
+    }
     let exe = weir_protocol::own_exe().context("finding our own binary to restart")?;
-    let rest: Vec<String> = std::env::args().skip(1).filter(|a| a != "--safe").collect();
-    let mut command = std::process::Command::new(&exe);
+    let error = restart_command(&exe, &[], &rest, window, safe).exec();
+    anyhow::bail!("could not restart {}: {error}", exe.display());
+}
+
+/// Weir started again as `exe` with `first` and then `rest` as arguments.
+fn restart_command(
+    exe: &Path,
+    first: &[&str],
+    rest: &[String],
+    window: bool,
+    safe: bool,
+) -> std::process::Command {
+    let mut command = std::process::Command::new(exe);
     // A crash on purpose is for the run it was asked of.
-    command.args(&rest).env_remove(CRASH_TEST_ENV);
+    command
+        .args(first)
+        .args(rest)
+        .env_remove(CRASH_TEST_ENV)
+        .env(RESTARTED_ENV, "1");
     for (env, on) in [(OPEN_WINDOW_ENV, window), (SAFE_MODE_ENV, safe)] {
         if on {
             command.env(env, "1");
@@ -643,8 +746,69 @@ fn restart(window: bool, safe: bool) -> Result<()> {
             command.env_remove(env);
         }
     }
-    let error = command.exec();
-    anyhow::bail!("could not restart {}: {error}", exe.display());
+    command
+}
+
+/// Let `file` run, as its owner would before opening it: a newer AppImage
+/// put in place of the old one has usually just been downloaded, and a
+/// download is never allowed to run at first.
+fn allow_to_run(file: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let Ok(meta) = std::fs::metadata(file) else {
+        return;
+    };
+    let mode = meta.permissions().mode();
+    if mode & 0o100 != 0 {
+        return;
+    }
+    // Run for whoever may read it.
+    let wanted = mode | (mode & 0o444) >> 2;
+    match std::fs::set_permissions(file, std::fs::Permissions::from_mode(wanted)) {
+        Ok(()) => info!("allowed {} to run", file.display()),
+        Err(e) => warn!("could not allow {} to run: {e}", file.display()),
+    }
+}
+
+/// Close, in the program this one becomes, every file it inherited past
+/// standard input, output and error. An AppImage stays mounted while any
+/// process holds the pipe its starter hands down; a restart that kept it
+/// would keep the old version mounted beside the new one until Weir quits.
+/// Weir's own files are already marked to close. Gives the files it marked,
+/// for [`hold_on_to`].
+fn let_go_of_the_mount() -> Vec<i32> {
+    let Ok(fds) = std::fs::read_dir("/proc/self/fd") else {
+        return Vec::new();
+    };
+    let fds: Vec<i32> = fds
+        .filter_map(|e| e.ok()?.file_name().to_str()?.parse().ok())
+        .filter(|fd| *fd > 2)
+        .collect();
+    let mut marked = Vec::new();
+    for fd in fds {
+        // SAFETY: setting a flag on a descriptor number; one already
+        // closed (such as the one read_dir used) just fails.
+        unsafe {
+            let flags = libc::fcntl(fd, libc::F_GETFD);
+            if flags >= 0 && flags & libc::FD_CLOEXEC == 0 {
+                libc::fcntl(fd, libc::F_SETFD, flags | libc::FD_CLOEXEC);
+                marked.push(fd);
+            }
+        }
+    }
+    marked
+}
+
+/// Undo [`let_go_of_the_mount`], for a restart from the mount after all.
+fn hold_on_to(fds: &[i32]) {
+    for &fd in fds {
+        // SAFETY: as above.
+        unsafe {
+            let flags = libc::fcntl(fd, libc::F_GETFD);
+            if flags >= 0 {
+                libc::fcntl(fd, libc::F_SETFD, flags & !libc::FD_CLOEXEC);
+            }
+        }
+    }
 }
 
 /// Open the window as the daemon starts, once there is a desktop to show it
@@ -688,6 +852,37 @@ fn open_window_when_ready(controller: &Arc<Controller>, socket: PathBuf, minimiz
     });
 }
 
+/// A new login while the service kept running (see [`logins`]): open the
+/// window as "When Weir starts" says, once the new desktop is ready,
+/// unless one is open by then. Plasma may reopen the window it had open
+/// at logout; it gets a moment to.
+async fn open_window_at_login(controller: Arc<Controller>, socket: PathBuf, login: logins::Login) {
+    let opening = match controller.settings().startup {
+        Startup::Window => Opening::Mixer,
+        Startup::Minimized => Opening::Minimized,
+        startup @ Startup::TrayOnly => {
+            info!("not opening the mixer window ({})", startup.label());
+            return;
+        }
+    };
+    login.desktop_ready().await;
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    if controller.window_attached() {
+        info!("a mixer window is already open");
+        return;
+    }
+    match tokio::task::spawn_blocking(display::new_desktop_env)
+        .await
+        .ok()
+        .flatten()
+    {
+        Some(env) => {
+            spawn_window(&socket, opening, &env);
+        }
+        None => open_window_when_ready(&controller, socket, opening == Opening::Minimized),
+    }
+}
+
 /// Start the mixer window, with `env` added to its environment. Returns
 /// false when the binary cannot be found, which is not fatal: the daemon is
 /// perfectly usable without it.
@@ -728,6 +923,7 @@ fn spawn_window(socket: &Path, opening: Opening, env: &[(String, String)]) -> bo
             }
         }
         cmd.envs(env.iter().map(|(key, value)| (key, value)));
+        cmd.env_remove(RESTARTED_ENV);
         match cmd
             .stdin(std::process::Stdio::null())
             .kill_on_drop(false)

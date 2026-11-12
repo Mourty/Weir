@@ -1,7 +1,8 @@
-# Builds Weir's packages: an RPM for Fedora and Nobara and a .deb for
-# Ubuntu, Linux Mint, Pop!_OS and Debian, each for x86_64 and for 64-bit
-# ARM, and a package for Arch Linux and the systems built on it (x86_64
-# only), whose recipe also goes to the AUR.
+# Builds Weir's packages: an RPM for Fedora and Nobara, a .deb for
+# Ubuntu, Linux Mint, Pop!_OS and Debian, and an AppImage for any other
+# distribution, each for x86_64 and for 64-bit ARM, and a package for Arch
+# Linux and the systems built on it (x86_64 only), whose recipe also goes
+# to the AUR.
 #
 # * Publishing a release on GitHub builds them and attaches them to the
 #   release, with a SHA256SUMS file. GitHub also signs a record that this
@@ -156,6 +157,95 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  appimage:
+    name: ${{ matrix.name }}
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: AppImage
+            runner: ubuntu-24.04
+            arch: x86_64
+            appimagetool_sha256: ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
+            runtime_sha256: 2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
+          - name: AppImage, arm64
+            runner: ubuntu-24.04-arm
+            arch: aarch64
+            appimagetool_sha256: f0837e7448a0c1e4e650a93bb3e85802546e60654ef287576f46c71c126a9158
+            runtime_sha256: 00cbdfcf917cc6c0ff6d3347d59e0ca1f7f45a6df1a428a0d6d8a78664d87444
+    # Built on the oldest system it is for, like the .deb: it needs the C
+    # library of Ubuntu 24.04 or newer, and PipeWire's from the system.
+    runs-on: ${{ matrix.runner }}
+    env:
+      # Pinned, by version here and by checksum in the matrix:
+      # appimagetool packs the AppImage, and the runtime is the small
+      # program at its front that mounts and starts it, in every copy
+      # people download. A version changes both checksums.
+      APPIMAGETOOL_VERSION: "1.9.1"
+      RUNTIME_VERSION: "20251108"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang cmake pkg-config libpipewire-0.3-dev desktop-file-utils appstream \
+            squashfs-tools zsync
+      # The ARM image may come without rustup; install it if so.
+      - name: Install Rust
+        run: |
+          if ! command -v rustup >/dev/null; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+            export PATH="$HOME/.cargo/bin:$PATH"
+          fi
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - name: Fetch appimagetool and the AppImage runtime
+        run: |
+          mkdir -p tools
+          base=https://github.com/AppImage
+          curl -fsSL -o tools/appimagetool \
+            "$base/appimagetool/releases/download/$APPIMAGETOOL_VERSION/appimagetool-${{ matrix.arch }}.AppImage"
+          curl -fsSL -o tools/runtime \
+            "$base/type2-runtime/releases/download/$RUNTIME_VERSION/runtime-${{ matrix.arch }}"
+          sha256sum -c <<EOF || { sha256sum tools/appimagetool tools/runtime; exit 1; }
+          ${{ matrix.appimagetool_sha256 }}  tools/appimagetool
+          ${{ matrix.runtime_sha256 }}  tools/runtime
+          EOF
+          chmod +x tools/appimagetool
+      # The runner may have no FUSE, so appimagetool unpacks itself to run.
+      - name: Build the AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
+        run: make appimage APPIMAGETOOL="$PWD/tools/appimagetool" APPIMAGE_RUNTIME=tools/runtime
+      - name: Check the AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
+        run: |
+          cd target/appimage
+          ls -la
+          desktop-file-validate AppDir/weir.desktop
+          appstreamcli validate --no-net AppDir/usr/share/metainfo/io.github.mourty.weir.metainfo.xml
+          image=$(ls Weir-*-${{ matrix.arch }}.AppImage)
+          test -s "$image.zsync"
+          # It starts, and runs the program asked for.
+          "./$image" weirctl --version
+          "./$image" weir-daemon --version
+          # Where updaters look for the next version. The runtime reads
+          # this without mounting, but only when not told to unpack itself.
+          env -u APPIMAGE_EXTRACT_AND_RUN "./$image" --appimage-updateinformation | tee update-info
+          grep -q "^gh-releases-zsync|Mourty|Weir|latest|Weir-\*-${{ matrix.arch }}.AppImage.zsync$" update-info
+      - uses: actions/upload-artifact@v4
+        with:
+          name: appimage-${{ matrix.arch }}
+          path: |
+            target/appimage/Weir-*.AppImage
+            target/appimage/Weir-*.AppImage.zsync
+          if-no-files-found: error
+          retention-days: 14
+
   arch:
     name: Arch Linux
     needs: version
@@ -269,7 +359,7 @@ jobs:
   publish:
     name: Attach to the release
     if: github.event_name == 'release'
-    needs: [rpm, deb, arch]
+    needs: [rpm, deb, appimage, arch]
     runs-on: ubuntu-24.04
     permissions:
       contents: write # attach the files to the release
@@ -289,10 +379,17 @@ jobs:
           path: dist
       - uses: actions/download-artifact@v4
         with:
+          pattern: appimage-*
+          merge-multiple: true
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
           name: arch
           path: dist
+      # The .zsync files are for updaters, which check what they download
+      # against them; they are attached but not listed.
       - name: Write checksums
-        run: cd dist && sha256sum -- *.rpm *.deb *.pkg.tar.zst > SHA256SUMS && cat SHA256SUMS
+        run: cd dist && sha256sum -- *.rpm *.deb *.AppImage *.pkg.tar.zst > SHA256SUMS && cat SHA256SUMS
       # Signed in the same run that built the packages, so it vouches for
       # exactly these files; a file swapped on the release later fails the
       # check. Attestations need a public repository (or GitHub Enterprise).
@@ -302,6 +399,7 @@ jobs:
           subject-path: |
             dist/*.rpm
             dist/*.deb
+            dist/*.AppImage
             dist/*.pkg.tar.zst
       - name: Upload to the release
         env:

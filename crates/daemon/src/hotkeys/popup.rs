@@ -364,7 +364,9 @@ async fn notify(connection: &zbus::Connection, popup: &Popup, replaces: u32) -> 
     };
     let mut hints: HashMap<&str, V> = HashMap::new();
     hints.insert("transient", V::from(true));
-    hints.insert("urgency", V::from(0u8));
+    // Normal, not low: GNOME never pops up a low one, and a transient one
+    // is not kept in its list either, so it was never seen at all.
+    hints.insert("urgency", V::from(1u8));
     hints.insert("desktop-entry", V::from("weir"));
     // Notification services that know it show one in place of the last.
     hints.insert("x-canonical-private-synchronous", V::from("weir"));

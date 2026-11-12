@@ -244,6 +244,13 @@ fn open_licenses() -> bool {
 /// `make install` in the home folder. The one beside this program first,
 /// should both be there.
 fn licenses_folder() -> Option<PathBuf> {
+    // An AppImage carries its own, readable while it runs.
+    if let Some(a) = weir_protocol::appimage::appimage() {
+        let inside = a.dir.join("usr/share/licenses/weir");
+        if inside.is_dir() {
+            return Some(inside);
+        }
+    }
     let system = PathBuf::from("/usr/share/licenses/weir");
     let own = dirs::data_dir().map(|d| d.join("licenses").join("weir"));
     let packaged = weir_protocol::own_exe().is_ok_and(|e| e.starts_with("/usr"));

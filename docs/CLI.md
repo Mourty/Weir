@@ -3,6 +3,9 @@
 `weirctl` controls Weir from a terminal, a script or a keyboard shortcut.
 It can do everything the mixer window can, and needs the daemon to be
 running, which it is whenever the window is open or the service is enabled.
+Running Weir from an AppImage, start it as `./Weir-*.AppImage weirctl …`,
+or make a link named `weirctl` to the AppImage once; Preferences › General
+shows the command.
 
 ```sh
 weirctl state                          # everything at a glance
@@ -590,7 +593,8 @@ weirctl show
 
 Restarts Weir's service, as the tray's **Restart Weir** does: the safest
 way to get everything working again after part of Weir stopped because of
-a bug. With `--window`, the mixer window opens once it is back. With
+a bug. The mixer window comes back if it was open, and otherwise opens as
+**When Weir starts** says; with `--window`, it opens either way. With
 `--safe`, it starts in [safe mode](#safe-mode); without, it starts
 normally, even if it is in safe mode now.
 

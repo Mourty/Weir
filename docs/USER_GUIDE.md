@@ -23,6 +23,7 @@ look up when you need it.
 * [Undo](#undo)
 * [Preferences](#preferences)
 * [New versions](#new-versions)
+* [Running Weir as an AppImage](#running-weir-as-an-appimage)
 * [Weir in the background](#weir-in-the-background)
 * [Mouse and keyboard](#mouse-and-keyboard)
 * [Where Weir keeps things](#where-weir-keeps-things)
@@ -827,9 +828,13 @@ lists them. A switched-off hotkey keeps its entry and keys there, and the
 desktop keeps those keys for it meanwhile.
 
 On an X11 desktop, Weir watches the keys itself, and a key another program
-already uses is reported in the list. Anywhere else, hotkeys work only by
-name: add a shortcut in your desktop's keyboard settings that runs
-`weirctl hotkey run "NAME"`.
+already uses is reported in the list. Anywhere else, such as COSMIC on
+Pop!_OS, hotkeys work only by name: add a shortcut in your desktop's
+keyboard settings that runs `weirctl hotkey run "NAME"`. Such a shortcut
+runs once per press, so a hotkey that acts while its keys are held, such
+as push to talk, works there only as a tap; use one that switches on one
+press and off the next instead. From an AppImage, link `weirctl` first
+(see [Running Weir as an AppImage](#running-weir-as-an-appimage)).
 
 ## Export and import
 
@@ -1029,6 +1034,46 @@ mixer window opened in between may not work with it.
 `weirctl update` says the same in a terminal, and `weirctl update --check`
 asks GitHub now.
 
+## Running Weir as an AppImage
+
+The file ending in `.AppImage` on the release page is Weir in one file,
+for any distribution with PipeWire: nothing is installed. Take the one for
+your computer (`x86_64` for most PCs, `aarch64` for 64-bit ARM ones such as
+a Raspberry Pi 5, not yet tried on one), allow it to run once (in the file manager,
+**Properties › Permissions › Allow executing as program**, or `chmod +x
+Weir-*.AppImage` in a terminal), and open it.
+
+* **The application menu.** Nothing is in it at first, so the first time a
+  line under the top bar asks whether to add Weir. That writes a menu
+  entry and Weir's icons into your home folder (`~/.local/share`).
+  **Preferences › General › AppImage** adds or removes it later. On
+  desktops other than KDE Plasma, hotkeys need the entry too. If an
+  installed Weir is in the menu already, nothing is asked.
+* **Start at login** works as in an installed Weir: Weir writes its own
+  login service, `~/.config/systemd/user/weir.service`, naming the
+  AppImage.
+* **Moving it.** If you move or rename the AppImage, open it once from its
+  new place: Weir points the menu entry and start at login there.
+* **weirctl** runs as `./Weir-*.AppImage weirctl …`, or as plain `weirctl`
+  once you make a link to the AppImage. Preferences › General › AppImage
+  shows the command to copy. Make the link again if you move the AppImage.
+* **Updating.** Download the new AppImage and choose **Quit Weir** in the
+  tray menu. Put the new file where you keep the old one, allow it to run,
+  open it, and then delete the old one: Weir points its menu entry and
+  start at login at the new file. (While Weir runs, a file manager cannot
+  replace its AppImage; it says the file is in use.) An AppImage manager
+  such as Gear Lever or AppImageUpdate can update it for you instead; then
+  choose **Restart Weir** in the tray menu.
+* **What it needs:** PipeWire 0.3.77 or newer with WirePlumber, and a
+  system from 2024 or newer, such as Ubuntu 24.04, Fedora 40, Debian 13 or
+  Linux Mint 22. It needs FUSE to open, which desktops have.
+* **With an installed Weir too,** both share your settings, and only one
+  service runs at a time: a window opened from either one shows the
+  service already running. Quit Weir from the tray before switching.
+  Start at login starts the copy it was last turned on in; if that was
+  the AppImage and you delete it, the installed Weir takes over again
+  the next time it starts.
+
 ## Weir in the background
 
 Weir is two parts: the **service**, which does the mixing and owns the
@@ -1040,8 +1085,9 @@ sound keeps flowing. Opening the window again picks up where it was.
 if needed. Its menu has **Show the mixer**, **Start recording** (once
 something is ticked to record) or, while recording, how long it has been
 and **Stop recording**, **Open the recorder**, **When Weir starts**,
-**Restart Weir** and **Quit Weir**. While recording, the icon has a red
-dot. GNOME shows tray icons only with the **AppIndicator and
+**Restart Weir** and **Quit Weir**. **Restart Weir** brings the mixer back
+if it was open, and otherwise does as **When Weir starts** says. While
+recording, the icon has a red dot. GNOME shows tray icons only with the **AppIndicator and
 KStatusNotifierItem Support** extension, which Ubuntu has already; on
 other GNOME systems, install it from your software center or
 extensions.gnome.org.

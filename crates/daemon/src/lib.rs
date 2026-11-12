@@ -21,6 +21,7 @@ pub mod display;
 pub mod history;
 pub mod hotkeys;
 pub mod login;
+pub mod logins;
 pub mod recorder;
 pub mod seen_apps;
 pub mod server;

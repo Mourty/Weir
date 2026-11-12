@@ -171,6 +171,9 @@ pub struct Prefs {
     /// only be shown by a long name such as
     /// `alsa_input.usb-Astro_Gaming_Astro_MixAmp_Pro-00-input-0`.
     pub device_names: BTreeMap<String, String>,
+    /// Whether the window has asked to add Weir to the application menu,
+    /// which it does once when Weir runs from an AppImage.
+    pub appimage_menu_asked: bool,
 }
 
 impl Default for Prefs {
@@ -189,6 +192,7 @@ impl Default for Prefs {
             strip_fx_size: None,
             bus_settings_size: None,
             device_names: BTreeMap::new(),
+            appimage_menu_asked: false,
         }
     }
 }

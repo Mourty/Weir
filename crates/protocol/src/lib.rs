@@ -29,6 +29,7 @@
 
 #![warn(missing_docs)]
 
+pub mod appimage;
 pub mod crash;
 pub mod fx;
 pub mod hotkeys;

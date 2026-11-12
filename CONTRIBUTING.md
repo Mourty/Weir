@@ -250,8 +250,10 @@ release. It builds the RPM, the `.deb` and the AppImage twice, for x86_64
 and for 64-bit ARM (on GitHub's ARM runners, free for public repositories), and
 an Arch Linux package for x86_64 in an Arch container, from
 `packaging/aur/PKGBUILD`, which is also the recipe for the
-[AUR](https://aur.archlinux.org/packages/weir). The **Checks** workflow
-runs clippy and the tests on ARM too.
+[AUR](https://aur.archlinux.org/packages/weir). The recipe also lists
+`aarch64`, so Arch Linux ARM users can build it from the AUR, but nothing
+here builds or tests it that way. The **Checks** workflow runs clippy and
+the tests on ARM too.
 
 [COPR](https://copr.fedorainfracloud.org/coprs/mourt/Weir/), Fedora's
 build service, also builds the RPM for every current Fedora release and

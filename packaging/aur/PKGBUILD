@@ -14,7 +14,11 @@ pkgname=weir
 pkgver=1.0.0
 pkgrel=1
 pkgdesc='Voicemeeter-style audio mixer for PipeWire'
-arch=('x86_64')
+# aarch64 is for Arch Linux ARM. Weir builds there the same way, and its
+# other ARM packages pass the automatic tests on ARM, but no one has tried
+# this one on an ARM computer yet: please report how it goes at
+# https://github.com/Mourty/Weir/issues.
+arch=('x86_64' 'aarch64')
 url='https://github.com/Mourty/Weir'
 license=('MIT')
 # namcap calls some of these unneeded: the window loads libglvnd's EGL and

@@ -291,7 +291,12 @@ connection's unique name, which Plasma, GNOME, Cinnamon and COSMIC all
 accept. A new icon look puts up a new icon (`ShownTray::renew`), since
 GNOME's extension draws a named icon over the picture it showed before.
 Menu entries carry pictures or `-symbolic` names: COSMIC draws every named
-menu icon in one color, so a color icon becomes a white shape.
+menu icon in one color, so a color icon becomes a white shape. While
+recording, the color icon has the red dot drawn into its pictures: GNOME
+and Cinnamon draw no overlay icon, and Plasma cuts an overlay picture to
+its top-left quarter on a scaled display. The one-color icon, which goes
+by name, gets an overlay by name (`media-record`), which Plasma draws
+right.
 
 **Hotkeys** (`hotkeys/`) are steps, each an ordinary request, so a hotkey
 can do whatever the protocol can and needs nothing of its own in the
@@ -391,6 +396,19 @@ daemon asks `systemctl --user is-enabled` when it starts and after
 changing it with `enable` or `disable` (in `login.rs`), so the setting
 cannot drift from what systemd will actually do. It never uses `--now`:
 the daemon asking is already running.
+
+A logout does not always stop the daemon: the systemd user manager, and
+everything the session started, outlives it when the next login comes
+within logind's `UserStopDelaySec` (10 s by default). Then nothing starts
+at that login, the unit included (the manager never left
+`default.target`), and the window closed with the old desktop. So the
+daemon watches logind for a new graphical login of its own user
+(`logins.rs`, `SessionNew` on the system bus) and treats it as a start:
+once the new desktop's tray is back (the desktop has handed the user
+manager its display by then), or 10 s on where there is no tray to wait
+for, it opens the window as `startup` says, unless one is open. It
+spawns the window with the manager's display variables, not its own,
+which belong to the old desktop.
 
 **From an AppImage** (`weir_protocol::appimage`), nothing is installed.
 The AppImage's starter mounts the image, sets `APPIMAGE` (the file) and

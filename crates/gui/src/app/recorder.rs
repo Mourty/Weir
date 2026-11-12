@@ -11,6 +11,15 @@ use egui::{pos2, vec2, Color32, CornerRadius, Rect, RichText, Sense, Stroke, Ui}
 use std::path::{Path, PathBuf};
 use weir_protocol::*;
 
+/// How thick the red outline around a strip or bus being recorded is.
+const REC_OUTLINE_W: f32 = 2.0;
+
+/// The room the outline takes outside a strip's frame, its soft edge
+/// included: the mixer keeps this much at its sides all the time, so the
+/// first strip's outline is not cut off and nothing moves when recording
+/// starts.
+pub(super) const REC_OUTLINE_ROOM: f32 = REC_OUTLINE_W + 1.0;
+
 /// Ready-made file name patterns, with what they are called.
 const NAME_PRESETS: [(&str, &str); 3] = [
     ("Date and time", RECORD_NAMES_DEFAULT),
@@ -291,12 +300,13 @@ impl App {
 
     /// The red outline around a strip or bus being recorded, its frame at
     /// `rect`: outside it, so it leaves the color band along the top and a
-    /// bus's own outline, while its mix is on the faders, as they are.
+    /// bus's own outline, while its mix is on the faders, as they are. The
+    /// mixer keeps room for it at its edges ([`REC_OUTLINE_ROOM`]).
     pub(super) fn paint_recording_outline(ui: &Ui, rect: Rect) {
         ui.painter().rect_stroke(
             rect,
             CornerRadius::same(9),
-            Stroke::new(2.0_f32, theme::p().rec),
+            Stroke::new(REC_OUTLINE_W, theme::p().rec),
             egui::StrokeKind::Outside,
         );
     }

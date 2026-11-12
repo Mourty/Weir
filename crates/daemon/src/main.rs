@@ -4,7 +4,7 @@
 //! them together and runs them.
 
 use weir_daemon::{
-    config, controller, defaults, diagnostics, display, hotkeys, server, tray, updates,
+    config, controller, defaults, diagnostics, display, hotkeys, logins, server, tray, updates,
 };
 
 use anyhow::{Context, Result};
@@ -175,6 +175,19 @@ async fn main() -> Result<()> {
                 info!("starting without a window ({})", startup.label())
             }
         }
+    }
+
+    // A login after a logout the service lived through is a start too.
+    {
+        let controller = controller.clone();
+        let socket = socket_path.clone();
+        tokio::spawn(logins::watch(move |login| {
+            tokio::spawn(open_window_at_login(
+                controller.clone(),
+                socket.clone(),
+                login,
+            ));
+        }));
     }
 
     // A part that stops because of a bug says so to the window at once.
@@ -837,6 +850,37 @@ fn open_window_when_ready(controller: &Arc<Controller>, socket: PathBuf, minimiz
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
     });
+}
+
+/// A new login while the service kept running (see [`logins`]): open the
+/// window as "When Weir starts" says, once the new desktop is ready,
+/// unless one is open by then. Plasma may reopen the window it had open
+/// at logout; it gets a moment to.
+async fn open_window_at_login(controller: Arc<Controller>, socket: PathBuf, login: logins::Login) {
+    let opening = match controller.settings().startup {
+        Startup::Window => Opening::Mixer,
+        Startup::Minimized => Opening::Minimized,
+        startup @ Startup::TrayOnly => {
+            info!("not opening the mixer window ({})", startup.label());
+            return;
+        }
+    };
+    login.desktop_ready().await;
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    if controller.window_attached() {
+        info!("a mixer window is already open");
+        return;
+    }
+    match tokio::task::spawn_blocking(display::new_desktop_env)
+        .await
+        .ok()
+        .flatten()
+    {
+        Some(env) => {
+            spawn_window(&socket, opening, &env);
+        }
+        None => open_window_when_ready(&controller, socket, opening == Opening::Minimized),
+    }
 }
 
 /// Start the mixer window, with `env` added to its environment. Returns

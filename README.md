@@ -81,9 +81,17 @@ you saved it to:
 
 | System | File | In a terminal |
 |---|---|---|
-| Fedora, Nobara | the one ending in `.rpm` | `sudo dnf install ./weir-*.rpm` |
-| Ubuntu 24.04 and newer, Linux Mint 22, Pop!_OS 24.04, Debian 13 | the one ending in `.deb` | `sudo apt install ./weir_*.deb` |
+| Fedora, Nobara | the one ending in `.x86_64.rpm` | `sudo dnf install ./weir-*.rpm` |
+| Ubuntu 24.04 and newer, Linux Mint 22, Pop!_OS 24.04, Debian 13 | the one ending in `_amd64.deb` | `sudo apt install ./weir_*.deb` |
 | Arch Linux, CachyOS, EndeavourOS | the one ending in `.pkg.tar.zst` | `sudo pacman -U ./weir-*.pkg.tar.zst` |
+
+On a 64-bit ARM computer, such as a Raspberry Pi 5, an Apple Silicon Mac
+running Fedora Asahi Remix, or an ARM laptop, take the `.aarch64.rpm` or
+the `_arm64.deb` instead. There is no ARM package for Arch. The ARM
+packages pass the same automatic tests as the others, but have not yet
+been tried on an ARM computer, so if you try one, please report how it
+went. On a Raspberry Pi, Weir needs Raspberry Pi OS from late 2025 (based
+on Debian 13) or newer.
 
 GitHub builds the packages from the code here and signs a record of it.
 To check that a download is exactly what GitHub built, use the

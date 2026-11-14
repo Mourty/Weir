@@ -510,19 +510,23 @@ About window and `weirctl report` say the same, the home folder written as
 (`.github/ISSUE_TEMPLATE/bug_report.yml`) with the details in its `details`
 field, cut short if the address would grow too long for a browser.
 
-**Crashes** are reported, not just suffered (`weir_protocol::crash`).
-Both programs install a panic hook at the start. It writes a report to
+**Crashes** are reported, not just suffered (`weir_protocol::crash`). Both
+programs install a panic hook at the start. It writes a report to
 `~/.local/state/weir/crash.log` in full (the version, the system, which
 program and which part, the message and where, Weir's own frames picked
 from the backtrace, a few settings that matter, and the last 20 log lines
 a logging layer keeps) and adds it to `crash-pending.json` until the
-window has shown it. The same place panicking again in one run is
-reported once, since some loops carry on past a panic. The window shows a
-report at once when the daemon sends `crashed` or one of its own threads
-panicked, and otherwise at its next start; hiding personal details
-(`Report::text`) replaces the home folder with `~` and hides the user
-name, file and folder names in the home folder outside Weir's own, and
-web addresses past their site. **Report on GitHub** fills in
+window has shown it. The same place panicking again in one run is reported
+once, since some loops carry on past a panic. The window does not report
+the X server going away (a logout on an X11 desktop): winit 0.30 then
+sometimes panics where it expects an X call never to fail, so a panic in
+winit's X11 code naming a broken connection ends the window quietly with
+exit code 1, as Xlib does when it notices first (`display_lost.rs`). The
+window shows a report at once when the daemon sends `crashed` or one of
+its own threads panicked, and otherwise at its next start; hiding personal
+details (`Report::text`) replaces the home folder with `~` and hides the
+user name, file and folder names in the home folder outside Weir's own,
+and web addresses past their site. **Report on GitHub** fills in
 `.github/ISSUE_TEMPLATE/crash.yml`.
 
 The daemon keeps going past a bug where it can: each request runs inside

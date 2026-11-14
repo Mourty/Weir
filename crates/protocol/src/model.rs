@@ -1355,7 +1355,8 @@ pub struct EngineStatus {
     /// Whether the engine is connected to PipeWire.
     pub connected: bool,
     /// `connecting`, `unconnected`, `paused`, `streaming` (all is well) or
-    /// `error`; `disabled` when the daemon runs without an engine.
+    /// `error`; `waiting` while PipeWire is away, until the engine connects
+    /// again; `disabled` when the daemon runs without an engine.
     pub state: String,
     /// The sample rate the engine runs at, in Hz. 0 until known.
     pub sample_rate: u32,

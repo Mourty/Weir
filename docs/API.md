@@ -2846,8 +2846,10 @@ name; the daemon keeps the name.
 
 `state` is `streaming` when all is well, `paused` when nothing is connected
 to it, and otherwise `connecting`, `unconnected`, `error` (with the reason
-in `error`) or `disabled` (a daemon started without its engine). A quantum
-of 1024 frames at 48000 Hz is 21 ms of delay.
+in `error`), `waiting` (PipeWire stopped or restarted, and the engine
+connects again as soon as it is back, with the mix as it is by then) or
+`disabled` (a daemon started without its engine). A quantum of 1024 frames
+at 48000 Hz is 21 ms of delay.
 
 ### Meters
 

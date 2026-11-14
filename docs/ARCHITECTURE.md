@@ -518,16 +518,17 @@ from the backtrace, a few settings that matter, and the last 20 log lines
 a logging layer keeps) and adds it to `crash-pending.json` until the
 window has shown it. The same place panicking again in one run is reported
 once, since some loops carry on past a panic. The window does not report
-the X server going away (a logout on an X11 desktop): winit 0.30 then
-sometimes panics where it expects an X call never to fail, so a panic in
-winit's X11 code naming a broken connection ends the window quietly with
-exit code 1, as Xlib does when it notices first (`display_lost.rs`). The
-window shows a report at once when the daemon sends `crashed` or one of
-its own threads panicked, and otherwise at its next start; hiding personal
-details (`Report::text`) replaces the home folder with `~` and hides the
-user name, file and folder names in the home folder outside Weir's own,
-and web addresses past their site. **Report on GitHub** fills in
-`.github/ISSUE_TEMPLATE/crash.yml`.
+its X server or its window going away (a logout on an X11 desktop, or
+another program destroying the window): winit 0.30 then panics where it
+expects an X call never to fail, so a panic in winit's X11 code naming a
+broken connection ends the window quietly with exit code 1, as Xlib does
+when it notices first, and one naming BadWindow or BadDrawable closes it
+with 0 (`display_lost.rs`). The window shows a report at once when the
+daemon sends `crashed` or one of its own threads panicked, and otherwise
+at its next start; hiding personal details (`Report::text`) replaces the
+home folder with `~` and hides the user name, file and folder names in the
+home folder outside Weir's own, and web addresses past their site.
+**Report on GitHub** fills in `.github/ISSUE_TEMPLATE/crash.yml`.
 
 The daemon keeps going past a bug where it can: each request runs inside
 `crash::caught`, so a panic becomes an error answer, and so do the

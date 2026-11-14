@@ -1208,6 +1208,15 @@ start step by step, quit Weir and run `weir-daemon` in a terminal; press
 Ctrl+C to stop it. If you enabled the service, its messages are in
 `journalctl --user -u weir -n 50`.
 
+**The top bar says "waiting for PipeWire to come back".** PipeWire, the
+system's sound service, stopped or restarted: an update, a crash, or
+`systemctl --user restart pipewire`. Weir's devices go with it. Weir
+connects again by itself as soon as PipeWire is back, and sets your mix
+up again as it was. Applications that were playing reconnect on their own
+or need starting again, depending on the application; their rules put
+them back on their strips. A recording keeps going, without the time
+PipeWire was away.
+
 **An application plays somewhere else.** PipeWire's session manager puts
 new applications on the system's default output. Move it with the **Apps**
 menu, which the session manager remembers for next time, or give it a rule.

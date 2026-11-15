@@ -33,9 +33,10 @@ Version:        1.4.1
 Release:        %{?_release}%{!?_release:1}%{?dist}
 Summary:        Voicemeeter-style audio mixer for PipeWire
 
-# Weir's own license. The libraries built into it are listed, with their
+# Weir's own license. Weir 1.4.1 and earlier were MIT, whose notice comes
+# along as LICENSE-MIT. The libraries built into it are listed, with their
 # licenses, in THIRD-PARTY-LICENSES.txt.
-License:        MIT
+License:        GPL-3.0-or-later
 URL:            https://github.com/Mourty/Weir
 Source0:        %{name}-%{version}.tar.gz
 
@@ -82,6 +83,7 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/io.github.mour
 
 %files
 %license %{_datadir}/licenses/weir/LICENSE
+%license %{_datadir}/licenses/weir/LICENSE-MIT
 %license %{_datadir}/licenses/weir/nnnoiseless-BSD-3-Clause.txt
 %license %{_datadir}/licenses/weir/THIRD-PARTY-LICENSES.txt
 %license %{_datadir}/licenses/weir/LAME-COPYING.txt

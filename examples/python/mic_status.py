@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Print a line whenever a strip is muted or unmuted: a status bar module.
 
     ./mic_status.py Mic

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Mute or unmute a strip, and say which it is now.
 
     ./toggle_mute.py Mic

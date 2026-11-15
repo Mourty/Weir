@@ -5,6 +5,10 @@ and a client for each language to build your own on. Neither client needs
 anything installed beyond Python 3.8 or Node.js 18: copy the one file into
 your project.
 
+Unlike Weir itself, everything in this folder is released under the
+[MIT license](LICENSE), so programs of your own can use it under any
+license.
+
 Weir must be running. Everything here talks to it over the socket at
 `$XDG_RUNTIME_DIR/weir/control.sock`, the same way the mixer window does.
 

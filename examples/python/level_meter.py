@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """A live level meter for a strip or bus, in the terminal.
 
     ./level_meter.py Music

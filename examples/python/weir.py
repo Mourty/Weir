@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """A small client for Weir's control socket, using only the standard library.
 
 Copy this file next to your script, or put its directory on PYTHONPATH.

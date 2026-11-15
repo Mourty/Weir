@@ -265,7 +265,16 @@ that could route audio in this way, and I used AI to make that happen.
 
 ## License
 
-Weir is released under the [MIT license](LICENSE). Its noise suppression
+Weir is free software, released under the [GNU General Public
+License](LICENSE), version 3 or (at your option) any later version. You may
+use, share and change it, and whoever shares a changed Weir must share its
+source under the same terms. Weir 1.4.1 and earlier were released under the
+MIT license, whose notice is kept in [LICENSE-MIT](LICENSE-MIT). The
+examples in [`examples/`](examples/) and the code samples in the docs are
+still released under the MIT license, so programs of your own can use them
+under any license.
+
+Its noise suppression
 comes from [nnnoiseless](https://github.com/jneem/nnnoiseless), a Rust port
 of RNNoise, under the BSD 3-clause license. Recordings in MP3 are made
 with [LAME](https://lame.sourceforge.io), built into Weir under the GNU

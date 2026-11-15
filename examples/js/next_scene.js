@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: MIT
 // Load the next saved scene, in alphabetical order, wrapping around: one
 // button that steps through your scenes.
 //

@@ -16,7 +16,7 @@ members = [
 version = "1.4.1"
 edition = "2021"
 rust-version = "1.95"
-license = "MIT"
+license = "GPL-3.0-or-later"
 repository = "https://github.com/Mourty/Weir"
 # Weir ships as programs, not as libraries on crates.io.
 publish = false

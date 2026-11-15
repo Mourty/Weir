@@ -20,7 +20,7 @@ pkgdesc='Voicemeeter-style audio mixer for PipeWire'
 # https://github.com/Mourty/Weir/issues.
 arch=('x86_64' 'aarch64')
 url='https://github.com/Mourty/Weir'
-license=('MIT')
+license=('GPL-3.0-or-later')
 # namcap calls some of these unneeded: the window loads libglvnd's EGL and
 # libxkbcommon while it runs, and PipeWire and WirePlumber are the services
 # Weir talks to rather than libraries it links.

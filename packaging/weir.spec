@@ -29,7 +29,7 @@
 %global cargo_flags --release --locked
 
 Name:           weir
-Version:        1.4.1
+Version:        1.4.2
 Release:        %{?_release}%{!?_release:1}%{?dist}
 Summary:        Voicemeeter-style audio mixer for PipeWire
 
@@ -100,6 +100,20 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/io.github.mour
 %doc %{_datadir}/doc/%{name}/docs/
 
 %changelog
+* Sun Nov 15 2026 Mourty <Mourt2@proton.me> - 1.4.2-1
+- Weir is now free software under the GNU GPL, version 3 or later, so a
+  changed Weir that is shared must come with its source. Weir 1.4.1 and
+  earlier stay under the MIT license, and the example clients keep it.
+- Logging out of an X11 desktop with the mixer open no longer shows a
+  crash report at the next login, and the mixer opens again after
+  logging back in. Reported by haikarat.
+- When PipeWire restarts, Weir connects again and plays on, where it
+  used to stay silent until Weir was restarted.
+- Opening Weir while its mixer window has stopped responding replaces
+  that window, where every new window used to close straight away.
+- Security updates in the libraries Weir uses to read settings files
+  and to check for updates.
+
 * Thu Nov 12 2026 Mourty <Mourt2@proton.me> - 1.4.1-1
 - Ready-made AppImages for x86_64 and 64-bit ARM, and RPM and .deb
   packages for 64-bit ARM. The ARM builds have not been tried on an ARM

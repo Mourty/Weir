@@ -2750,7 +2750,7 @@ dependencies = [
 
 [[package]]
 name = "weir-daemon"
-version = "1.4.1"
+version = "1.4.2"
 dependencies = [
  "anyhow",
  "ashpd",
@@ -2779,7 +2779,7 @@ dependencies = [
 
 [[package]]
 name = "weir-engine"
-version = "1.4.1"
+version = "1.4.2"
 dependencies = [
  "arc-swap",
  "libspa",
@@ -2807,7 +2807,7 @@ dependencies = [
 
 [[package]]
 name = "weir-protocol"
-version = "1.4.1"
+version = "1.4.2"
 dependencies = [
  "dirs",
  "libc",
@@ -2818,7 +2818,7 @@ dependencies = [
 
 [[package]]
 name = "weir-record"
-version = "1.4.1"
+version = "1.4.2"
 dependencies = [
  "flacenc",
  "mp3lame-encoder",

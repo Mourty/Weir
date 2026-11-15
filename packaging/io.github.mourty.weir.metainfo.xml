@@ -70,6 +70,18 @@
   </provides>
 
   <releases>
+    <release version="1.4.2" date="2026-11-15">
+      <description>
+        <p>A new license, and fixes for logging out, PipeWire restarts and a stuck window.</p>
+        <ul>
+          <li>Weir is now free software under the GNU GPL, version 3 or later, so a changed Weir that is shared must come with its source. Weir 1.4.1 and earlier stay under the MIT license.</li>
+          <li>Logging out of an X11 desktop with the mixer open no longer shows a crash report at the next login, and the mixer opens again after logging back in. Reported by haikarat.</li>
+          <li>When PipeWire restarts, Weir connects again and plays on, where it used to stay silent until Weir was restarted.</li>
+          <li>Opening Weir while its mixer window has stopped responding replaces that window.</li>
+          <li>Security updates in the libraries Weir uses to read settings files and to check for updates.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.4.1" date="2026-11-12">
       <description>
         <p>Ready-made AppImages and ARM packages, and fixes found while testing them.</p>

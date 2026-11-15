@@ -1212,10 +1212,11 @@ Ctrl+C to stop it. If you enabled the service, its messages are in
 system's sound service, stopped or restarted: an update, a crash, or
 `systemctl --user restart pipewire`. Weir's devices go with it. Weir
 connects again by itself as soon as PipeWire is back, and sets your mix
-up again as it was. Applications that were playing reconnect on their own
-or need starting again, depending on the application; their rules put
-them back on their strips. A recording keeps going, without the time
-PipeWire was away.
+up again as it was. Other programs lose their sound too, with or without
+Weir: many play again once their sound starts afresh (the next song, or
+pause and play), and some, such as Discord, only find their devices again
+after you restart them. Their rules put them back on their strips. A
+recording keeps going, without the time PipeWire was away.
 
 **An application plays somewhere else.** PipeWire's session manager puts
 new applications on the system's default output. Move it with the **Apps**

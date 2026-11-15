@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // A small client for Weir's control socket, for Node.js 18 or later, with
 // no dependencies. Copy this file next to your script or plugin.
 //

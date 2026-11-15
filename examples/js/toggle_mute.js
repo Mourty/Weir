@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: MIT
 // Mute or unmute a strip, and say which it is now.
 //
 //   ./toggle_mute.js Mic

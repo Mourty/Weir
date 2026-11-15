@@ -17,7 +17,10 @@ That makes Weir easy to build on:
 
 The protocol is JSON-RPC 2.0 over a Unix socket, one message per line. Any
 language that can open a socket can use it, and ready-made clients for
-Python and Node.js are in [`examples/`](../examples/).
+Python and Node.js are in [`examples/`](../examples/). Programs that talk to
+Weir this way are your own, under any license you like. The clients, the
+examples and the code samples on this page are released under the MIT
+license, so they can be copied into them.
 
 ## Contents
 

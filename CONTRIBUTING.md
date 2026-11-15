@@ -336,4 +336,6 @@ both files once they are pasted in. Without the secret, the workflow
 still builds the Arch package but skips the AUR, with a warning.
 
 By contributing you agree that your work is released under the
-[MIT license](LICENSE), like the rest of Weir.
+[GNU General Public License](LICENSE), version 3 or any later version, like
+the rest of Weir. Work on the examples in `examples/` is released under the
+[MIT license](examples/LICENSE), like the rest of that folder.

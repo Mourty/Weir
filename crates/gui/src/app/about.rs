@@ -110,7 +110,8 @@ impl App {
             .on_hover_text("Weir's code, documentation and bug reports");
         ui.horizontal_wrapped(|ui| {
             ui.label(
-                RichText::new("Free software under the MIT license.").color(theme::p().text_dim),
+                RichText::new("Free software under the GNU GPL, version 3 or later.")
+                    .color(theme::p().text_dim),
             );
             if ui
                 .button("Licenses…")
@@ -124,7 +125,8 @@ impl App {
             explain(
                 ui,
                 "This copy of Weir has no folder of licenses. They come with its source: \
-                 LICENSE, and packaging/licenses for the libraries it is built from.",
+                 LICENSE and LICENSE-MIT, and packaging/licenses for the libraries it is \
+                 built from.",
             );
         }
         ui.add_space(14.0);

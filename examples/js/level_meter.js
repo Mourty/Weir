@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: MIT
 // A live level meter for a strip, in the terminal. Ctrl+C stops it.
 //
 //   ./level_meter.js Music

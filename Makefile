@@ -122,6 +122,7 @@ install: build
 	install -Dm644 packaging/$(METAINFO) $(DESTDIR)$(METAINFODIR)/$(METAINFO)
 	install -Dm644 README.md $(DESTDIR)$(DOCDIR)/README.md
 	install -Dm644 LICENSE $(DESTDIR)$(LICENSEDIR)/LICENSE
+	install -Dm644 LICENSE-MIT $(DESTDIR)$(LICENSEDIR)/LICENSE-MIT
 	install -Dm644 packaging/licenses/nnnoiseless-BSD-3-Clause.txt \
 		$(DESTDIR)$(LICENSEDIR)/nnnoiseless-BSD-3-Clause.txt
 	install -Dm644 packaging/licenses/THIRD-PARTY-LICENSES.txt \
@@ -246,7 +247,7 @@ deb:
 	@# your own; a package leaves them out, which makes it about a fifth the size.
 	strip --strip-unneeded $(addprefix $(DEBROOT)/usr/bin/,$(BINARIES))
 	@# Debian looks for the license here.
-	install -m644 LICENSE $(DEBROOT)/usr/share/doc/weir/copyright
+	install -m644 packaging/deb/copyright $(DEBROOT)/usr/share/doc/weir/copyright
 	@# dpkg-shlibdeps insists on a debian/control, even a minimal one.
 	mkdir -p $(DEBDIR)/debian $(DEBROOT)/DEBIAN
 	printf 'Source: weir\n\nPackage: weir\nArchitecture: any\n' > $(DEBDIR)/debian/control

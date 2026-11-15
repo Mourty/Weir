@@ -65,7 +65,7 @@ zip = { version = "9", default-features = false, features = ["deflate-flate2-zli
 base64 = { version = "0.23", default-features = false, features = ["std"] }
 # Hotkeys' sounds of the user's own: .wav, .mp3, .ogg and .flac, decoded in
 # pure Rust, and nothing else.
-symphonia = { version = "0.5.5", default-features = false, features = ["wav", "pcm", "mp3", "flac", "ogg", "vorbis"] }
+symphonia = { version = "0.6.1", default-features = false, features = ["wav", "pcm", "mp3", "flac", "ogg", "vorbis"] }
 # Asking GitHub for Weir's newest release, the only time Weir goes online:
 # HTTPS in pure Rust, trusting the certificates the system trusts.
 ureq = { version = "3.4", default-features = false, features = ["rustls", "platform-verifier"] }

@@ -3,13 +3,13 @@
 
 use super::*;
 use std::f32::consts::TAU;
-use symphonia::core::audio::SampleBuffer;
-use symphonia::core::codecs::DecoderOptions;
+use symphonia::core::codecs::audio::{AudioCodecParameters, AudioDecoderOptions};
+use symphonia::core::codecs::CodecParameters;
 use symphonia::core::errors::Error as DecodeError;
+use symphonia::core::formats::probe::Hint;
 use symphonia::core::formats::FormatOptions;
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
-use symphonia::core::probe::Hint;
 use weir_protocol::ChannelPosition::{self, *};
 
 const RATE: u32 = 48_000;
@@ -87,6 +87,8 @@ fn record(spec: Spec, tracks: &[TrackSpec], paths: &[PathBuf], bwf: Option<&Bwf>
 }
 
 /// Every track of a file, decoded: (channels, sample rate, interleaved).
+/// Gapless decoding, on by default, cuts MP3's and Vorbis's delay and
+/// padding.
 fn decode(path: &Path) -> Vec<(usize, u32, Vec<f32>)> {
     let file = File::open(path).unwrap();
     let source = MediaSourceStream::new(Box::new(file), Default::default());
@@ -94,54 +96,57 @@ fn decode(path: &Path) -> Vec<(usize, u32, Vec<f32>)> {
     if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
         hint.with_extension(ext);
     }
-    let options = FormatOptions {
-        enable_gapless: true,
-        ..Default::default()
-    };
     let mut format = symphonia::default::get_probe()
-        .format(&hint, source, &options, &MetadataOptions::default())
-        .unwrap()
-        .format;
+        .probe(
+            &hint,
+            source,
+            FormatOptions::default(),
+            MetadataOptions::default(),
+        )
+        .unwrap();
     let tracks: Vec<_> = format.tracks().to_vec();
-    let mut decoders: Vec<_> = tracks
+    let params: Vec<AudioCodecParameters> = tracks
         .iter()
-        .map(|t| {
+        .map(|t| match &t.codec_params {
+            Some(CodecParameters::Audio(p)) => p.clone(),
+            _ => panic!("{}: a track without sound", path.display()),
+        })
+        .collect();
+    let mut decoders: Vec<_> = params
+        .iter()
+        .map(|p| {
             // Symphonia's Matroska reader leaves this out for PCM, which
             // its PCM decoder needs: a second is more than any block.
-            let mut params = t.codec_params.clone();
-            params.max_frames_per_packet.get_or_insert(RATE as u64);
+            let mut p = p.clone();
+            p.max_frames_per_packet.get_or_insert(RATE as u64);
             symphonia::default::get_codecs()
-                .make(&params, &DecoderOptions::default())
+                .make_audio_decoder(&p, &AudioDecoderOptions::default())
                 .unwrap()
         })
         .collect();
-    let mut out: Vec<(usize, u32, Vec<f32>)> = tracks
+    let mut out: Vec<(usize, u32, Vec<f32>)> = params
         .iter()
-        .map(|t| {
-            let p = &t.codec_params;
+        .map(|p| {
             (
-                p.channels.map_or(0, |c| c.count()),
+                p.channels.as_ref().map_or(0, |c| c.count()),
                 p.sample_rate.unwrap_or(0),
                 Vec::new(),
             )
         })
         .collect();
+    let mut samples = Vec::new();
     loop {
         let packet = match format.next_packet() {
-            Ok(p) => p,
+            Ok(Some(p)) => p,
+            Ok(None) => break,
             Err(DecodeError::IoError(e)) if e.kind() == io::ErrorKind::UnexpectedEof => break,
             Err(e) => panic!("{}: {e}", path.display()),
         };
-        let i = tracks
-            .iter()
-            .position(|t| t.id == packet.track_id())
-            .unwrap();
+        let i = tracks.iter().position(|t| t.id == packet.track_id).unwrap();
         let decoded = decoders[i].decode(&packet).unwrap();
-        let spec = *decoded.spec();
-        let mut buf = SampleBuffer::<f32>::new(decoded.capacity() as u64, spec);
-        buf.copy_interleaved_ref(decoded);
-        out[i].0 = spec.channels.count();
-        out[i].2.extend_from_slice(buf.samples());
+        out[i].0 = decoded.spec().channels().count();
+        decoded.copy_to_vec_interleaved(&mut samples);
+        out[i].2.extend_from_slice(&samples);
     }
     out
 }
@@ -416,14 +421,13 @@ fn multitrack_opus_holds_its_packets_and_padding() {
     let file = File::open(&path).unwrap();
     let source = MediaSourceStream::new(Box::new(file), Default::default());
     let mut format = symphonia::default::get_probe()
-        .format(
+        .probe(
             Hint::new().with_extension("mka"),
             source,
-            &FormatOptions::default(),
-            &MetadataOptions::default(),
+            FormatOptions::default(),
+            MetadataOptions::default(),
         )
-        .unwrap()
-        .format;
+        .unwrap();
     let ids: Vec<u32> = format.tracks().iter().map(|t| t.id).collect();
     assert_eq!(ids.len(), 2);
     let mut decoders = [
@@ -434,11 +438,11 @@ fn multitrack_opus_holds_its_packets_and_padding() {
     let mut buf = vec![0.0f32; 5760 * 2];
     loop {
         let packet = match format.next_packet() {
-            Ok(p) => p,
-            Err(DecodeError::IoError(_)) => break,
+            Ok(Some(p)) => p,
+            Ok(None) | Err(DecodeError::IoError(_)) => break,
             Err(e) => panic!("{e}"),
         };
-        let i = ids.iter().position(|id| *id == packet.track_id()).unwrap();
+        let i = ids.iter().position(|id| *id == packet.track_id).unwrap();
         let n = decoders[i]
             .decode_float(&packet.data, &mut buf, false)
             .unwrap();

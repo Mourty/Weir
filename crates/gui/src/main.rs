@@ -3,6 +3,7 @@
 mod app;
 mod appearance;
 mod client;
+mod display_lost;
 mod effects;
 mod file_dialog;
 mod fx_window;
@@ -60,6 +61,7 @@ fn main() -> eframe::Result {
     use tracing_subscriber::layer::SubscriberExt;
     use tracing_subscriber::util::SubscriberInitExt;
     weir_protocol::crash::install("window");
+    display_lost::end_quietly_when_lost();
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),

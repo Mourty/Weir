@@ -38,7 +38,7 @@ use crate::login::{self, LoginStart};
 use crate::tray::TrayCommand;
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 use tokio::sync::broadcast;
 use tokio::sync::mpsc::UnboundedSender;
@@ -57,7 +57,15 @@ pub struct Subscriptions {
     /// The most meter messages a second this connection wants, when fewer
     /// than the daemon makes.
     pub meter_rate_hz: Option<u32>,
+    /// Whether this connection is the mixer window, as the server keeps it.
+    pub window: bool,
 }
+
+/// How long the mixer window has to answer a `show_window` before it is
+/// taken for one that stopped drawing: see [`Controller::window_shown`].
+/// It answers from its drawing loop, within a frame or two when it is
+/// alive, so this leaves plenty for a busy computer.
+pub const WINDOW_ANSWER: std::time::Duration = std::time::Duration::from_secs(3);
 
 /// Most spectra one connection may watch at once. Each costs an FFT pair 30
 /// times a second, so this is a guard against a runaway client, not a limit
@@ -136,6 +144,17 @@ pub struct Controller {
     /// How many connections have claimed to be the mixer window. The tray
     /// uses this to decide between raising a window and starting one.
     window_clients: AtomicUsize,
+    /// Counts every `ping` from the connection that is the mixer window. A
+    /// window answers each `show_window` with one, from its drawing loop,
+    /// which tells a window that can be seen from one whose connection
+    /// carries on after its drawing stopped.
+    window_answers: AtomicU64,
+    /// Counts the connections that became the mixer window.
+    window_claims: AtomicU64,
+    /// Bumped to close the mixer window that did not answer: its
+    /// connection tells it to quit, ends its process and lets go, so that
+    /// another window can take its place.
+    window_evictions: tokio::sync::watch::Sender<u64>,
     /// Set once the main loop is ready to act on window requests it cannot
     /// serve itself, such as starting the window when none is open.
     window_tx: Mutex<Option<UnboundedSender<TrayCommand>>>,
@@ -271,6 +290,9 @@ impl Controller {
             dirty: AtomicBool::new(false),
             seen_dirty: AtomicBool::new(false),
             window_clients: AtomicUsize::new(0),
+            window_answers: AtomicU64::new(0),
+            window_claims: AtomicU64::new(0),
+            window_evictions: tokio::sync::watch::Sender::new(0),
             window_tx: Mutex::new(None),
             spectrum_watchers: Mutex::new(BTreeMap::new()),
             login: login::here(weir_protocol::appimage::appimage().as_ref()),
@@ -368,9 +390,14 @@ impl Controller {
     /// Checking and claiming in one step means two windows starting at the
     /// same moment cannot both win.
     pub fn claim_window(&self) -> bool {
-        self.window_clients
+        let claimed = self
+            .window_clients
             .compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire)
-            .is_ok()
+            .is_ok();
+        if claimed {
+            self.window_claims.fetch_add(1, Ordering::AcqRel);
+        }
+        claimed
     }
 
     /// A connection that claimed to be the mixer window stopped being one.
@@ -395,6 +422,61 @@ impl Controller {
     /// Ask any attached window to come to the front.
     pub fn show_window(&self) {
         self.announce(Notification::ShowWindow);
+    }
+
+    /// The mixer window answered: see [`Controller::window_shown`].
+    pub fn window_answered(&self) {
+        self.window_answers.fetch_add(1, Ordering::AcqRel);
+    }
+
+    /// What a connection watches to learn that its window is to close.
+    pub fn window_evictions(&self) -> tokio::sync::watch::Receiver<u64> {
+        self.window_evictions.subscribe()
+    }
+
+    /// Bring the open mixer window forward, if one is open and answers.
+    /// Returns whether one did; when not, the caller opens one.
+    ///
+    /// A window that is connected but does not answer within
+    /// [`WINDOW_ANSWER`] is closed first. Its drawing has stopped while
+    /// its connection carries on, and kept, it would stop any other window
+    /// from opening: the tray's Show the mixer, a window started from the
+    /// menu, and opening at login would all go to it, and nothing would
+    /// show.
+    pub async fn window_shown(&self) -> bool {
+        if !self.window_attached() {
+            return false;
+        }
+        let before = self.window_answers.load(Ordering::Acquire);
+        let claims = self.window_claims.load(Ordering::Acquire);
+        self.show_window();
+        let deadline = tokio::time::Instant::now() + WINDOW_ANSWER;
+        while tokio::time::Instant::now() < deadline {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            if self.window_answers.load(Ordering::Acquire) != before {
+                return true;
+            }
+            if !self.window_attached() {
+                return false;
+            }
+            // A new window took the place meanwhile, as when one started
+            // from the menu replaced the one that did not answer. It is
+            // showing itself; this one asked the old one.
+            if self.window_claims.load(Ordering::Acquire) != claims {
+                return true;
+            }
+        }
+        warn!(
+            "the mixer window did not answer within {WINDOW_ANSWER:?}, \
+             so it is closed to make way for a new one"
+        );
+        self.window_evictions.send_modify(|n| *n += 1);
+        // Its connection lets go at once; this waits for that, a little.
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(1);
+        while self.window_attached() && tokio::time::Instant::now() < deadline {
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        false
     }
 
     /// Ask any attached window to open the recorder.

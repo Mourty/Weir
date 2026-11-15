@@ -526,31 +526,28 @@ async fn run(
                 }
             }
             command = tray_rx.recv() => match command {
+                // Checking that an open window answers takes up to two
+                // seconds, so it is done aside from this loop.
                 Some(TrayCommand::Show) => {
-                    if controller.window_attached() {
-                        debug!("a window is already open, asking it to come forward");
-                        controller.show_window();
-                    } else {
-                        // By now there is a desktop: the tray is on it.
-                        let env = tokio::task::spawn_blocking(display::window_env)
-                            .await
-                            .ok()
-                            .flatten()
-                            .unwrap_or_default();
-                        spawn_window(socket_path, Opening::Mixer, &env);
-                    }
+                    let c = controller.clone();
+                    let socket = socket_path.to_path_buf();
+                    tokio::spawn(async move {
+                        if !c.window_shown().await {
+                            // By now there is a desktop: the tray is on it.
+                            open_window(&socket, Opening::Mixer).await;
+                        }
+                    });
                 }
                 Some(TrayCommand::ShowRecorder) => {
-                    if controller.window_attached() {
-                        controller.show_recorder();
-                    } else {
-                        let env = tokio::task::spawn_blocking(display::window_env)
-                            .await
-                            .ok()
-                            .flatten()
-                            .unwrap_or_default();
-                        spawn_window(socket_path, Opening::Recorder, &env);
-                    }
+                    let c = controller.clone();
+                    let socket = socket_path.to_path_buf();
+                    tokio::spawn(async move {
+                        if c.window_shown().await {
+                            c.show_recorder();
+                        } else {
+                            open_window(&socket, Opening::Recorder).await;
+                        }
+                    });
                 }
                 Some(TrayCommand::StartRecording | TrayCommand::StopRecording) => {
                     let on = command == Some(TrayCommand::StartRecording);
@@ -826,7 +823,10 @@ fn open_window_when_ready(controller: &Arc<Controller>, socket: PathBuf, minimiz
                 .await
                 .ok()
                 .flatten();
-            if controller.window_attached() {
+            // One the desktop reopened is brought forward, unless the
+            // window is to start minimized; one that stopped answering is
+            // closed, and a new one opened.
+            if controller.window_attached() && (minimized || controller.window_shown().await) {
                 info!("a mixer window is already open");
                 return;
             }
@@ -867,7 +867,9 @@ async fn open_window_at_login(controller: Arc<Controller>, socket: PathBuf, logi
     };
     login.desktop_ready().await;
     tokio::time::sleep(Duration::from_secs(2)).await;
-    if controller.window_attached() {
+    if controller.window_attached()
+        && (opening == Opening::Minimized || controller.window_shown().await)
+    {
         info!("a mixer window is already open");
         return;
     }
@@ -881,6 +883,16 @@ async fn open_window_at_login(controller: Arc<Controller>, socket: PathBuf, logi
         }
         None => open_window_when_ready(&controller, socket, opening == Opening::Minimized),
     }
+}
+
+/// Start the mixer window on the desktop there is now.
+async fn open_window(socket: &Path, opening: Opening) {
+    let env = tokio::task::spawn_blocking(display::window_env)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    spawn_window(socket, opening, &env);
 }
 
 /// Start the mixer window, with `env` added to its environment. Returns

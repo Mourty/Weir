@@ -658,6 +658,39 @@ fn subscribing_to_nothing_in_particular_means_everything_but_the_window() {
     assert_eq!(r.ok("unsubscribe", json!({})), json!([]));
 }
 
+#[tokio::test]
+async fn a_window_that_stopped_answering_is_closed() {
+    let r = Rig::new("window-answers");
+    assert!(
+        !r.c.window_shown().await,
+        "no window, so none comes forward"
+    );
+    assert!(r.c.claim_window());
+    // The window answers show_window with a ping on its own connection.
+    let mut window = Subscriptions {
+        window: true,
+        ..Subscriptions::default()
+    };
+    let (shown, answered) = tokio::join!(r.c.window_shown(), async {
+        tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+        r.c.handle(Request::Ping, &mut window)
+    });
+    assert!(answered.is_ok());
+    assert!(shown, "a window that answers stays");
+    // A ping from any other connection is no answer.
+    let mut other = Subscriptions::default();
+    let evictions = r.c.window_evictions();
+    let (shown, _) = tokio::join!(r.c.window_shown(), async {
+        tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+        r.c.handle(Request::Ping, &mut other)
+    });
+    assert!(!shown, "a window that does not answer is replaced");
+    assert!(
+        evictions.has_changed().unwrap(),
+        "its connection is told to close it"
+    );
+}
+
 #[test]
 fn there_is_only_ever_one_window() {
     let r = Rig::new("one-window");

@@ -87,6 +87,11 @@ impl Controller {
                 if crate::crash_test().as_deref() == Some("request") {
                     panic!("a crash on purpose (WEIR_CRASH_TEST=request), answering ping");
                 }
+                // The mixer window's answer to show_window, which tells
+                // the daemon it is still drawing (see window_shown).
+                if subs.window {
+                    self.window_answered();
+                }
                 Ok(json!("pong"))
             }
             Request::GetState => Ok(to_json(&self.full_state())),
@@ -441,15 +446,22 @@ impl Controller {
     }
 
     fn show_window_request(&self) -> Result<Value, RpcError> {
-        if self.window_attached() {
-            self.show_window();
-        } else if let Some(tx) = self.window_tx.locked().as_ref() {
-            let _ = tx.send(TrayCommand::Show);
-        } else {
+        // The main loop brings the open window forward once it has checked
+        // that it answers, or opens one: the same as the tray.
+        let sent = self
+            .window_tx
+            .locked()
+            .as_ref()
+            .is_some_and(|tx| tx.send(TrayCommand::Show).is_ok());
+        if sent {
+            return Ok(Value::Null);
+        }
+        if !self.window_attached() {
             return Err(RpcError::application(
                 "no window is open and this daemon cannot start one",
             ));
         }
+        self.show_window();
         Ok(Value::Null)
     }
 

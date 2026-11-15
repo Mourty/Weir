@@ -140,6 +140,12 @@ fn connection_loop(
 ) {
     let mut tried_spawn = false;
     loop {
+        // Told to close, the window is on its way out, however long that
+        // takes: connected again, to a service started after, it would
+        // take the place of the window that service opens.
+        if shared.locked().quit_requested {
+            return;
+        }
         let stream = match UnixStream::connect(&socket) {
             Ok(s) => s,
             Err(e) => {

@@ -10,8 +10,10 @@ use crate::controller::{Controller, Subscriptions};
 use anyhow::{bail, Context, Result};
 use serde_json::Value;
 use std::collections::BTreeSet;
+use std::future::Future;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -111,6 +113,8 @@ async fn next_line<R: AsyncBufRead + Unpin>(r: &mut R, buf: &mut Vec<u8>) -> Res
 
 /// Serve one connection until it closes.
 async fn handle_conn(stream: UnixStream, controller: Arc<Controller>) -> Result<()> {
+    // Who is at the other end, to end a mixer window that stopped drawing.
+    let peer = stream.peer_cred().ok().and_then(|c| c.pid());
     let (r, mut w) = stream.into_split();
     let mut reader = BufReader::new(r);
     let mut buf = Vec::new();
@@ -123,6 +127,12 @@ async fn handle_conn(stream: UnixStream, controller: Arc<Controller>) -> Result<
     // Set when this connection wanted to be the window while another one
     // already was: it was told to close, and hears nothing more for windows.
     let mut surplus_window = false;
+    // Set while this connection wants to be the window and another one
+    // holds the place: whether that one still answers decides which goes.
+    let mut checking: Option<Pin<Box<dyn Future<Output = bool> + Send>>> = None;
+    // Tells the connection that is the window to close it, when it no
+    // longer answers.
+    let mut evictions = controller.window_evictions();
     // Likewise for the spectra this connection watches.
     let mut spectra = SpectrumWatch::new(controller.clone());
     let mut meters = MeterThrottle::default();
@@ -151,27 +161,58 @@ async fn handle_conn(stream: UnixStream, controller: Arc<Controller>) -> Result<
                             w.write_all(b"\n").await?;
                         }
                         let wants_window = subs.topics.contains(&Topic::Window);
-                        if !window.set(wants_window && !surplus_window) {
+                        let was_window = window.attached;
+                        if checking.is_none() && !window.set(wants_window && !surplus_window) {
                             // A second window, from the menu while one is
-                            // open or from the desktop reopening it at login:
-                            // close it and bring the first one forward.
-                            info!("a mixer window is already open, so closing the new one");
-                            surplus_window = true;
-                            w.write_all(Notification::Quit.to_wire().as_bytes()).await?;
-                            w.write_all(b"\n").await?;
-                            controller.show_window();
+                            // open or from the desktop reopening it at login.
+                            // The open one is asked to come forward; if it
+                            // answers, this one closes, and if not, this one
+                            // takes its place.
+                            let c = controller.clone();
+                            checking = Some(Box::pin(async move { c.window_shown().await }));
                         }
+                        if window.attached && !was_window {
+                            // Evictions before it became the window are not
+                            // meant for it.
+                            evictions.borrow_and_update();
+                        }
+                        subs.window = window.attached;
                         spectra.set(&subs.spectrum);
                     }
                     Line::End => break,
                 }
+            }
+            alive = async { checking.as_mut().expect("checked").await }, if checking.is_some() => {
+                checking = None;
+                if !alive && window.set(true) {
+                    info!("the new mixer window takes the place of the one that stopped answering");
+                    evictions.borrow_and_update();
+                    subs.window = true;
+                } else {
+                    info!("a mixer window is already open, so closing the new one");
+                    surplus_window = true;
+                    w.write_all(Notification::Quit.to_wire().as_bytes()).await?;
+                    w.write_all(b"\n").await?;
+                }
+            }
+            Ok(()) = evictions.changed(), if window.attached => {
+                info!("closing the mixer window that stopped answering");
+                // It may never read this; its process is ended too.
+                let _ = w.write_all(Notification::Quit.to_wire().as_bytes()).await;
+                let _ = w.write_all(b"\n").await;
+                end_window_process(peer);
+                break;
             }
             n = rx.recv() => {
                 match n {
                     Ok(n) => {
                         let wanted = match &n {
                             Notification::Spectrum(s) => subs.spectrum.contains(&s.target),
-                            n if n.topic() == Topic::Window && surplus_window => false,
+                            n if n.topic() == Topic::Window
+                                && (surplus_window || checking.is_some()) =>
+                            {
+                                false
+                            }
                             n => subs.topics.contains(&n.topic()),
                         };
                         if !wanted {
@@ -195,6 +236,32 @@ async fn handle_conn(stream: UnixStream, controller: Arc<Controller>) -> Result<
         }
     }
     Ok(())
+}
+
+/// End the process of a mixer window that stopped answering, given the
+/// pid that came with its connection. Only a process named as the window
+/// is touched; a stand-in or a test client is left alone, closed only by
+/// its connection ending.
+fn end_window_process(pid: Option<i32>) {
+    let Some(pid) = pid.filter(|&p| p > 1 && p.unsigned_abs() != std::process::id()) else {
+        return;
+    };
+    let name = std::fs::read_to_string(format!("/proc/{pid}/comm")).unwrap_or_default();
+    if name.trim_end() != "weir" {
+        debug!(
+            "not ending process {pid} ({}): not a mixer window",
+            name.trim_end()
+        );
+        return;
+    }
+    // A stopped process acts on the signal only once it carries on.
+    // SAFETY: kill only sends signals; a process that is gone by now
+    // makes it fail, which is fine.
+    unsafe {
+        libc::kill(pid, libc::SIGTERM);
+        libc::kill(pid, libc::SIGCONT);
+    }
+    info!("ended the mixer window's process ({pid})");
 }
 
 /// Handle one line: a request, or a batch of them as a JSON array, which

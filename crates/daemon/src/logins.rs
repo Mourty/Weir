@@ -16,7 +16,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 use tokio::sync::Notify;
 use tracing::{debug, info};
-use zbus::zvariant::OwnedObjectPath;
+use zbus::OwnedObjectPath;
 
 /// How many times the desktop's tray has come back while the service ran,
 /// with a way to wait for the next time.

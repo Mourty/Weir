@@ -352,8 +352,8 @@ pub enum Failure {
 /// `org.example.App`, and Weir's desktop file is not named like that.
 /// Creating `portal` first is fine: that only reads its version, which the
 /// portal does not count as asking for anything.
-async fn register(portal: &GlobalShortcuts<'_>) {
-    let options: HashMap<&str, ashpd::zvariant::Value<'_>> = HashMap::new();
+async fn register(portal: &GlobalShortcuts) {
+    let options: HashMap<&str, ashpd::zbus::Variant<'_>> = HashMap::new();
     let reply = portal
         .connection()
         .call_method(
@@ -430,7 +430,7 @@ pub async fn run(
     keys_status.configurable = version >= 2;
     keys_status.settable = kde.is_some();
     let mut settled = Settled::default();
-    let mut session: Option<ashpd::desktop::Session<'_, GlobalShortcuts<'_>>> = None;
+    let mut session: Option<ashpd::desktop::Session<GlobalShortcuts>> = None;
     loop {
         let now = regs.borrow_and_update().clone();
         settled.keep_only(&now);
@@ -440,11 +440,14 @@ pub async fn run(
             }
         }
         // Bound even with none, so that the desktop forgets removed ones.
-        let s = portal.create_session().await.map_err(Failure::Lost)?;
+        let s = portal
+            .create_session(Default::default())
+            .await
+            .map_err(Failure::Lost)?;
         // A new session starts with the shortcuts the desktop already has.
         let mut given = HashMap::new();
         let known: HashSet<String> = match portal
-            .list_shortcuts(&s)
+            .list_shortcuts(&s, Default::default())
             .await
             .and_then(|request| request.response())
         {
@@ -470,7 +473,7 @@ pub async fn run(
             .collect();
         let mut problems = BTreeMap::new();
         match portal
-            .bind_shortcuts(&s, &new, None)
+            .bind_shortcuts(&s, &new, None, Default::default())
             .await
             .and_then(|request| request.response())
         {
@@ -569,7 +572,9 @@ pub async fn run(
                 }
                 () = controller.shortcut_settings_wanted() => {
                     if let Some(s) = &session {
-                        if let Err(e) = portal.configure_shortcuts(s, None, None).await {
+                        if let Err(e) = portal
+                            .configure_shortcuts(s, None, Default::default())
+                            .await {
                             warn!("could not open the desktop's shortcut settings: {e}");
                         }
                     }

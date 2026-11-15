@@ -1664,9 +1664,13 @@ fn sounds_go_with_their_hotkeys_to_another_computer() {
             ..Default::default()
         }
     );
-    // A bare sound comes back from its .json.
+    // A bare sound comes back from its .json, byte for byte (base64 there
+    // and back).
     c.ok("import_settings", json!({"path": one}));
-    assert!(c.dir.join("sounds/Unused.wav").is_file());
+    assert_eq!(
+        std::fs::read(c.dir.join("sounds/Unused.wav")).unwrap(),
+        wav(&[100; 480])
+    );
 
     // The preferences carry the popup and the sounds' device and volume.
     let mut d = Rig::new("sounds-export-d");

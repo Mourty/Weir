@@ -247,6 +247,32 @@ fn lossy_files_sound_like_what_went_in() {
 }
 
 #[test]
+fn the_mp3_delay_trimmed_in_mka_files_is_lames() {
+    // LAME's tag in an .mp3 file says how many samples come before the
+    // sound (12 bits, 21 bytes into the tag). The .mka writer cannot carry
+    // that tag and trims a fixed delay instead, plus the decoder's 529.
+    let dir = folder("lame-tag");
+    let tracks = [track("Music", &[FL, FR])];
+    let path = dir.join("Music.mp3");
+    let spec = Spec {
+        format: RecordFormat::Mp3,
+        quality: 192,
+        rate: RATE,
+        layout: RecordLayout::Files,
+    };
+    record(spec, &tracks, std::slice::from_ref(&path), None);
+    let bytes = std::fs::read(&path).unwrap();
+    let first = &bytes[..bytes.len().min(4096)];
+    let at = first
+        .windows(4)
+        .position(|w| w == b"LAME")
+        .expect("LAME's tag in the first frame");
+    let d = &first[at + 21..at + 24];
+    let delay = (u64::from(d[0]) << 4) | u64::from(d[1] >> 4);
+    assert_eq!(delay + 529, crate::mka::MP3_DELAY);
+}
+
+#[test]
 fn opus_files_trim_to_the_exact_length() {
     let dir = folder("opus");
     let tracks = [track("Music", &[FL, FR])];

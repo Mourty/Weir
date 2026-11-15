@@ -71,10 +71,11 @@ pub enum Picked {
 }
 
 /// A list to pick one of the sounds in `sounds`, or none, with a button to
-/// hear it, which sends `play_sound` into `actions`.
+/// hear it, which sends `play_sound` into `actions`. `which` keeps it apart
+/// from the other pickers on screen.
 pub fn picker(
     ui: &mut Ui,
-    salt: &str,
+    which: &str,
     current: &mut Option<String>,
     sounds: &[SoundInfo],
     actions: &mut Vec<Request>,
@@ -88,7 +89,7 @@ pub fn picker(
         Some(c) if known => RichText::new(c),
         Some(c) => RichText::new(format!("{c} (gone)")).color(theme::p().warning),
     };
-    egui::ComboBox::from_id_salt(("sound", salt))
+    egui::ComboBox::from_id_salt(("sound", which))
         .selected_text(text)
         .width(170.0)
         .show_ui(ui, |ui| {

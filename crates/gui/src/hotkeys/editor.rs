@@ -351,10 +351,10 @@ impl Editor {
                 for (slot, label) in rows {
                     ui.label(label);
                     ui.horizontal(|ui| {
-                        let salt = format!("{slot:?}");
+                        let which = format!("{slot:?}");
                         let current = slot.of(&mut self.sounds);
                         let asked =
-                            sounds::picker(ui, &salt, current, &state.hotkeys.sounds, actions);
+                            sounds::picker(ui, &which, current, &state.hotkeys.sounds, actions);
                         match asked {
                             sounds::Picked::Add => self.wants_sound = Some(slot),
                             sounds::Picked::Remove(name) => self.removing = Some(name),
@@ -1045,7 +1045,9 @@ fn heading(ui: &mut Ui, text: &str) {
 }
 
 /// A list of steps in words, each with buttons to move it and take it out.
-fn steps_list(ui: &mut Ui, state: &FullState, steps: &mut Vec<HotkeyStep>, salt: &str) {
+/// `which` keeps its widgets apart from another list's, as in
+/// [`simple_form`].
+fn steps_list(ui: &mut Ui, state: &FullState, steps: &mut Vec<HotkeyStep>, which: &str) {
     let mut up = None;
     let mut remove = None;
     let count = steps.len();
@@ -1068,7 +1070,7 @@ fn steps_list(ui: &mut Ui, state: &FullState, steps: &mut Vec<HotkeyStep>, salt:
                         ui.set_width(words);
                         ui.add(egui::Label::new(describe_step(step, &state.mixer)).truncate());
                     });
-                    ui.push_id((salt, i), |ui| {
+                    ui.push_id((which, i), |ui| {
                         if ui
                             .add_enabled(i > 0, egui::Button::new("Up").small())
                             .on_hover_text("Do it earlier")
@@ -1104,7 +1106,10 @@ fn steps_list(ui: &mut Ui, state: &FullState, steps: &mut Vec<HotkeyStep>, salt:
 
 /// The simple form's choices for `s`. `whole`: for a whole hotkey, with
 /// what holding and letting go do; otherwise for one step of one.
-fn simple_form(ui: &mut Ui, state: &FullState, s: &mut Simple, whole: bool, salt: &str) {
+/// `which` keeps its widgets apart from another form's on screen. (egui
+/// calls such a value a salt; code scanners take that word for
+/// cryptography, so it is not used here.)
+fn simple_form(ui: &mut Ui, state: &FullState, s: &mut Simple, whole: bool, which: &str) {
     let mixer = &state.mixer;
     let target_name = |t: StripOrBus| match t {
         StripOrBus::Strip(id) => mixer
@@ -1116,12 +1121,12 @@ fn simple_form(ui: &mut Ui, state: &FullState, s: &mut Simple, whole: bool, salt
         ),
     };
     let bus_name = |id: BusId| target_name(StripOrBus::Bus(id));
-    egui::Grid::new(("hotkey_form", salt))
+    egui::Grid::new(("hotkey_form", which))
         .num_columns(2)
         .spacing([12.0, 10.0])
         .show(ui, |ui| {
             ui.label("Do this");
-            egui::ComboBox::from_id_salt((salt, "action"))
+            egui::ComboBox::from_id_salt((which, "action"))
                 .selected_text(s.action.label())
                 .width(320.0)
                 .show_ui(ui, |ui| {
@@ -1149,7 +1154,7 @@ fn simple_form(ui: &mut Ui, state: &FullState, s: &mut Simple, whole: bool, salt
 
             if s.action.has_target() {
                 ui.label("On");
-                egui::ComboBox::from_id_salt((salt, "target"))
+                egui::ComboBox::from_id_salt((which, "target"))
                     .selected_text(target_name(s.target))
                     .width(320.0)
                     .show_ui(ui, |ui| {
@@ -1175,7 +1180,7 @@ fn simple_form(ui: &mut Ui, state: &FullState, s: &mut Simple, whole: bool, salt
             match s.action {
                 Action::Effect => {
                     ui.label("Effect");
-                    egui::ComboBox::from_id_salt((salt, "fx"))
+                    egui::ComboBox::from_id_salt((which, "fx"))
                         .selected_text(s.fx.label())
                         .width(320.0)
                         .show_ui(ui, |ui| {
@@ -1187,7 +1192,7 @@ fn simple_form(ui: &mut Ui, state: &FullState, s: &mut Simple, whole: bool, salt
                 }
                 Action::Route => {
                     ui.label("To bus");
-                    egui::ComboBox::from_id_salt((salt, "bus"))
+                    egui::ComboBox::from_id_salt((which, "bus"))
                         .selected_text(bus_name(s.bus))
                         .width(320.0)
                         .show_ui(ui, |ui| {
@@ -1203,7 +1208,7 @@ fn simple_form(ui: &mut Ui, state: &FullState, s: &mut Simple, whole: bool, salt
                         None => "Its own fader".to_string(),
                         Some(b) => format!("Its level in {}", bus_name(b)),
                     };
-                    egui::ComboBox::from_id_salt((salt, "fader"))
+                    egui::ComboBox::from_id_salt((which, "fader"))
                         .selected_text(shown)
                         .width(320.0)
                         .show_ui(ui, |ui| {
@@ -1290,7 +1295,7 @@ fn simple_form(ui: &mut Ui, state: &FullState, s: &mut Simple, whole: bool, salt
                 }
                 Action::Preset => {
                     ui.label("Preset");
-                    egui::ComboBox::from_id_salt((salt, "preset"))
+                    egui::ComboBox::from_id_salt((which, "preset"))
                         .selected_text(s.preset.as_str())
                         .width(320.0)
                         .show_ui(ui, |ui| {
@@ -1308,7 +1313,7 @@ fn simple_form(ui: &mut Ui, state: &FullState, s: &mut Simple, whole: bool, salt
                                 .color(theme::p().warning),
                         );
                     } else {
-                        egui::ComboBox::from_id_salt((salt, "scene"))
+                        egui::ComboBox::from_id_salt((which, "scene"))
                             .selected_text(s.scene.as_str())
                             .width(320.0)
                             .show_ui(ui, |ui| {

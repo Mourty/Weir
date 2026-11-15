@@ -12,6 +12,7 @@ use clap::Parser;
 use controller::Controller;
 use ksni::TrayMethods;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::signal::unix::{signal, Signal, SignalKind};
@@ -489,6 +490,7 @@ async fn run(
     let crash_soon = tokio::time::sleep(Duration::from_secs(3));
     tokio::pin!(crash_soon);
     let mut notes_open = true;
+    let showing = Showing::default();
     loop {
         tokio::select! {
             // Checked in order, so a stop that arrives together with a
@@ -527,30 +529,10 @@ async fn run(
             }
             command = tray_rx.recv() => match command {
                 Some(TrayCommand::Show) => {
-                    if controller.window_attached() {
-                        debug!("a window is already open, asking it to come forward");
-                        controller.show_window();
-                    } else {
-                        // By now there is a desktop: the tray is on it.
-                        let env = tokio::task::spawn_blocking(display::window_env)
-                            .await
-                            .ok()
-                            .flatten()
-                            .unwrap_or_default();
-                        spawn_window(socket_path, Opening::Mixer, &env);
-                    }
+                    showing.show(controller, socket_path, Opening::Mixer);
                 }
                 Some(TrayCommand::ShowRecorder) => {
-                    if controller.window_attached() {
-                        controller.show_recorder();
-                    } else {
-                        let env = tokio::task::spawn_blocking(display::window_env)
-                            .await
-                            .ok()
-                            .flatten()
-                            .unwrap_or_default();
-                        spawn_window(socket_path, Opening::Recorder, &env);
-                    }
+                    showing.show(controller, socket_path, Opening::Recorder);
                 }
                 Some(TrayCommand::StartRecording | TrayCommand::StopRecording) => {
                     let on = command == Some(TrayCommand::StartRecording);
@@ -826,7 +808,10 @@ fn open_window_when_ready(controller: &Arc<Controller>, socket: PathBuf, minimiz
                 .await
                 .ok()
                 .flatten();
-            if controller.window_attached() {
+            // One the desktop reopened is brought forward, unless the
+            // window is to start minimized; one that stopped answering is
+            // closed, and a new one opened.
+            if controller.window_attached() && (minimized || controller.window_shown().await) {
                 info!("a mixer window is already open");
                 return;
             }
@@ -867,7 +852,9 @@ async fn open_window_at_login(controller: Arc<Controller>, socket: PathBuf, logi
     };
     login.desktop_ready().await;
     tokio::time::sleep(Duration::from_secs(2)).await;
-    if controller.window_attached() {
+    if controller.window_attached()
+        && (opening == Opening::Minimized || controller.window_shown().await)
+    {
         info!("a mixer window is already open");
         return;
     }
@@ -883,9 +870,63 @@ async fn open_window_at_login(controller: Arc<Controller>, socket: PathBuf, logi
     }
 }
 
-/// Start the mixer window, with `env` added to its environment. Returns
-/// false when the binary cannot be found, which is not fatal: the daemon is
-/// perfectly usable without it.
+/// Brings the mixer window up for the tray and `show_window`, one request
+/// at a time. Checking that an open window answers takes up to three
+/// seconds and a new window a moment to connect, and requests meanwhile,
+/// such as clicks on the tray icon in a row, would each open a window.
+#[derive(Default, Clone)]
+struct Showing(Arc<AtomicBool>);
+
+impl Showing {
+    /// Bring the open window forward, or open one when none answers, with
+    /// the recorder too if `opening` says so. Does nothing while an earlier
+    /// request is still under way.
+    fn show(&self, controller: &Arc<Controller>, socket: &Path, opening: Opening) {
+        if self.0.swap(true, Ordering::AcqRel) {
+            debug!("already bringing the mixer window up");
+            return;
+        }
+        let done = ShowingDone(self.0.clone());
+        let c = controller.clone();
+        let socket = socket.to_path_buf();
+        tokio::spawn(async move {
+            let _done = done;
+            if c.window_shown().await {
+                if opening == Opening::Recorder {
+                    c.show_recorder();
+                }
+                return;
+            }
+            // By now there is a desktop: the tray is on it.
+            let env = tokio::task::spawn_blocking(display::window_env)
+                .await
+                .ok()
+                .flatten()
+                .unwrap_or_default();
+            if !spawn_window(&socket, opening, &env) {
+                return;
+            }
+            let deadline = tokio::time::Instant::now() + WINDOW_CONNECTS;
+            while !c.window_attached() && tokio::time::Instant::now() < deadline {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+        });
+    }
+}
+
+/// Ends a [`Showing`] request however its task ends.
+struct ShowingDone(Arc<AtomicBool>);
+
+impl Drop for ShowingDone {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
+    }
+}
+
+/// How long a mixer window just started gets to connect before another
+/// request may start one more.
+const WINDOW_CONNECTS: Duration = Duration::from_secs(10);
+
 /// How the mixer window opens when the daemon starts it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Opening {
@@ -895,6 +936,9 @@ enum Opening {
     Recorder,
 }
 
+/// Start the mixer window, with `env` added to its environment. Returns
+/// false when the binary cannot be found, which is not fatal: the daemon is
+/// perfectly usable without it.
 fn spawn_window(socket: &Path, opening: Opening, env: &[(String, String)]) -> bool {
     let mut candidates: Vec<PathBuf> = Vec::new();
     if let Ok(exe) = weir_protocol::own_exe() {

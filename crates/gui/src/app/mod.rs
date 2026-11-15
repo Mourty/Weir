@@ -425,6 +425,10 @@ impl App {
             ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
             ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+            // The answer: sent from here, the drawing loop, it tells the
+            // service this window can still be shown. One that cannot is
+            // closed and another opened in its place.
+            self.client.send(Request::Ping);
         }
         if self.start_minimized {
             self.start_minimized = false;

@@ -10,11 +10,16 @@ use crate::controller::{Controller, Subscriptions};
 use anyhow::{bail, Context, Result};
 use serde_json::Value;
 use std::collections::BTreeSet;
+use std::future::Future;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
+use std::pin::Pin;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{
+    AsyncBufRead, AsyncBufReadExt, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader,
+};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::broadcast::error::RecvError;
 use tracing::{debug, info, warn};
@@ -111,18 +116,42 @@ async fn next_line<R: AsyncBufRead + Unpin>(r: &mut R, buf: &mut Vec<u8>) -> Res
 
 /// Serve one connection until it closes.
 async fn handle_conn(stream: UnixStream, controller: Arc<Controller>) -> Result<()> {
+    // Who is at the other end, to end a mixer window that stopped drawing.
+    let peer = stream.peer_cred().ok().and_then(|c| c.pid());
+    let conn = NEXT_CONNECTION.fetch_add(1, Ordering::Relaxed);
+    // Track whether this connection has claimed to be the mixer window, so
+    // the tray can tell an open window from none. The guard makes sure the
+    // claim is let go however the connection ends.
+    let mut window = WindowClient::new(controller.clone(), conn, peer);
+    let served = serve_conn(stream, &controller, &mut window).await;
+    if served.as_ref().is_err_and(|e| e.is::<NotReading>()) && window.attached {
+        // Stopped reading while being the window, so its process hangs or
+        // was stopped: it is closed, and another window may take its place.
+        controller.window_hangs(conn);
+    }
+    served
+}
+
+/// Serve one connection, for [`handle_conn`].
+async fn serve_conn(
+    stream: UnixStream,
+    controller: &Arc<Controller>,
+    window: &mut WindowClient,
+) -> Result<()> {
     let (r, mut w) = stream.into_split();
     let mut reader = BufReader::new(r);
     let mut buf = Vec::new();
     let mut rx = controller.subscribe();
     let mut subs = Subscriptions::default();
-    // Track whether this connection has claimed to be the mixer window, so
-    // the tray can tell an open window from none. The guard makes sure the
-    // count comes back down however the connection ends.
-    let mut window = WindowClient::new(controller.clone());
     // Set when this connection wanted to be the window while another one
     // already was: it was told to close, and hears nothing more for windows.
     let mut surplus_window = false;
+    // Set while this connection wants to be the window and another one
+    // holds the place: whether that one still answers decides which goes.
+    let mut checking: Option<Pin<Box<dyn Future<Output = bool> + Send>>> = None;
+    // Tells the connection that was the window that it lost its place,
+    // having stopped answering.
+    let mut evictions = controller.window_evictions();
     // Likewise for the spectra this connection watches.
     let mut spectra = SpectrumWatch::new(controller.clone());
     let mut meters = MeterThrottle::default();
@@ -140,38 +169,62 @@ async fn handle_conn(stream: UnixStream, controller: Arc<Controller>) -> Result<
                             )),
                         );
                         if let Ok(text) = serde_json::to_string(&err) {
-                            w.write_all(text.as_bytes()).await?;
-                            w.write_all(b"\n").await?;
+                            send_line(&mut w, &text, WRITE_LIMIT).await?;
                         }
                         break;
                     }
                     Line::Whole(line) => {
-                        if let Some(resp) = process_line(&line, &controller, &mut subs) {
-                            w.write_all(resp.as_bytes()).await?;
-                            w.write_all(b"\n").await?;
+                        if let Some(resp) = process_line(&line, controller, &mut subs) {
+                            send_line(&mut w, &resp, WRITE_LIMIT).await?;
                         }
                         let wants_window = subs.topics.contains(&Topic::Window);
-                        if !window.set(wants_window && !surplus_window) {
+                        if checking.is_none() && !window.set(wants_window && !surplus_window) {
                             // A second window, from the menu while one is
-                            // open or from the desktop reopening it at login:
-                            // close it and bring the first one forward.
-                            info!("a mixer window is already open, so closing the new one");
-                            surplus_window = true;
-                            w.write_all(Notification::Quit.to_wire().as_bytes()).await?;
-                            w.write_all(b"\n").await?;
-                            controller.show_window();
+                            // open or from the desktop reopening it at login.
+                            // The open one is asked to come forward; if it
+                            // answers, this one closes, and if not, this one
+                            // takes its place.
+                            let c = controller.clone();
+                            checking = Some(Box::pin(async move { c.window_shown().await }));
                         }
+                        subs.window = window.attached;
                         spectra.set(&subs.spectrum);
                     }
                     Line::End => break,
                 }
+            }
+            alive = async { checking.as_mut().expect("checked").await }, if checking.is_some() => {
+                checking = None;
+                if !alive && window.set(true) {
+                    info!("the new mixer window takes the place of the one that stopped answering");
+                    subs.window = true;
+                } else {
+                    info!("a mixer window is already open, so closing the new one");
+                    surplus_window = true;
+                    send_line(&mut w, &Notification::Quit.to_wire(), WRITE_LIMIT).await?;
+                }
+            }
+            Ok(()) = evictions.changed(), if window.attached => {
+                if !window.lost() {
+                    continue;
+                }
+                // Its process was ended too; a stand-in that stopped
+                // answering is told to quit, if it still reads.
+                info!("closing the connection of the mixer window that stopped answering");
+                let quit = Notification::Quit.to_wire();
+                let _ = send_line(&mut w, &quit, Duration::from_secs(1)).await;
+                break;
             }
             n = rx.recv() => {
                 match n {
                     Ok(n) => {
                         let wanted = match &n {
                             Notification::Spectrum(s) => subs.spectrum.contains(&s.target),
-                            n if n.topic() == Topic::Window && surplus_window => false,
+                            n if n.topic() == Topic::Window
+                                && (surplus_window || checking.is_some()) =>
+                            {
+                                false
+                            }
                             n => subs.topics.contains(&n.topic()),
                         };
                         if !wanted {
@@ -184,9 +237,7 @@ async fn handle_conn(stream: UnixStream, controller: Arc<Controller>) -> Result<
                             },
                             (n, _) => n,
                         };
-                        let text = n.to_wire();
-                        w.write_all(text.as_bytes()).await?;
-                        w.write_all(b"\n").await?;
+                        send_line(&mut w, &n.to_wire(), WRITE_LIMIT).await?;
                     }
                     Err(RecvError::Lagged(n)) => debug!("client lagged, dropped {n} notifications"),
                     Err(RecvError::Closed) => break,
@@ -196,6 +247,43 @@ async fn handle_conn(stream: UnixStream, controller: Arc<Controller>) -> Result<
     }
     Ok(())
 }
+
+/// How long a write to a client may wait for the client to read. One that
+/// stops reading while the daemon has things to tell it, a process that
+/// was stopped or hangs, is let go then: otherwise its connection would
+/// wait for ever.
+const WRITE_LIMIT: Duration = Duration::from_secs(30);
+
+/// Numbers connections, to tell them apart as the mixer window.
+static NEXT_CONNECTION: AtomicU64 = AtomicU64::new(1);
+
+/// Write one line to a client, giving up after `limit` with [`NotReading`].
+async fn send_line<W: AsyncWrite + Unpin>(w: &mut W, text: &str, limit: Duration) -> Result<()> {
+    let write = async {
+        w.write_all(text.as_bytes()).await?;
+        w.write_all(b"\n").await
+    };
+    match tokio::time::timeout(limit, write).await {
+        Ok(done) => Ok(done?),
+        Err(_) => Err(NotReading(limit).into()),
+    }
+}
+
+/// A client stopped reading for this long, and was let go.
+#[derive(Debug)]
+struct NotReading(Duration);
+
+impl std::fmt::Display for NotReading {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "the client did not read for {:?}, so it was let go",
+            self.0
+        )
+    }
+}
+
+impl std::error::Error for NotReading {}
 
 /// Handle one line: a request, or a batch of them as a JSON array, which
 /// is answered with an array of responses in the same order. Returns the
@@ -306,15 +394,26 @@ impl MeterThrottle {
 /// connection, including when that connection drops without saying goodbye.
 struct WindowClient {
     controller: Arc<Controller>,
+    /// This connection's number and the process at its other end.
+    conn: u64,
+    pid: Option<i32>,
     attached: bool,
 }
 
 impl WindowClient {
-    fn new(controller: Arc<Controller>) -> Self {
+    fn new(controller: Arc<Controller>, conn: u64, pid: Option<i32>) -> Self {
         Self {
             controller,
+            conn,
+            pid,
             attached: false,
         }
+    }
+
+    /// True when this connection was the window and lost its place, having
+    /// stopped answering.
+    fn lost(&self) -> bool {
+        self.attached && !self.controller.is_window(self.conn)
     }
 
     /// Claim or release the window. Returns false when the claim failed
@@ -324,11 +423,11 @@ impl WindowClient {
             return true;
         }
         if attached {
-            if !self.controller.claim_window() {
+            if !self.controller.claim_window(self.conn, self.pid) {
                 return false;
             }
         } else {
-            self.controller.remove_window_client();
+            self.controller.release_window(self.conn);
         }
         self.attached = attached;
         true
@@ -371,7 +470,7 @@ impl Drop for SpectrumWatch {
 impl Drop for WindowClient {
     fn drop(&mut self) {
         if self.attached {
-            self.controller.remove_window_client();
+            self.controller.release_window(self.conn);
         }
     }
 }
@@ -379,6 +478,18 @@ impl Drop for WindowClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn a_client_that_stops_reading_is_let_go() {
+        // The other end never reads, so the small pipe fills.
+        let (mut w, _other) = tokio::io::duplex(64);
+        let limit = Duration::from_millis(100);
+        send_line(&mut w, "short", limit).await.unwrap();
+        let long = "x".repeat(1000);
+        let started = Instant::now();
+        assert!(send_line(&mut w, &long, limit).await.is_err());
+        assert!(started.elapsed() < Duration::from_secs(2));
+    }
 
     #[tokio::test]
     async fn lines_are_read_whole_and_too_long_ones_refused() {

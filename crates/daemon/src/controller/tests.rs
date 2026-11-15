@@ -658,16 +658,76 @@ fn subscribing_to_nothing_in_particular_means_everything_but_the_window() {
     assert_eq!(r.ok("unsubscribe", json!({})), json!([]));
 }
 
+#[tokio::test]
+async fn a_window_that_stopped_answering_is_closed() {
+    let r = Rig::new("window-answers");
+    assert!(
+        !r.c.window_shown().await,
+        "no window, so none comes forward"
+    );
+    assert!(r.c.claim_window(1, None));
+    // The window answers show_window with a ping on its own connection.
+    let mut window = Subscriptions {
+        window: true,
+        ..Subscriptions::default()
+    };
+    let (shown, answered) = tokio::join!(r.c.window_shown(), async {
+        tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+        r.c.handle(Request::Ping, &mut window)
+    });
+    assert!(answered.is_ok());
+    assert!(shown, "a window that answers stays");
+    // A ping from any other connection is no answer.
+    let mut other = Subscriptions::default();
+    let evictions = r.c.window_evictions();
+    let (shown, _) = tokio::join!(r.c.window_shown(), async {
+        tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+        r.c.handle(Request::Ping, &mut other)
+    });
+    assert!(!shown, "a window that does not answer is replaced");
+    // Its place is free at once, whether or not its connection notices.
+    assert!(!r.c.is_window(1));
+    assert!(!r.c.window_attached());
+    assert!(
+        evictions.has_changed().unwrap(),
+        "its connection is told it lost its place"
+    );
+    assert!(r.c.claim_window(2, None), "a new window takes it");
+    r.c.release_window(1);
+    assert!(
+        r.c.is_window(2),
+        "the old connection closing late leaves the new window be"
+    );
+}
+
+#[tokio::test]
+async fn a_new_window_meanwhile_counts_as_shown() {
+    let r = Rig::new("window-replaced");
+    assert!(r.c.claim_window(1, None));
+    let (shown, _) = tokio::join!(r.c.window_shown(), async {
+        tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+        r.c.release_window(1);
+        assert!(r.c.claim_window(2, None));
+    });
+    assert!(shown, "the new window shows itself");
+    assert!(r.c.is_window(2), "and is not closed for the old one");
+}
+
 #[test]
 fn there_is_only_ever_one_window() {
     let r = Rig::new("one-window");
     assert!(!r.c.window_attached());
-    assert!(r.c.claim_window(), "the first window gets it");
-    assert!(!r.c.claim_window(), "a second one does not");
+    assert!(r.c.claim_window(1, None), "the first window gets it");
+    assert!(!r.c.claim_window(2, None), "a second one does not");
     assert!(r.c.window_attached());
-    r.c.remove_window_client();
+    r.c.release_window(2);
+    assert!(r.c.is_window(1), "only the window itself lets go");
+    r.c.release_window(1);
     assert!(!r.c.window_attached());
-    assert!(r.c.claim_window(), "the next window after it closed does");
+    assert!(
+        r.c.claim_window(2, None),
+        "the next window after it closed does"
+    );
 }
 
 #[test]

@@ -120,7 +120,9 @@ every change, whoever made it.
 Each message is one line of JSON, UTF-8, ending in a newline, in both
 directions. They follow [JSON-RPC 2.0](https://www.jsonrpc.org/specification).
 A line to the daemon may be 16 MB at most: past that it answers with an
-error (`-32600`) and closes the connection.
+error (`-32600`) and closes the connection. And keep reading what the
+daemon sends: a connection that has not read for 30 seconds while the
+daemon has something for it is closed.
 
 A **request** names a method, carries its parameters, and has an `id` of
 your choosing, a number or a string:
@@ -374,7 +376,7 @@ stop when the connection closes.
 | `settings` | `settings_changed`, `update_changed`, `safe_mode_changed` |
 | `hotkeys` | `hotkeys_changed` |
 | `recorder` | `recorder_changed`, `recording_changed` |
-| `window` | `show_window`, `show_recorder`, `quit`, `window_look`, `crashed`. Only for a mixer window: subscribing to it tells the daemon this connection *is* one. There is one window at a time: while one is open, a second connection subscribing to `window` gets `quit` at once, and the open window gets `show_window`. |
+| `window` | `show_window`, `show_recorder`, `quit`, `window_look`, `crashed`. Only for a mixer window: subscribing to it tells the daemon this connection *is* one. There is one window at a time. While one is open, a second connection subscribing to `window` waits while the open window gets `show_window`. A window must answer every `show_window` by sending `ping` on its own connection: if the open one answers within 3 seconds, the second gets `quit`; if it does not, it loses its place and gets `quit` (and its process ends, if it is Weir's window), and the second takes its place. A window that stops reading is let go the same way. |
 
 Returns the list of topics now active on this connection.
 
@@ -2238,8 +2240,9 @@ await mixer.call("check_for_update");
 
 #### `show_window`
 
-Bring the mixer window to the front, or open it if it is not open. Takes
-no parameters. Returns `null`.
+Bring the mixer window to the front, or open it if it is not open. An
+open window that does not answer (see the `window` topic) is closed, and a
+new one opened. Takes no parameters. Returns `null`.
 
 <!-- not tested: needs a display -->
 ```sh
@@ -2428,7 +2431,7 @@ replace its copy.
 | `recorder_changed` | `recorder` | [RecorderSettings](#recordersettings) | How recordings are made changed, or the strips and buses ticked for recording. |
 | `recording_changed` | `recorder` | [RecordingStatus](#recordingstatus) | A recording started or stopped, once a second while it goes on, when it starts new files, and when the folder for the next one changes. |
 | `spectrum` | see [`watch_spectrum`](#watch_spectrum) | [Spectrum](#spectrum) | 30 times a second for each strip or bus watched. |
-| `show_window` | `window` | none | The mixer window should come to the front. |
+| `show_window` | `window` | none | The mixer window should come to the front, and answer with `ping`. |
 | `show_recorder` | `window` | none | The mixer window should open its recorder, as the tray's **Open the recorder** asks. |
 | `quit` | `window` | none | The daemon is stopping, or another window is already open; the window should close. |
 | `crashed` | `window` | [CrashReport](#crashreport) | Part of the daemon stopped because of a bug, or a request ran into one. The daemon carries on, but [`restart`](#restart) is the safest way to get everything working again. The window shows the report. |

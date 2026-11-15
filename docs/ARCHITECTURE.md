@@ -627,6 +627,30 @@ other. A connection thread sends its requests and a reader thread mirrors
 notifications into shared state; each frame, the window copies what it
 needs and draws.
 
+There is one window at a time. Subscribing to the `window` topic is how a
+connection says it is the window, and the daemon gives that place to one
+connection only. Keeping it must not depend on a window being well: a
+window whose drawing stopped, while its connection thread carried on,
+would keep the place, and the tray's Show the mixer, a window started from
+the menu and opening at login would all go to it, with nothing on screen.
+So the window answers every `show_window` with a `ping`, sent from its
+drawing loop, and the daemon counts pings from the window's connection
+only. Before trusting an open window (the tray, `show_window`, a second
+window, login) it asks it forward and waits up to 3 s for that answer
+(`Controller::window_shown`); one that does not answer loses the place
+there and then, its process is ended if it is named `weir`, it is told to
+quit, and a new window takes its place. The place is taken by the
+controller rather than by the old window's connection, which may be stuck:
+a process that was stopped or hangs stops reading, and once the socket's
+buffer is full the daemon's writes to it wait. Every write to a client
+therefore has a time limit (30 s); a window let go that way is ended too
+(`Controller::window_hangs`). Requests to bring the window up go one at a
+time (`Showing` in `main.rs`): clicks on the tray icon while a check or a
+new window is under way are passed over, or each would open a window. And
+a window told to quit never connects again, however long it takes to
+close: connected to a service started after, it would take the place of
+the window that service opens.
+
 Two things keep it feeling immediate. A control being dragged keeps its own
 value for a moment after the last change, so an echo of an older value
 from the daemon cannot pull it back under the pointer, and it sends at most

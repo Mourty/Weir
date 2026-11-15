@@ -141,6 +141,10 @@ impl EngineHandle {
     /// cycle. Returns false when it cannot, such as when the engine is not
     /// running.
     pub fn play_sound(&self, sound: usize, gain: f32) -> bool {
+        // Waiting for PipeWire, it would play late, once it is back.
+        if self.shared.waiting.load(Ordering::Relaxed) {
+            return false;
+        }
         let Ok(sound) = u32::try_from(sound) else {
             return false;
         };

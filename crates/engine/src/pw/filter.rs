@@ -69,6 +69,9 @@ pub struct FilterShared {
     /// what it was in the middle of may be left half done. A restart
     /// starts it afresh.
     pub broken: AtomicBool,
+    /// The connection to PipeWire was lost, and the engine waits for it to
+    /// come back. The filter's own state says nothing then: there is none.
+    pub waiting: AtomicBool,
 }
 
 // `processor` is only touched from PipeWire's data thread, one cycle at a
@@ -95,11 +98,47 @@ impl FilterShared {
             state_cb: Mutex::new(None),
             server_version: Mutex::new(None),
             broken: AtomicBool::new(false),
+            waiting: AtomicBool::new(false),
         })
+    }
+
+    /// The connection to PipeWire is gone, and the filter with it. Its
+    /// ports went too, so the snapshot naming them must go before a new
+    /// filter can start on it: [`Self::rest`] replaces it.
+    pub fn lost(&self) {
+        self.waiting.store(true, Ordering::Relaxed);
+        self.node_id.store(u32::MAX, Ordering::Relaxed);
+        self.rate.store(0, Ordering::Relaxed);
+        self.quantum.store(0, Ordering::Relaxed);
+        if let Ok(mut v) = self.server_version.lock() {
+            *v = None;
+        }
+        if let Ok(mut e) = self.error.lock() {
+            *e = None;
+        }
+    }
+
+    /// While there is no filter: a snapshot of `state` without ports, so
+    /// that meters read silence for every strip and bus, not nothing.
+    pub fn rest(&self, state: &MixerState, solo: SoloMode) {
+        self.params
+            .store(build_rt_params(state, solo, &NoPorts, None));
+    }
+
+    /// A new filter is made: its own state counts again, from connecting.
+    pub fn connected_again(&self) {
+        self.state.store(
+            pw_sys::pw_filter_state_PW_FILTER_STATE_CONNECTING,
+            Ordering::Relaxed,
+        );
+        self.waiting.store(false, Ordering::Relaxed);
     }
 
     /// The filter's state as the protocol names it.
     pub fn state_name(&self) -> &'static str {
+        if self.waiting.load(Ordering::Relaxed) {
+            return "waiting";
+        }
         match self.state.load(Ordering::Relaxed) {
             pw_sys::pw_filter_state_PW_FILTER_STATE_ERROR => "error",
             pw_sys::pw_filter_state_PW_FILTER_STATE_UNCONNECTED => "unconnected",
@@ -557,5 +596,50 @@ impl<S: 'static> Drop for Filter<S> {
             pw_sys::pw_filter_disconnect(self.raw);
             pw_sys::pw_filter_destroy(self.raw);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn waiting_for_pipewire_reads_as_silence_then_connects_again() {
+        let shared = FilterShared::new();
+        shared.rate.store(48_000, Ordering::Relaxed);
+        shared.node_id.store(34, Ordering::Relaxed);
+        let mixer = MixerState {
+            strips: vec![weir_protocol::Strip::new(
+                1,
+                "Mic",
+                weir_protocol::StripKind::Hardware,
+                weir_protocol::ChannelLayout::Mono,
+            )],
+            buses: vec![weir_protocol::Bus::new(
+                1,
+                "Headset",
+                weir_protocol::BusKind::Hardware,
+                weir_protocol::ChannelLayout::Stereo,
+            )],
+        };
+
+        shared.lost();
+        shared.rest(&mixer, SoloMode::Exclusive);
+        let status = shared.status();
+        assert_eq!(status.state, "waiting");
+        assert!(!status.connected);
+        assert_eq!((status.sample_rate, status.node_id), (0, None));
+        // Every strip and bus still reads, as silence, so that meters fall
+        // rather than hold what they last showed.
+        let (strips, buses) = shared.params.load().take_peaks();
+        assert_eq!((strips.len(), buses.len()), (1, 1));
+        assert_eq!((strips[0].1.len(), buses[0].1.len()), (1, 2));
+        assert!(strips
+            .iter()
+            .chain(buses.iter())
+            .all(|(_, v)| v.iter().all(|&db| db <= -100.0)));
+
+        shared.connected_again();
+        assert_eq!(shared.status().state, "connecting");
     }
 }

@@ -291,6 +291,10 @@ fn engine_status(connected: bool, state: &FullState) -> (egui::Color32, String) 
             p.meter_red,
             format!("engine error: {}", e.error.clone().unwrap_or_default()),
         ),
+        "waiting" => (
+            p.meter_yellow,
+            "waiting for PipeWire to come back".to_string(),
+        ),
         "disabled" => (p.text_dim, "engine disabled".to_string()),
         other => (p.meter_yellow, other.to_string()),
     }

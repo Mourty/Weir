@@ -99,6 +99,19 @@ is simply linked again, a link of Weir's removed in a patchbay is made
 again, and a strip added in the window gets its device, ports and links
 from the same code that set everything up at the start.
 
+PipeWire itself can go away: an update or a crash restarts it, and every
+client's connection breaks. The thread keeps one main loop for its life,
+and a `Connection` (context, core, registry, the runner) for as long as
+PipeWire is there. When the core reports the connection lost, the runner
+hands back what the daemon wants (the mix, options, sounds, record taps),
+the connection is dropped, and the thread tries again after 0.5, 1, 2,
+then every 5 seconds, taking in the daemon's commands meanwhile. A new
+connection starts from what is wanted by then, and the same reconcile
+sets it all up again. While waiting, the engine's state is `waiting`,
+and its snapshot is the wanted mix without ports, so meters read silence;
+it is swapped in only once the old engine node is gone, so the real-time
+thread is never the one to free a snapshot.
+
 Two things about PipeWire shape that code. It **reuses ids**, both of nodes
 and of application streams, so nodes are told apart by `object.serial` and
 applications by id and name together. And a strip's device has to be

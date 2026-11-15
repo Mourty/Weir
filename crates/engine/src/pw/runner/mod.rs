@@ -228,7 +228,7 @@ struct Runner {
     self_tx: pipewire::channel::Sender<EngineCommand>,
     /// PipeWire's `default` metadata, where application targets are set.
     metadata: Option<Metadata>,
-    on_event: Box<dyn Fn(EngineEvent) + Send>,
+    on_event: Rc<dyn Fn(EngineEvent) + Send>,
     /// Set when the state or the port set changed, cleared by `publish_params`.
     params_dirty: bool,
     /// Recently replaced snapshots, kept alive so the real-time thread never
@@ -260,130 +260,191 @@ struct Runner {
     handoffs: HashMap<Owner, Arc<Handoff>>,
 }
 
-/// The PipeWire thread's body: connect, then run the main loop until told
-/// to stop. Sends on `ready_tx` once connected, or why it could not.
-pub(super) fn run(
-    initial: MixerState,
-    rx: pipewire::channel::Receiver<EngineCommand>,
-    self_tx: pipewire::channel::Sender<EngineCommand>,
-    shared: Arc<FilterShared>,
-    on_event: Box<dyn Fn(EngineEvent) + Send>,
-    ready_tx: std::sync::mpsc::Sender<Result<(), String>>,
-) -> Result<(), EngineError> {
-    pipewire::init();
-    let fail = |msg: String| {
-        let _ = ready_tx.send(Err(msg.clone()));
-        EngineError::PipeWire(msg)
-    };
-    let mainloop = MainLoopRc::new(None).map_err(|e| fail(format!("main loop: {e}")))?;
-    let mut props = PropertiesBox::new();
-    props.insert("application.name", "Weir");
-    props.insert("application.id", "org.weir.daemon");
-    let context =
-        ContextRc::new(&mainloop, Some(props)).map_err(|e| fail(format!("context: {e}")))?;
-    let core = context
-        .connect_rc(None)
-        .map_err(|e| fail(format!("connect (is PipeWire running?): {e}")))?;
-    let registry = core
-        .get_registry_rc()
-        .map_err(|e| fail(format!("registry: {e}")))?;
+/// What the daemon asked for, kept while PipeWire is away so that the next
+/// connection starts from it.
+#[derive(Default)]
+struct Wanted {
+    state: MixerState,
+    options: EngineOptions,
+    sounds: Arc<SoundBank>,
+    sounds_device: Option<String>,
+    record_taps: Vec<Arc<RecordTap>>,
+}
 
-    {
-        let tx = self_tx.clone();
-        if let Ok(mut cb) = shared.state_cb.lock() {
-            *cb = Some(Box::new(move || {
-                let _ = tx.send(EngineCommand::FilterStateChanged);
-            }));
+impl Wanted {
+    /// Take in a command that came while there is no connection. Only what
+    /// the daemon wants is kept: applications and links went with PipeWire.
+    fn take(&mut self, cmd: EngineCommand) {
+        match cmd {
+            EngineCommand::SetState(state) => self.state = state,
+            EngineCommand::SetOptions(options) => self.options = options,
+            EngineCommand::SetSounds(bank) => self.sounds = bank,
+            EngineCommand::SetSoundsDevice(device) => self.sounds_device = device,
+            EngineCommand::SetRecordTaps(taps) => self.record_taps = taps,
+            EngineCommand::MoveApp { .. }
+            | EngineCommand::SetAppVolume { .. }
+            | EngineCommand::AppsDirty
+            | EngineCommand::FilterStateChanged
+            | EngineCommand::LinkGone(..)
+            | EngineCommand::Shutdown => {}
         }
     }
-    let filter = Filter::new(mainloop.loop_(), shared.clone(), ENGINE_NODE_NAME)
-        .map_err(|e| fail(format!("engine node: {e}")))?;
+}
 
-    let runner = Rc::new(RefCell::new(Runner {
-        state: initial,
-        options: EngineOptions::default(),
-        graph: Graph::default(),
-        core: core.clone(),
-        registry: registry.clone(),
-        main_loop: mainloop.clone(),
-        filter,
-        ports: HashMap::new(),
-        stale_ports: Vec::new(),
-        virtual_nodes: HashMap::new(),
-        links: HashMap::new(),
-        link_ids: HashMap::new(),
-        app_nodes: HashMap::new(),
-        app_volumes: Rc::new(RefCell::new(BTreeMap::new())),
-        self_tx: self_tx.clone(),
-        metadata: None,
-        on_event,
-        params_dirty: true,
-        old_params: VecDeque::new(),
-        sounds: Arc::default(),
-        sounds_device: None,
-        record_taps: Vec::new(),
-        last_devices: Vec::new(),
-        last_apps: Vec::new(),
-        last_status: None,
-        last_system_volumes: SystemVolumes::default(),
-        pending_moves: Vec::new(),
-        inserts: Vec::new(),
-        pending_relinks: Vec::new(),
-        returns: None,
-        handoffs: HashMap::new(),
-    }));
+/// Where the thread is: connected, with a runner doing the work, or
+/// waiting for PipeWire, holding what the daemon wants.
+enum Phase {
+    Connected(Rc<RefCell<Runner>>),
+    Waiting(Wanted),
+}
 
-    let _core_listener = {
-        let ml = mainloop.clone();
-        let shared = shared.clone();
-        core.add_listener_local()
-            .info(move |info| {
-                if let Ok(mut v) = shared.server_version.lock() {
-                    *v = Some(info.version().to_string());
-                }
-            })
-            .error(move |id, seq, res, message| {
-                if res == -ENOENT && message.contains("unknown resource") {
-                    // We asked to destroy an object the server had already
-                    // removed (e.g. links of a vanished node). Harmless.
-                    debug!("PipeWire: {message}");
-                    return;
-                }
-                error!("PipeWire core error id={id} seq={seq} res={res}: {message}");
-                if id == pipewire::core::PW_ID_CORE && res == -EPIPE {
-                    ml.quit();
-                }
-            })
-            .register()
-    };
+impl Phase {
+    /// What the daemon wants, taken out to make a connection with.
+    fn take_wanted(&mut self) -> Wanted {
+        match self {
+            Phase::Waiting(wanted) => std::mem::take(wanted),
+            Phase::Connected(runner) => runner.borrow_mut().take_wanted(),
+        }
+    }
+}
 
-    let _registry_listener = {
-        let r1 = runner.clone();
-        let r2 = runner.clone();
-        registry
-            .add_listener_local()
-            .global(move |obj| r1.borrow_mut().on_global(obj))
-            .global_remove(move |id| r2.borrow_mut().on_global_remove(id))
-            .register()
-    };
+/// How long to wait before each try to connect again, once PipeWire has
+/// gone: soon at first, since a restarted PipeWire is back within a second
+/// or two, then every few seconds for as long as it takes.
+const RECONNECT_DELAYS_MS: [u64; 4] = [500, 1000, 2000, 5000];
 
-    let _rx = {
-        let r = runner.clone();
-        let ml = mainloop.clone();
-        rx.attach(mainloop.loop_(), move |cmd| match cmd {
-            EngineCommand::Shutdown => ml.quit(),
-            cmd => r.borrow_mut().on_command(cmd),
+/// One connection to PipeWire and everything made on it. The fields drop in
+/// order: the listeners, then the runner with Weir's nodes, links and
+/// proxies, and only then the core they were made on.
+struct Connection {
+    _core_listener: pipewire::core::Listener,
+    _registry_listener: pipewire::registry::Listener,
+    runner: Rc<RefCell<Runner>>,
+    _registry: RegistryRc,
+    _core: CoreRc,
+    _context: ContextRc,
+}
+
+impl Connection {
+    /// Connect to PipeWire, make the engine node and start mixing as
+    /// `wanted` says, taking it. On failure it is left as it was.
+    fn open(
+        mainloop: &MainLoopRc,
+        shared: &Arc<FilterShared>,
+        self_tx: &pipewire::channel::Sender<EngineCommand>,
+        on_event: &Rc<dyn Fn(EngineEvent) + Send>,
+        wanted: &mut Wanted,
+    ) -> Result<Self, String> {
+        let mut props = PropertiesBox::new();
+        props.insert("application.name", "Weir");
+        props.insert("application.id", "org.weir.daemon");
+        let context = match ContextRc::new(mainloop, Some(props)) {
+            Ok(c) => c,
+            Err(e) => return Err(format!("context: {e}")),
+        };
+        let core = match context.connect_rc(None) {
+            Ok(c) => c,
+            Err(e) => return Err(format!("connect (is PipeWire running?): {e}")),
+        };
+        let registry = match core.get_registry_rc() {
+            Ok(r) => r,
+            Err(e) => return Err(format!("registry: {e}")),
+        };
+        let filter = match Filter::new(mainloop.loop_(), shared.clone(), ENGINE_NODE_NAME) {
+            Ok(f) => f,
+            Err(e) => return Err(format!("engine node: {e}")),
+        };
+        let wanted = std::mem::take(wanted);
+        shared.connected_again();
+        if wanted.options.sample_rate.is_some() || wanted.options.quantum.is_some() {
+            filter.set_timing(wanted.options.sample_rate, wanted.options.quantum);
+        }
+
+        let runner = Rc::new(RefCell::new(Runner {
+            state: wanted.state,
+            options: wanted.options,
+            graph: Graph::default(),
+            core: core.clone(),
+            registry: registry.clone(),
+            main_loop: mainloop.clone(),
+            filter,
+            ports: HashMap::new(),
+            stale_ports: Vec::new(),
+            virtual_nodes: HashMap::new(),
+            links: HashMap::new(),
+            link_ids: HashMap::new(),
+            app_nodes: HashMap::new(),
+            app_volumes: Rc::new(RefCell::new(BTreeMap::new())),
+            self_tx: self_tx.clone(),
+            metadata: None,
+            on_event: on_event.clone(),
+            params_dirty: true,
+            old_params: VecDeque::new(),
+            sounds: wanted.sounds,
+            sounds_device: wanted.sounds_device,
+            record_taps: wanted.record_taps,
+            last_devices: Vec::new(),
+            last_apps: Vec::new(),
+            last_status: None,
+            last_system_volumes: SystemVolumes::default(),
+            pending_moves: Vec::new(),
+            inserts: Vec::new(),
+            pending_relinks: Vec::new(),
+            returns: None,
+            handoffs: HashMap::new(),
+        }));
+
+        let core_listener = {
+            let ml = mainloop.clone();
+            let shared = shared.clone();
+            core.add_listener_local()
+                .info(move |info| {
+                    if let Ok(mut v) = shared.server_version.lock() {
+                        *v = Some(info.version().to_string());
+                    }
+                })
+                .error(move |id, seq, res, message| {
+                    if res == -ENOENT && message.contains("unknown resource") {
+                        // We asked to destroy an object the server had already
+                        // removed (e.g. links of a vanished node). Harmless.
+                        debug!("PipeWire: {message}");
+                        return;
+                    }
+                    error!("PipeWire core error id={id} seq={seq} res={res}: {message}");
+                    // The connection is gone, PipeWire most likely with it:
+                    // the loop stops, and `run` connects again.
+                    if id == pipewire::core::PW_ID_CORE && res == -EPIPE {
+                        ml.quit();
+                    }
+                })
+                .register()
+        };
+
+        let registry_listener = {
+            let r1 = runner.clone();
+            let r2 = runner.clone();
+            registry
+                .add_listener_local()
+                .global(move |obj| r1.borrow_mut().on_global(obj))
+                .global_remove(move |id| r2.borrow_mut().on_global_remove(id))
+                .register()
+        };
+
+        runner.borrow_mut().reconcile();
+        Ok(Self {
+            _core_listener: core_listener,
+            _registry_listener: registry_listener,
+            runner,
+            _registry: registry,
+            _core: core,
+            _context: context,
         })
-    };
+    }
 
-    runner.borrow_mut().reconcile();
-    let _ = ready_tx.send(Ok(()));
-    info!("engine connected to PipeWire");
-    mainloop.run();
-
-    // Tear down explicitly so the server does not wait for the disconnect.
-    {
-        let mut r = runner.borrow_mut();
+    /// Remove Weir's links and devices from PipeWire right away, so the
+    /// server does not wait for the disconnect to notice.
+    fn tear_down(&self) {
+        let mut r = self.runner.borrow_mut();
         let links: Vec<_> = r.links.drain().map(|(_, l)| l).collect();
         for l in links {
             let _ = r.core.destroy_object(l);
@@ -393,11 +454,160 @@ pub(super) fn run(
             let _ = r.core.destroy_object(n);
         }
     }
+}
+
+/// The PipeWire thread's body: connect, then run the main loop until told
+/// to stop. Sends on `ready_tx` once first connected, or why it could not.
+///
+/// When the connection is lost, usually because PipeWire stopped or
+/// restarted, the thread keeps what the daemon asks for meanwhile, tries
+/// again until PipeWire is back, and then sets everything up afresh: the
+/// engine node, Weir's devices and links, from the mix as it is by then.
+pub(super) fn run(
+    initial: MixerState,
+    rx: pipewire::channel::Receiver<EngineCommand>,
+    self_tx: pipewire::channel::Sender<EngineCommand>,
+    shared: Arc<FilterShared>,
+    on_event: Box<dyn Fn(EngineEvent) + Send>,
+    ready_tx: std::sync::mpsc::Sender<Result<(), String>>,
+) -> Result<(), EngineError> {
+    pipewire::init();
+    let on_event: Rc<dyn Fn(EngineEvent) + Send> = Rc::from(on_event);
+    let mainloop = match MainLoopRc::new(None) {
+        Ok(m) => m,
+        Err(e) => {
+            let msg = format!("main loop: {e}");
+            let _ = ready_tx.send(Err(msg.clone()));
+            return Err(EngineError::PipeWire(msg));
+        }
+    };
+    {
+        let tx = self_tx.clone();
+        if let Ok(mut cb) = shared.state_cb.lock() {
+            *cb = Some(Box::new(move || {
+                let _ = tx.send(EngineCommand::FilterStateChanged);
+            }));
+        }
+    }
+
+    let phase = Rc::new(RefCell::new(Phase::Waiting(Wanted {
+        state: initial,
+        ..Wanted::default()
+    })));
+    let stopping = Rc::new(std::cell::Cell::new(false));
+    let _rx = {
+        let phase = phase.clone();
+        let stopping = stopping.clone();
+        let shared = shared.clone();
+        let ml = mainloop.clone();
+        rx.attach(mainloop.loop_(), move |cmd| {
+            if let EngineCommand::Shutdown = cmd {
+                stopping.set(true);
+                ml.quit();
+                return;
+            }
+            let runner = match &mut *phase.borrow_mut() {
+                Phase::Connected(runner) => runner.clone(),
+                Phase::Waiting(wanted) => {
+                    let mix = matches!(
+                        cmd,
+                        EngineCommand::SetState(_) | EngineCommand::SetOptions(_)
+                    );
+                    wanted.take(cmd);
+                    if mix {
+                        shared.rest(&wanted.state, wanted.options.solo);
+                    }
+                    return;
+                }
+            };
+            runner.borrow_mut().on_command(cmd);
+        })
+    };
+    // Waits between tries to connect: the loop runs, taking in commands,
+    // until the timer stops it.
+    let retry = {
+        let ml = mainloop.clone();
+        mainloop.loop_().add_timer(move |_| ml.quit())
+    };
+
+    let mut ready_tx = Some(ready_tx);
+    let mut tries = 0usize;
+    loop {
+        let mut wanted = phase.borrow_mut().take_wanted();
+        match Connection::open(&mainloop, &shared, &self_tx, &on_event, &mut wanted) {
+            Ok(connection) => {
+                *phase.borrow_mut() = Phase::Connected(connection.runner.clone());
+                match ready_tx.take() {
+                    Some(tx) => {
+                        let _ = tx.send(Ok(()));
+                        info!("engine connected to PipeWire");
+                    }
+                    None => info!("connected to PipeWire again; the engine is back"),
+                }
+                tries = 0;
+                mainloop.run();
+                // The runner leaves `phase` first, so that it goes with the
+                // connection, before the core it was made on.
+                let wanted = phase.borrow_mut().take_wanted();
+                *phase.borrow_mut() = Phase::Waiting(wanted);
+                if stopping.get() {
+                    connection.tear_down();
+                    break;
+                }
+                // The engine node goes with it, so its real-time thread is
+                // done with the snapshot before `rest` replaces it.
+                drop(connection);
+                warn!("lost the connection to PipeWire; connecting again once it is back");
+                shared.lost();
+                if let Phase::Waiting(wanted) = &*phase.borrow() {
+                    shared.rest(&wanted.state, wanted.options.solo);
+                }
+                report_lost(&shared, &on_event);
+            }
+            Err(why) => {
+                *phase.borrow_mut() = Phase::Waiting(wanted);
+                if let Some(tx) = ready_tx.take() {
+                    let _ = tx.send(Err(why.clone()));
+                    return Err(EngineError::PipeWire(why));
+                }
+                debug!("PipeWire is not back yet: {why}");
+            }
+        }
+        let delay = RECONNECT_DELAYS_MS[tries.min(RECONNECT_DELAYS_MS.len() - 1)];
+        tries += 1;
+        let _ = retry.update_timer(Some(std::time::Duration::from_millis(delay)), None);
+        mainloop.run();
+        if stopping.get() {
+            break;
+        }
+    }
     info!("engine thread stopped");
     Ok(())
 }
 
+/// Tell the daemon what is left once PipeWire has gone: no engine, no
+/// devices, no applications, and no external effects connected.
+fn report_lost(shared: &FilterShared, on_event: &Rc<dyn Fn(EngineEvent) + Send>) {
+    on_event(EngineEvent::Status(shared.status()));
+    on_event(EngineEvent::Devices(Vec::new()));
+    on_event(EngineEvent::Apps(Vec::new()));
+    on_event(EngineEvent::SystemVolumes(SystemVolumes::default()));
+    on_event(EngineEvent::Inserts(Vec::new()));
+}
+
 impl Runner {
+    /// What the daemon wants, taken out for the next connection once this
+    /// one is over.
+    fn take_wanted(&mut self) -> Wanted {
+        Wanted {
+            state: std::mem::take(&mut self.state),
+            options: self.options,
+            sounds: std::mem::take(&mut self.sounds),
+            sounds_device: self.sounds_device.take(),
+            record_taps: std::mem::take(&mut self.record_taps),
+        }
+    }
+
     /// Something appeared in PipeWire.
     fn on_global<P: AsRef<pipewire::spa::utils::dict::DictRef>>(
         &mut self,

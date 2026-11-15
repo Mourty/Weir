@@ -20,7 +20,7 @@ jobs:
     name: Format, clippy and tests
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install the build dependencies
         run: |
           sudo apt-get update
@@ -42,7 +42,7 @@ jobs:
     name: Tests on arm64
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install the build dependencies
         run: |
           sudo apt-get update
@@ -65,7 +65,7 @@ jobs:
     name: Builds with Rust 1.95
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install the build dependencies
         run: |
           sudo apt-get update
@@ -82,7 +82,7 @@ jobs:
     name: License notices are current
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-about@0.9.2

@@ -48,7 +48,7 @@ jobs:
     outputs:
       version: ${{ steps.read.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: read
         name: Compare Cargo.toml, the RPM spec, AppStream and the tag
         run: |
@@ -112,7 +112,7 @@ jobs:
           dnf install -y --setopt=install_weak_deps=False \
             git-core make rpm-build cargo rust clang cmake pipewire-devel \
             pkgconf-pkg-config desktop-file-utils libappstream-glib
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # The RPM is copied out of its architecture folder: upload-artifact
       # keeps any folders after a wildcard, and the release job needs the
       # packages side by side.
@@ -125,7 +125,7 @@ jobs:
           cp rpmbuild/RPMS/*/weir-*.rpm dist/
           echo "file=$(cd dist && ls weir-*.rpm)" >> "$GITHUB_OUTPUT"
       # Each download is named after the file in it, as on a release page.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.build.outputs.file }}
           path: dist/${{ steps.build.outputs.file }}
@@ -150,7 +150,7 @@ jobs:
     # ones too.
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install the build tools
         run: |
           sudo apt-get update
@@ -177,7 +177,7 @@ jobs:
           root=target/deb/root
           desktop-file-validate $root/usr/share/applications/weir.desktop
           appstreamcli validate --no-net $root/usr/share/metainfo/io.github.mourty.weir.metainfo.xml
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.build.outputs.file }}
           path: target/deb/${{ steps.build.outputs.file }}
@@ -212,7 +212,7 @@ jobs:
       APPIMAGETOOL_VERSION: "1.9.1"
       RUNTIME_VERSION: "20251108"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install the build tools
         run: |
           sudo apt-get update
@@ -267,13 +267,13 @@ jobs:
           env -u APPIMAGE_EXTRACT_AND_RUN "./$image" --appimage-updateinformation | tee update-info
           grep -q "^gh-releases-zsync|Mourty|Weir|latest|Weir-\*-${{ matrix.arch }}.AppImage.zsync$" update-info
       # Apart, so each download holds the one file its name says.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.check.outputs.image }}
           path: target/appimage/${{ steps.check.outputs.image }}
           if-no-files-found: error
           retention-days: 14
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.check.outputs.image }}.zsync
           path: target/appimage/${{ steps.check.outputs.image }}.zsync
@@ -290,7 +290,7 @@ jobs:
       # requests build their own code, packed with `git archive`.
       - name: Install the build tools
         run: pacman -Syu --noconfirm --needed base-devel git openssh pacman-contrib namcap
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: prep
         name: Prepare the PKGBUILD
         env:
@@ -334,14 +334,14 @@ jobs:
           echo "file=$(ls weir-[0-9]*.pkg.tar.zst)" >> "$GITHUB_OUTPUT"
       # The package, for the release page. The pattern leaves out the
       # weir-debug package that makepkg's debug option may add.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.check.outputs.file }}
           path: /home/builder/weir/${{ steps.check.outputs.file }}
           if-no-files-found: error
           retention-days: 14
       # The recipe, for the AUR.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: aur-recipe
           path: |
@@ -359,7 +359,7 @@ jobs:
     needs: arch
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: aur-recipe
           path: recipe
@@ -406,7 +406,7 @@ jobs:
     steps:
       # Every download is named after its file, so this takes them by
       # type, leaving out the AUR recipe, which is not for the release page.
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: "*.{rpm,deb,AppImage,zsync,zst}"
           merge-multiple: true

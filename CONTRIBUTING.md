@@ -48,7 +48,7 @@ GitHub runs the first three on every pull request, together with the
 checks below, and shows the result on the pull request.
 
 After adding or updating a dependency, run `make licenses` (it needs
-`cargo install cargo-about --version 0.9.2 --locked --features cli`) and
+`cargo install cargo-about --version 0.9.3 --locked --features cli`) and
 commit `packaging/licenses/THIRD-PARTY-LICENSES.txt`. Packages carry that
 file, because the libraries' licenses ask for their notices to go with
 every copy of Weir. The checks fail when a library comes under a license

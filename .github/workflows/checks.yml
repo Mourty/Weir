@@ -85,7 +85,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-about@0.9.2
+          tool: cargo-about@0.9.3
       # A license that packaging/licenses/about.toml does not accept fails
       # `make licenses` itself. So does a change in which licenses Weir's
       # libraries come under, for someone to look at before it ships. New

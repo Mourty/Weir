@@ -79,7 +79,7 @@ opus = "0.4.0"
 ogg = "0.9.2"
 vorbis_rs = "0.5.6"
 # Opus always runs at 48 kHz: other rates are resampled for it.
-rubato = "0.16.2"
+rubato = "5.0.1"
 
 # LAME, built without its configure script, which fails when the folder's
 # path has a space in it. See vendor/mp3lame-sys/README.md.

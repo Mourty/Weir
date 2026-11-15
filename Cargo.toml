@@ -50,7 +50,7 @@ eframe = { version = "0.37", default-features = false, features = [
 # leaves to each window on Wayland.
 winit = "0.30.13"
 egui = "0.37"
-dirs = "6"
+dirs = "7"
 ksni = "0.3"
 libc = "0.2"
 png = "0.18.1"

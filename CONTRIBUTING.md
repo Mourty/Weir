@@ -58,6 +58,20 @@ before accepting it. New versions, or new libraries under licenses already
 there, only leave a note; the file must be current in a release's pull
 request.
 
+### Dependabot
+
+Dependabot (`.github/dependabot.yml`) opens a pull request on the first of
+each month with new versions of the libraries, and one with new versions
+of the GitHub Actions the workflows use. A new version must be a week old
+before it is offered. egui and its parts come in their own pull request,
+and so does each library's new major version, since those may need code
+changes. A pull request whose checks pass can be merged as it is; one
+that fails needs the code brought up to date in it first.
+
+Security fixes are separate: with **Dependabot security updates** on in
+the repository's settings, a fix arrives as its own pull request as soon
+as an advisory names a fixed version, whatever the date.
+
 Weir builds on Rust 1.95 (`rust-version` in `Cargo.toml`), the oldest its
 window library, egui, supports, so standard library methods newer than
 that are not available. Updating a dependency can raise the minimum; check

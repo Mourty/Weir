@@ -673,7 +673,7 @@ Used by: as-raw-xcb-connection 1.0.1, encoding_rs 0.8.42, flacenc 0.5.1, kurbo 0
 --------------------------------------------------------------------------
 Apache License 2.0
 
-Used by: linux-raw-sys 0.12.1, linux-raw-sys 0.4.15, rustix 0.38.44, rustix 1.1.5
+Used by: linux-raw-sys 0.12.1, linux-raw-sys 0.4.15, rustix 0.38.44, rustix 1.1.6
 --------------------------------------------------------------------------
 
 
@@ -5354,7 +5354,7 @@ limitations under the License.
 --------------------------------------------------------------------------
 Apache License 2.0
 
-Used by: ahash 0.8.12, arc-swap 1.9.2, arrayvec 0.7.8, async-channel 2.5.0, async-executor 1.14.0, async-io 2.6.0, async-lock 3.4.2, async-process 2.5.0, async-signal 0.2.14, async-task 4.7.1, atomic-waker 1.1.2, base64 0.22.1, base64 0.23.1, bitflags 1.3.2, bitflags 2.13.2, blocking 1.7.0, cfg-if 1.0.5, concurrent-queue 2.5.0, crossbeam-channel 0.5.17, crossbeam-utils 0.8.23, displaydoc 0.2.7, either 1.18.0, equivalent 1.0.2, errno 0.3.14, euclid 0.22.14, event-listener-strategy 0.5.4, event-listener 5.4.2, fastrand 2.5.0, fixedbitset 0.5.7, flate2 1.1.10, fontique 0.11.1, form_urlencoded 1.2.2, futures-lite 2.6.1, gethostname 1.1.0, hash32 0.3.1, hashbrown 0.15.5, hashbrown 0.17.1, heapless 0.8.0, heck 0.5.0, httparse 1.10.1, idna 1.1.0, idna_adapter 1.2.2, indexmap 2.14.2, itertools 0.15.0, lazy_static 1.5.0, linux-raw-sys 0.12.1, linux-raw-sys 0.4.15, lock_api 0.4.14, log 0.4.34, num-complex 0.4.6, num-integer 0.1.47, num-traits 0.2.19, once_cell 1.21.4, openssl-probe 0.2.1, opus 0.4.0, ordered-stream 0.2.0, parking 2.2.1, parking_lot 0.12.5, parking_lot_core 0.9.12, parlance 0.1.1, percent-encoding 2.3.2, petgraph 0.8.3, piper 0.2.5, png 0.18.1, polling 3.11.0, primal-check 0.3.4, regex-automata 0.4.18, regex-syntax 0.8.11, ring 0.17.14, ron 0.12.3, rustix 0.38.44, rustix 1.1.5, rustls-native-certs 0.8.5, rustls 0.23.46, scoped-tls 1.0.1, scopeguard 1.2.0, signal-hook-registry 1.4.8, smallvec 1.16.1, smol_str 0.2.2, socket2 0.6.5, stable_deref_trait 1.2.1, thread_local 1.1.10, ttf-parser 0.25.1, unicode-properties 0.1.5, unicode-segmentation 1.13.3, url 2.5.8, uuid 1.26.1, wl-clipboard-rs 0.9.5
+Used by: ahash 0.8.12, arc-swap 1.9.2, arrayvec 0.7.8, async-channel 2.5.0, async-executor 1.14.1, async-io 2.6.0, async-lock 3.4.2, async-process 2.5.0, async-signal 0.2.14, async-task 4.7.1, atomic-waker 1.1.2, base64 0.22.1, base64 0.23.1, bitflags 1.3.2, bitflags 2.13.2, blocking 1.7.0, cfg-if 1.0.5, concurrent-queue 2.5.0, crossbeam-channel 0.5.17, crossbeam-utils 0.8.23, displaydoc 0.2.7, either 1.18.0, equivalent 1.0.2, errno 0.3.14, euclid 0.22.14, event-listener-strategy 0.5.4, event-listener 5.4.2, fastrand 2.5.0, fixedbitset 0.5.7, flate2 1.1.10, fontique 0.11.1, form_urlencoded 1.2.2, futures-lite 2.6.1, gethostname 1.1.0, hash32 0.3.1, hashbrown 0.15.5, hashbrown 0.17.1, heapless 0.8.0, heck 0.5.0, httparse 1.10.1, idna 1.1.0, idna_adapter 1.2.2, indexmap 2.14.2, itertools 0.15.0, lazy_static 1.5.0, linux-raw-sys 0.12.1, linux-raw-sys 0.4.15, lock_api 0.4.14, log 0.4.34, num-complex 0.4.6, num-integer 0.1.47, num-traits 0.2.19, once_cell 1.21.4, openssl-probe 0.2.1, opus 0.4.0, ordered-stream 0.2.0, parking 2.2.1, parking_lot 0.12.5, parking_lot_core 0.9.12, parlance 0.1.1, percent-encoding 2.3.2, petgraph 0.8.3, piper 0.2.5, png 0.18.1, polling 3.11.0, primal-check 0.3.4, regex-automata 0.4.18, regex-syntax 0.8.11, ring 0.17.14, ron 0.12.3, rustix 0.38.44, rustix 1.1.6, rustls-native-certs 0.8.5, rustls 0.23.46, scoped-tls 1.0.1, scopeguard 1.2.0, signal-hook-registry 1.4.8, smallvec 1.16.1, smol_str 0.2.2, socket2 0.6.5, stable_deref_trait 1.2.1, thread_local 1.1.10, ttf-parser 0.25.1, unicode-properties 0.1.5, unicode-segmentation 1.13.3, url 2.5.8, uuid 1.26.1, wl-clipboard-rs 0.9.5
 --------------------------------------------------------------------------
 
                               Apache License
@@ -9659,7 +9659,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 --------------------------------------------------------------------------
 Community Data License Agreement Permissive 2.0
 
-Used by: webpki-roots 1.0.9
+Used by: webpki-roots 1.0.12
 --------------------------------------------------------------------------
 
 # Community Data License Agreement - Permissive - Version 2.0
@@ -10289,7 +10289,7 @@ THIS SOFTWARE.
 --------------------------------------------------------------------------
 ISC License
 
-Used by: rustls-webpki 0.103.15
+Used by: rustls-webpki 0.103.17
 --------------------------------------------------------------------------
 
 Except as otherwise noted, this project is licensed under the following
@@ -11542,7 +11542,7 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 --------------------------------------------------------------------------
 MIT License
 
-Used by: tokio 1.53.1
+Used by: tokio 1.54.1
 --------------------------------------------------------------------------
 
 MIT License
@@ -12688,7 +12688,7 @@ authorization of the copyright holder.
 --------------------------------------------------------------------------
 Unicode License v3
 
-Used by: icu_collections 2.3.0, icu_locale_core 2.3.0, icu_normalizer 2.3.0, icu_normalizer_data 2.3.0, icu_properties 2.3.0, icu_properties_data 2.3.0, icu_provider 2.3.1, litemap 0.8.3, potential_utf 0.1.6, tinystr 0.8.4, writeable 0.6.4, yoke-derive 0.8.3, yoke 0.8.3, zerofrom-derive 0.1.8, zerofrom 0.1.8, zerotrie 0.2.5, zerovec-derive 0.11.6, zerovec 0.11.8
+Used by: icu_collections 2.3.0, icu_locale_core 2.3.0, icu_normalizer 2.3.0, icu_normalizer_data 2.3.0, icu_properties 2.3.0, icu_properties_data 2.3.0, icu_provider 2.3.1, litemap 0.8.3, potential_utf 0.1.6, tinystr 0.8.4, writeable 0.6.4, yoke-derive 0.8.4, yoke 0.8.3, zerofrom-derive 0.1.8, zerofrom 0.1.8, zerotrie 0.2.5, zerovec-derive 0.11.6, zerovec 0.11.8
 --------------------------------------------------------------------------
 
 UNICODE LICENSE V3

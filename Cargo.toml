@@ -32,7 +32,7 @@ anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 clap = { version = "4", features = ["derive"] }
-toml = "0.9"
+toml = "1"
 arc-swap = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time", "signal", "process"] }
 pipewire = { version = "0.10", features = ["v0_3_77"] }

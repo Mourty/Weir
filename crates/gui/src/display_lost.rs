@@ -31,7 +31,17 @@ pub fn end_quietly_when_lost() {
             // terminal closed at logout), and a panic in a panic hook
             // aborts the program.
             let _ = writeln!(std::io::stderr(), "{}", gone.says());
-            std::process::exit(gone.exit_code());
+            // _exit, not exit: this runs in the middle of winit's and
+            // eframe's work, and exit would first run the C libraries'
+            // and thread-locals' cleanup, the graphics driver's among
+            // them, on a dead connection with all of it still in use,
+            // which may never finish. A window left hanging would keep
+            // its place with the service, which then opens no other
+            // window, at the next login or from the tray. Nothing needs
+            // saving here, and the service sees the window go as soon as
+            // the kernel closes its connection.
+            // SAFETY: _exit only ends the process.
+            unsafe { libc::_exit(gone.exit_code()) }
         }
         hook(info);
     }));

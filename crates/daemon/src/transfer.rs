@@ -396,7 +396,11 @@ fn read_zip(bytes: &[u8], total_max: u64) -> Result<Vec<ReadFile>> {
     let mut total: u64 = 0;
     for i in 0..zip.len() {
         let mut entry = zip.by_index(i).context("it is damaged")?;
-        let name = entry.name().to_string();
+        // A name zip cannot read (not valid text, say) is not one Weir
+        // wrote, so it is passed over like any other file not Weir's.
+        let Ok(name) = entry.name().map(|n| n.into_owned()) else {
+            continue;
+        };
         if entry.is_dir() || !name.ends_with(".json") {
             continue;
         }

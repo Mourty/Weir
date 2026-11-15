@@ -1,0 +1,48 @@
+# Dependabot keeps Weir's libraries and GitHub Actions current, with one
+# pull request a month for each. Security fixes are not on this schedule:
+# with Dependabot security updates switched on in the repository's
+# settings, a fix comes as its own pull request as soon as an advisory
+# names a fixed version. CONTRIBUTING.md says more.
+
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: monthly
+    # A new version must be a week old before it is offered: a release
+    # that was broken, or published by someone who took over a crate, has
+    # usually been pulled by then. Security fixes do not wait.
+    cooldown:
+      default-days: 7
+    groups:
+      # The window library: its 0.x versions change in ways that need
+      # code changes, so a new one comes on its own, to be taken on
+      # purpose rather than held up with everything else.
+      egui:
+        patterns:
+          - "egui*"
+          - "eframe"
+          - "epaint*"
+          - "emath"
+          - "ecolor"
+          - "winit"
+      # Everything else in one pull request, except new major versions,
+      # which may need code changes and come one by one.
+      libraries:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns:
+          - "*"

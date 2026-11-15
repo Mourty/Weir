@@ -1,6 +1,6 @@
 # The checks every change must pass, run on each push to main and on each
 # pull request: formatting, clippy, the tests, a build with the oldest Rust
-# Weir supports, and license notices that match the dependencies.
+# Weir supports, and license notices that cover the dependencies' licenses.
 
 name: Checks
 
@@ -20,7 +20,7 @@ jobs:
     name: Format, clippy and tests
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install the build dependencies
         run: |
           sudo apt-get update
@@ -42,7 +42,7 @@ jobs:
     name: Tests on arm64
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install the build dependencies
         run: |
           sudo apt-get update
@@ -65,7 +65,7 @@ jobs:
     name: Builds with Rust 1.95
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install the build dependencies
         run: |
           sudo apt-get update
@@ -82,14 +82,39 @@ jobs:
     name: License notices are current
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-about@0.9.2
+      # A license that packaging/licenses/about.toml does not accept fails
+      # `make licenses` itself. So does a change in which licenses Weir's
+      # libraries come under, for someone to look at before it ships. New
+      # versions and new libraries under the same licenses only leave a
+      # note: the file is brought up to date in each release's pull
+      # request, where it must match.
       - name: Regenerate THIRD-PARTY-LICENSES.txt and compare
+        env:
+          BASE: ${{ github.base_ref }}
         run: |
+          file=packaging/licenses/THIRD-PARTY-LICENSES.txt
+          cp "$file" "$RUNNER_TEMP/before.txt"
           make licenses
-          git diff --exit-code packaging/licenses/THIRD-PARTY-LICENSES.txt || {
-            echo "::error::THIRD-PARTY-LICENSES.txt is out of date. Run 'make licenses' and commit it."
+          kinds() { sed -n 's/^\(.*\): [0-9]* librar\(y\|ies\)$/\1/p' "$1" | sort; }
+          if ! diff <(kinds "$RUNNER_TEMP/before.txt") <(kinds "$file") > "$RUNNER_TEMP/kinds.diff"; then
+            echo "The licenses Weir's libraries come under changed (> new, < gone):"
+            cat "$RUNNER_TEMP/kinds.diff"
+            echo "::error::The licenses of Weir's libraries changed. Check that they suit Weir, then run 'make licenses' and commit THIRD-PARTY-LICENSES.txt."
             exit 1
-          }
+          fi
+          git diff --quiet "$file" && exit 0
+          release=false
+          if [ -n "$BASE" ]; then
+            git fetch --quiet --depth=1 origin "$BASE"
+            version() { sed -n 's/^version = "\(.*\)"/\1/p' | head -1; }
+            [ "$(git show FETCH_HEAD:Cargo.toml | version)" != "$(version < Cargo.toml)" ] && release=true
+          fi
+          if $release; then
+            echo "::error::This pull request makes a release, so THIRD-PARTY-LICENSES.txt must be current. Run 'make licenses' and commit it."
+            exit 1
+          fi
+          echo "::notice::THIRD-PARTY-LICENSES.txt lists older versions or misses new libraries under the same licenses. The release brings it up to date."

@@ -48,10 +48,29 @@ GitHub runs the first three on every pull request, together with the
 checks below, and shows the result on the pull request.
 
 After adding or updating a dependency, run `make licenses` (it needs
-`cargo install cargo-about --features cli`) and commit
-`packaging/licenses/THIRD-PARTY-LICENSES.txt`. Packages carry that file,
-because the libraries' licenses ask for their notices to go with every
-copy of Weir, and the checks fail when it is out of date.
+`cargo install cargo-about --version 0.9.2 --locked --features cli`) and
+commit `packaging/licenses/THIRD-PARTY-LICENSES.txt`. Packages carry that
+file, because the libraries' licenses ask for their notices to go with
+every copy of Weir. The checks fail when a library comes under a license
+that `packaging/licenses/about.toml` does not accept, or when the licenses
+Weir's libraries come under change: look at what the new one asks of Weir
+before accepting it. New versions, or new libraries under licenses already
+there, only leave a note; the file must be current in a release's pull
+request.
+
+### Dependabot
+
+Dependabot (`.github/dependabot.yml`) opens a pull request on the first of
+each month with new versions of the libraries, and one with new versions
+of the GitHub Actions the workflows use. A new version must be a week old
+before it is offered. egui and its parts come in their own pull request,
+and so does each library's new major version, since those may need code
+changes. A pull request whose checks pass can be merged as it is; one
+that fails needs the code brought up to date in it first.
+
+Security fixes are separate: with **Dependabot security updates** on in
+the repository's settings, a fix arrives as its own pull request as soon
+as an advisory names a fixed version, whatever the date.
 
 Weir builds on Rust 1.95 (`rust-version` in `Cargo.toml`), the oldest its
 window library, egui, supports, so standard library methods newer than
@@ -273,6 +292,9 @@ branch fails instead of publishing unreleased code as a release.
    entry in `packaging/weir.spec`, and a new `<release>` in
    `packaging/io.github.mourty.weir.metainfo.xml`, which software centers
    show as the release notes.
+   Run `make licenses` too, and commit
+   `packaging/licenses/THIRD-PARTY-LICENSES.txt` if it changed: the
+   checks insist that a release's notices are current.
 2. Merge that to `main` and wait for the checks to pass.
 3. On GitHub, open **Releases → Draft a new release**. Under **Choose a
    tag**, type `v1.1.0` (the version with a `v` in front) and pick

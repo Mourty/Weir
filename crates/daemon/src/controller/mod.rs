@@ -38,7 +38,7 @@ use crate::login::{self, LoginStart};
 use crate::tray::TrayCommand;
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 use tokio::sync::broadcast;
 use tokio::sync::mpsc::UnboundedSender;
@@ -66,6 +66,39 @@ pub struct Subscriptions {
 /// It answers from its drawing loop, within a frame or two when it is
 /// alive, so this leaves plenty for a busy computer.
 pub const WINDOW_ANSWER: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// The connection that is the mixer window, and the process at its other
+/// end, when known.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct WindowOwner {
+    conn: u64,
+    pid: Option<i32>,
+}
+
+/// End the process of a mixer window that stopped answering. Only a
+/// process named as the window is touched; a stand-in or a test client is
+/// left alone, closed only by its connection ending.
+fn end_window_process(pid: Option<i32>) {
+    let Some(pid) = pid.filter(|&p| p > 1 && p.unsigned_abs() != std::process::id()) else {
+        return;
+    };
+    let name = std::fs::read_to_string(format!("/proc/{pid}/comm")).unwrap_or_default();
+    if name.trim_end() != "weir" {
+        debug!(
+            "not ending process {pid} ({}): not a mixer window",
+            name.trim_end()
+        );
+        return;
+    }
+    // A stopped process acts on the signal only once it carries on.
+    // SAFETY: kill only sends signals; a process that is gone by now
+    // makes it fail, which is fine.
+    unsafe {
+        libc::kill(pid, libc::SIGTERM);
+        libc::kill(pid, libc::SIGCONT);
+    }
+    info!("ended the mixer window's process ({pid})");
+}
 
 /// Most spectra one connection may watch at once. Each costs an FFT pair 30
 /// times a second, so this is a guard against a runaway client, not a limit
@@ -141,19 +174,16 @@ pub struct Controller {
     dirty: AtomicBool,
     /// Set when the applications heard lately changed since last saved.
     seen_dirty: AtomicBool,
-    /// How many connections have claimed to be the mixer window. The tray
-    /// uses this to decide between raising a window and starting one.
-    window_clients: AtomicUsize,
+    /// The connection that is the mixer window, if one is. The tray uses
+    /// this to decide between raising a window and starting one.
+    window: Mutex<Option<WindowOwner>>,
     /// Counts every `ping` from the connection that is the mixer window. A
     /// window answers each `show_window` with one, from its drawing loop,
     /// which tells a window that can be seen from one whose connection
     /// carries on after its drawing stopped.
     window_answers: AtomicU64,
-    /// Counts the connections that became the mixer window.
-    window_claims: AtomicU64,
-    /// Bumped to close the mixer window that did not answer: its
-    /// connection tells it to quit, ends its process and lets go, so that
-    /// another window can take its place.
+    /// Bumped when the mixer window that did not answer lost its place, so
+    /// that its connection tells it to quit and closes, if it still can.
     window_evictions: tokio::sync::watch::Sender<u64>,
     /// Set once the main loop is ready to act on window requests it cannot
     /// serve itself, such as starting the window when none is open.
@@ -289,9 +319,8 @@ impl Controller {
             paths,
             dirty: AtomicBool::new(false),
             seen_dirty: AtomicBool::new(false),
-            window_clients: AtomicUsize::new(0),
+            window: Mutex::new(None),
             window_answers: AtomicU64::new(0),
-            window_claims: AtomicU64::new(0),
             window_evictions: tokio::sync::watch::Sender::new(0),
             window_tx: Mutex::new(None),
             spectrum_watchers: Mutex::new(BTreeMap::new()),
@@ -382,40 +411,50 @@ impl Controller {
 
     /// True when a mixer window is connected right now.
     pub fn window_attached(&self) -> bool {
-        self.window_clients.load(Ordering::Acquire) > 0
+        self.window.locked().is_some()
     }
 
-    /// A connection claims to be the mixer window. There is only ever one:
-    /// the claim fails, returning false, while another window is attached.
-    /// Checking and claiming in one step means two windows starting at the
-    /// same moment cannot both win.
-    pub fn claim_window(&self) -> bool {
-        let claimed = self
-            .window_clients
-            .compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire)
-            .is_ok();
-        if claimed {
-            self.window_claims.fetch_add(1, Ordering::AcqRel);
+    /// Connection `conn`, from process `pid`, claims to be the mixer
+    /// window. There is only ever one: the claim fails, returning false,
+    /// while another window is attached. Checking and claiming in one step
+    /// means two windows starting at the same moment cannot both win.
+    pub fn claim_window(&self, conn: u64, pid: Option<i32>) -> bool {
+        let mut window = self.window.locked();
+        if window.is_some() {
+            return false;
         }
-        claimed
+        *window = Some(WindowOwner { conn, pid });
+        true
     }
 
-    /// A connection that claimed to be the mixer window stopped being one.
-    pub fn remove_window_client(&self) {
-        // Count down, never below zero. Written out rather than with
-        // `fetch_update`, which newer compilers flag as renamed to
-        // `try_update`, a name Rust 1.88 does not have yet.
-        let mut n = self.window_clients.load(Ordering::Acquire);
-        while n > 0 {
-            match self.window_clients.compare_exchange_weak(
-                n,
-                n - 1,
-                Ordering::AcqRel,
-                Ordering::Acquire,
-            ) {
-                Ok(_) => break,
-                Err(now) => n = now,
+    /// Connection `conn` stopped being the mixer window. Nothing changes
+    /// when it no longer was: its place may have gone to another.
+    pub fn release_window(&self, conn: u64) {
+        let mut window = self.window.locked();
+        if window.is_some_and(|w| w.conn == conn) {
+            *window = None;
+        }
+    }
+
+    /// Whether connection `conn` is the mixer window still.
+    pub fn is_window(&self, conn: u64) -> bool {
+        self.window.locked().is_some_and(|w| w.conn == conn)
+    }
+
+    /// Connection `conn`, the mixer window, stopped reading what the daemon
+    /// sends it: its process hangs or was stopped. It is ended, and its
+    /// place let go.
+    pub fn window_hangs(&self, conn: u64) {
+        let owner = {
+            let mut window = self.window.locked();
+            match *window {
+                Some(w) if w.conn == conn => window.take(),
+                _ => None,
             }
+        };
+        if let Some(owner) = owner {
+            warn!("the mixer window stopped reading, so it is closed");
+            end_window_process(owner.pid);
         }
     }
 
@@ -429,7 +468,8 @@ impl Controller {
         self.window_answers.fetch_add(1, Ordering::AcqRel);
     }
 
-    /// What a connection watches to learn that its window is to close.
+    /// What a connection watches to learn that it lost its place as the
+    /// mixer window.
     pub fn window_evictions(&self) -> tokio::sync::watch::Receiver<u64> {
         self.window_evictions.subscribe()
     }
@@ -438,32 +478,44 @@ impl Controller {
     /// Returns whether one did; when not, the caller opens one.
     ///
     /// A window that is connected but does not answer within
-    /// [`WINDOW_ANSWER`] is closed first. Its drawing has stopped while
-    /// its connection carries on, and kept, it would stop any other window
-    /// from opening: the tray's Show the mixer, a window started from the
-    /// menu, and opening at login would all go to it, and nothing would
-    /// show.
+    /// [`WINDOW_ANSWER`] loses its place, and its process is ended. Its
+    /// drawing has stopped while its connection carries on, and kept, it
+    /// would stop any other window from opening: the tray's Show the mixer,
+    /// a window started from the menu, and opening at login would all go to
+    /// it, and nothing would show. Its place is taken here rather than by
+    /// its connection, which may be stuck: a process that stopped reading
+    /// leaves the daemon's writes to it waiting.
     pub async fn window_shown(&self) -> bool {
-        if !self.window_attached() {
+        let Some(asked) = *self.window.locked() else {
             return false;
-        }
+        };
         let before = self.window_answers.load(Ordering::Acquire);
-        let claims = self.window_claims.load(Ordering::Acquire);
+        let answered = || self.window_answers.load(Ordering::Acquire) != before;
         self.show_window();
         let deadline = tokio::time::Instant::now() + WINDOW_ANSWER;
         while tokio::time::Instant::now() < deadline {
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-            if self.window_answers.load(Ordering::Acquire) != before {
+            if answered() {
                 return true;
             }
-            if !self.window_attached() {
-                return false;
+            match *self.window.locked() {
+                None => return false,
+                // A new window took the place meanwhile, as when one
+                // started from the menu replaced the one that did not
+                // answer. It is showing itself; this one asked the old one.
+                Some(w) if w.conn != asked.conn => return true,
+                Some(_) => {}
             }
-            // A new window took the place meanwhile, as when one started
-            // from the menu replaced the one that did not answer. It is
-            // showing itself; this one asked the old one.
-            if self.window_claims.load(Ordering::Acquire) != claims {
+        }
+        {
+            let mut window = self.window.locked();
+            if answered() {
                 return true;
+            }
+            match *window {
+                None => return false,
+                Some(w) if w.conn != asked.conn => return true,
+                Some(_) => *window = None,
             }
         }
         warn!(
@@ -471,11 +523,7 @@ impl Controller {
              so it is closed to make way for a new one"
         );
         self.window_evictions.send_modify(|n| *n += 1);
-        // Its connection lets go at once; this waits for that, a little.
-        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(1);
-        while self.window_attached() && tokio::time::Instant::now() < deadline {
-            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-        }
+        end_window_process(asked.pid);
         false
     }
 

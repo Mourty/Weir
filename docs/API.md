@@ -120,7 +120,9 @@ every change, whoever made it.
 Each message is one line of JSON, UTF-8, ending in a newline, in both
 directions. They follow [JSON-RPC 2.0](https://www.jsonrpc.org/specification).
 A line to the daemon may be 16 MB at most: past that it answers with an
-error (`-32600`) and closes the connection.
+error (`-32600`) and closes the connection. And keep reading what the
+daemon sends: a connection that has not read for 30 seconds while the
+daemon has something for it is closed.
 
 A **request** names a method, carries its parameters, and has an `id` of
 your choosing, a number or a string:
@@ -374,7 +376,7 @@ stop when the connection closes.
 | `settings` | `settings_changed`, `update_changed`, `safe_mode_changed` |
 | `hotkeys` | `hotkeys_changed` |
 | `recorder` | `recorder_changed`, `recording_changed` |
-| `window` | `show_window`, `show_recorder`, `quit`, `window_look`, `crashed`. Only for a mixer window: subscribing to it tells the daemon this connection *is* one. There is one window at a time. While one is open, a second connection subscribing to `window` waits while the open window gets `show_window`. A window must answer every `show_window` by sending `ping` on its own connection: if the open one answers within 3 seconds, the second gets `quit`; if it does not, it gets `quit` (and its process ends, if it is Weir's window), and the second takes its place. |
+| `window` | `show_window`, `show_recorder`, `quit`, `window_look`, `crashed`. Only for a mixer window: subscribing to it tells the daemon this connection *is* one. There is one window at a time. While one is open, a second connection subscribing to `window` waits while the open window gets `show_window`. A window must answer every `show_window` by sending `ping` on its own connection: if the open one answers within 3 seconds, the second gets `quit`; if it does not, it loses its place and gets `quit` (and its process ends, if it is Weir's window), and the second takes its place. A window that stops reading is let go the same way. |
 
 Returns the list of topics now active on this connection.
 

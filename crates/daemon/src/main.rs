@@ -1022,7 +1022,7 @@ fn crash_on_purpose(test: String) {
 async fn window_crash_notice() {
     use ashpd::zbus;
     use std::collections::HashMap;
-    use zbus::zvariant::Value as V;
+    use zbus::Variant as V;
     let Ok(connection) = zbus::Connection::session().await else {
         return;
     };

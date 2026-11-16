@@ -48,8 +48,10 @@ const CLUSTER_MS: u64 = 1000;
 /// Room kept for the SeekHead at the start of the segment.
 const SEEK_ROOM: usize = 160;
 /// Samples LAME's MP3s start with before the sound: its own delay and
-/// the decoder's, as LAME's tag gives them to players.
-const MP3_DELAY: u64 = 576 + 529;
+/// the decoder's, as LAME's tag gives them to players. A Matroska file has
+/// no room for that tag, so the delay is written down here; a test checks it
+/// against the tag of LAME's own `.mp3` files.
+pub(crate) const MP3_DELAY: u64 = 576 + 529;
 /// Milliseconds from the Unix epoch to 2001-01-01, Matroska's own epoch.
 const MATROSKA_EPOCH_MS: i64 = 978_307_200_000;
 

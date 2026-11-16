@@ -1,8 +1,7 @@
 [workspace]
 resolver = "2"
-# LAME's bindings, built by Weir's own copy: see vendor/mp3lame-sys. The
-# fuzz targets are a workspace of their own, built with nightly.
-exclude = ["vendor", "fuzz"]
+# The fuzz targets are a workspace of their own, built with nightly.
+exclude = ["fuzz"]
 members = [
     "crates/protocol",
     "crates/engine",
@@ -33,7 +32,7 @@ anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 clap = { version = "4", features = ["derive"] }
-toml = "0.9"
+toml = "1"
 arc-swap = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time", "signal", "process"] }
 pipewire = { version = "0.10", features = ["v0_3_77"] }
@@ -51,22 +50,22 @@ eframe = { version = "0.37", default-features = false, features = [
 # leaves to each window on Wayland.
 winit = "0.30.13"
 egui = "0.37"
-dirs = "6"
+dirs = "7"
 ksni = "0.3"
 libc = "0.2"
 png = "0.18.1"
-ashpd = { version = "0.12", default-features = false, features = ["tokio"] }
-x11rb = { version = "0.13", features = ["xkb"] }
+ashpd = { version = "0.14", default-features = false, features = ["tokio", "global_shortcuts"] }
+x11rb = { version = "0.14", features = ["xkb"] }
 futures-util = "0.3"
-x11rb-protocol = "0.13"
+x11rb-protocol = "0.14"
 # Exported settings are a .zip of JSON files. Only deflate, in pure Rust:
 # the default features bring in C libraries and formats Weir never writes.
 zip = { version = "9", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 # Sounds travel in exported settings as base64 inside JSON.
-base64 = "0.22"
+base64 = { version = "0.23", default-features = false, features = ["std"] }
 # Hotkeys' sounds of the user's own: .wav, .mp3, .ogg and .flac, decoded in
 # pure Rust, and nothing else.
-symphonia = { version = "0.5.5", default-features = false, features = ["wav", "pcm", "mp3", "flac", "ogg", "vorbis"] }
+symphonia = { version = "0.6.1", default-features = false, features = ["wav", "pcm", "mp3", "flac", "ogg", "vorbis"] }
 # Asking GitHub for Weir's newest release, the only time Weir goes online:
 # HTTPS in pure Rust, trusting the certificates the system trusts.
 ureq = { version = "3.4", default-features = false, features = ["rustls", "platform-verifier"] }
@@ -74,17 +73,12 @@ ureq = { version = "3.4", default-features = false, features = ["rustls", "platf
 # Recording. FLAC and WAV are pure Rust; MP3 (LAME), Opus and Ogg Vorbis
 # build the reference C libraries into the program, Opus with cmake.
 flacenc = "0.5.1"
-mp3lame-encoder = "0.2.5"
+mp3lame-encoder = "0.3.0"
 opus = "0.4.0"
 ogg = "0.9.2"
 vorbis_rs = "0.5.6"
 # Opus always runs at 48 kHz: other rates are resampled for it.
-rubato = "0.16.2"
-
-# LAME, built without its configure script, which fails when the folder's
-# path has a space in it. See vendor/mp3lame-sys/README.md.
-[patch.crates-io]
-mp3lame-sys = { path = "vendor/mp3lame-sys" }
+rubato = "5.0.1"
 
 [profile.release]
 opt-level = 3

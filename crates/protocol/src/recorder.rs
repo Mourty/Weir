@@ -93,6 +93,16 @@ impl RecordFormat {
         }
     }
 
+    /// The most channels a file of this format holds. A wider track is
+    /// folded into stereo for it, as a stereo bus would fold it: only MP3
+    /// is narrower than Weir's widest layout (7.1).
+    pub fn max_channels(self) -> usize {
+        match self {
+            RecordFormat::Mp3 => 2,
+            RecordFormat::Wav | RecordFormat::Flac | RecordFormat::Opus | RecordFormat::Vorbis => 8,
+        }
+    }
+
     /// About how many bytes a second a track of `channels` channels at
     /// `rate` takes, for guessing how much room a recording needs.
     pub fn bytes_per_second(self, quality: u32, rate: u32, channels: usize) -> f64 {
@@ -195,6 +205,12 @@ pub struct RecorderSettings {
     /// `bext` chunk), so editors can line files up by time.
     #[serde(skip_serializing_if = "is_false")]
     pub bwf: bool,
+    /// For a track wider than its format holds (surround in an MP3): fold
+    /// it into stereo, as a stereo bus would, through the bus's safety
+    /// limiter (ceiling -1 dB), so that moments loud in every channel at
+    /// once turn down rather than clip. Off folds at the same levels with
+    /// nothing to stop them going over. On unless switched off.
+    pub fold_limiter: bool,
     /// The number `{number}` gives the next recording.
     pub next_number: u32,
 }
@@ -211,6 +227,7 @@ impl Default for RecorderSettings {
             layout: RecordLayout::default(),
             split_minutes: 0,
             bwf: false,
+            fold_limiter: true,
             next_number: 1,
         }
     }
@@ -293,6 +310,9 @@ pub struct RecorderPatch {
     /// WAV only: write when each file starts into it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bwf: Option<crate::rpc::Flag>,
+    /// Surround folded into stereo (MP3) goes through a limiter.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fold_limiter: Option<crate::rpc::Flag>,
     /// The number `{number}` gives the next recording.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub next_number: Option<u32>,

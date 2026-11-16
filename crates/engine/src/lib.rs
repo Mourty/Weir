@@ -15,6 +15,7 @@
 mod dsp;
 mod pw;
 
+pub use dsp::fold::StereoFold;
 pub use dsp::record::RecordTap;
 pub use dsp::sounds::{builtin_sound, SoundBank, SoundData};
 pub use pw::{

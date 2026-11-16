@@ -457,6 +457,7 @@ moment, so they line up in an editor.
 | `--names PATTERN` | Where in the folder each file goes and what it is called. It can hold `{date}`, `{time}`, `{number}`, `{track}`, `{part}` and `{setup}`; a `/` makes a folder. The default, `{date} {time}/{track}`, makes a folder for each recording with a file for each track. |
 | `--split MINUTES` | Start new files every this many minutes, without a gap; 0 never does. |
 | `--bwf on\|off` | WAV only: write when each file starts into it (Broadcast Wave), so editors can line files up by time. |
+| `--fold-limiter on\|off` | MP3: a surround track, folded into stereo as a stereo bus would fold it, goes through a limiter so loud moments turn down rather than clip. On unless switched off. |
 | `--number N` | The number `{number}` gives the next recording. |
 
 ```sh
@@ -467,6 +468,7 @@ weirctl record start
 sleep 2
 weirctl record
 weirctl record stop
+weirctl recorder --format mp3 --quality 320 --fold-limiter on
 ```
 
 One file for a whole stream, in Opus, a new one every hour:

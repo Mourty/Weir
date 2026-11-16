@@ -640,13 +640,22 @@ the recorder says how much.
   |---|---|---|
   | **WAV** | Uncompressed: the biggest files, opened by everything. | 16 or 24 bits |
   | **FLAC** | Lossless, about half the size of WAV. | 16 or 24 bits |
-  | **MP3** | Small files that play anywhere. Stereo at most: more channels are mixed down. | 128 to 320 kbps |
+  | **MP3** | Small files that play anywhere. Stereo at most: surround is folded into stereo. | 128 to 320 kbps |
   | **Opus** | The smallest files for the quality. | 64 to 256 kbps |
   | **Ogg Vorbis** | Small files, an open format. | 128 to 320 kbps |
 
   With WAV, **Write when each file starts (Broadcast Wave)** puts the time
   into each file, so editors that read it can line them up by when they
   were recorded.
+
+  MP3 holds two channels at most, so a 5.1 or 7.1 strip or bus is folded
+  into stereo the way a stereo bus with the standard downmix folds it: the
+  front left and right as they are, the center and the surrounds at -3 dB,
+  the subwoofer left out. It comes out as loud as you hear it on a stereo
+  bus. Moments loud in every channel at once can then add up past the
+  top, so **Keep surround folded to stereo from clipping**, on unless you
+  switch it off, runs it through a limiter like a bus's safety limiter
+  (ceiling -1 dB). FLAC, WAV, Opus and Ogg Vorbis keep every channel.
 * **Save in**: the folder, `Weir recordings` in your Music folder unless
   you pick another with **Change…** or type one. **Open the folder**, at
   the bottom, shows it in the file manager.

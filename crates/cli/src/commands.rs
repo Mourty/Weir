@@ -737,6 +737,7 @@ pub fn recorder(c: &mut Client, a: RecorderArgs, json: bool) -> Result<()> {
         layout,
         split_minutes: a.split,
         bwf: flag(a.bwf.as_deref())?,
+        fold_limiter: flag(a.fold_limiter.as_deref())?,
         next_number: a.number,
         ..Default::default()
     };

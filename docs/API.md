@@ -1896,6 +1896,7 @@ Change how recordings are made. Only the fields you give change.
 | `layout` | string, *optional* | `files` for a file per track, `multitrack` for one `.mka` holding them all. |
 | `split_minutes` | number, *optional* | Start new files every this many minutes, without a gap between them; `0` never does. At most 1440. WAV files also start anew before they reach 4 GB, which WAV cannot go past. |
 | `bwf` | boolean or `"toggle"`, *optional* | WAV only: write when each file starts into it (a Broadcast Wave `bext` chunk), so editors can line files up by time. |
+| `fold_limiter` | boolean or `"toggle"`, *optional* | For a track wider than its format holds (surround in an MP3, which holds stereo at most): it is folded into stereo as a stereo bus with the standard downmix folds it (fronts as they are, center and surrounds at -3 dB, the LFE left out), and with this on it goes through a limiter like a bus's safety limiter (ceiling -1 dB, release 300 ms), so moments loud in every channel turn down rather than clip. |
 | `next_number` | number, *optional* | The number `{number}` gives the next recording. |
 
 Returns the [RecorderSettings](#recordersettings) as they are now.
@@ -1903,6 +1904,7 @@ Returns the [RecorderSettings](#recordersettings) as they are now.
 ```sh
 weirctl raw set_recorder '{"tracks": [{"strip": "Mic"}, {"bus": "Stream Mic"}]}'
 weirctl raw set_recorder '{"format": "wav", "bit_depth": 24, "bwf": true}'
+weirctl raw set_recorder '{"format": "mp3", "kbps": 320, "fold_limiter": true}'
 weirctl raw set_recorder '{"layout": "multitrack", "names": "{setup} {number}", "split_minutes": 60}'
 ```
 
@@ -3032,6 +3034,7 @@ How recordings are made, as [`set_recorder`](#set_recorder) changes them.
 | `layout` | string | `files` or `multitrack`. |
 | `split_minutes` | number | Start new files every this many minutes; `0` never does. |
 | `bwf` | boolean | WAV files say when they start. Left out when off. |
+| `fold_limiter` | boolean | A surround track folded into stereo for MP3 goes through a limiter. On unless switched off. |
 | `next_number` | number | What `{number}` gives the next recording. |
 
 ### TrackSource
@@ -3062,7 +3065,7 @@ What the recorder is doing.
 | Field | Type | |
 |---|---|---|
 | `source` | [TrackSource](#tracksource) | The strip or bus, by the name it had when the recording started. |
-| `channels` | number | Its channels. MP3 files are stereo at most: more are mixed down. |
+| `channels` | number | Its channels in the file. MP3 files are stereo at most: a wider track is folded into stereo and says 2. |
 | `file` | string | The file it goes into now, a whole path. In a `.mka`, every track's is the same file. |
 
 ### UpdateStatus

@@ -18,7 +18,7 @@ const LOOKAHEAD_S: f32 = 0.0015;
 /// exactly as that peak leaves the delay, so the limiter never lets it
 /// through and never jumps. The level then comes back up at the release
 /// rate.
-pub(super) struct LimiterRt {
+pub(crate) struct LimiterRt {
     /// Per channel delay line.
     delay: Vec<Vec<f32>>,
     /// Where the next sample goes in each delay line.
@@ -48,7 +48,7 @@ pub(super) struct LimiterRt {
 
 impl LimiterRt {
     /// A limiter for `channels` channels. Strips have none.
-    pub(super) fn new(channels: usize) -> Self {
+    pub(crate) fn new(channels: usize) -> Self {
         Self {
             delay: vec![vec![0.0; MAX_LOOKAHEAD]; channels],
             pos: 0,
@@ -68,10 +68,16 @@ impl LimiterRt {
         }
     }
 
+    /// How many samples the limiter holds the audio back at `rate`: its
+    /// lookahead.
+    pub(crate) fn lookahead(rate: u32) -> usize {
+        ((rate as f32 * LOOKAHEAD_S) as usize).clamp(8, MAX_LOOKAHEAD)
+    }
+
     /// Forget everything, for a fresh start at `rate`.
     fn reset(&mut self, rate: u32) {
         self.rate = rate;
-        self.len = ((rate as f32 * LOOKAHEAD_S) as usize).clamp(8, MAX_LOOKAHEAD);
+        self.len = Self::lookahead(rate);
         for d in self.delay.iter_mut() {
             d.fill(0.0);
         }
@@ -93,7 +99,7 @@ impl LimiterRt {
 
     /// Limit `channels` in place, all `n` samples long. Returns the lowest
     /// gain used.
-    pub(super) fn run(
+    pub(crate) fn run(
         &mut self,
         limiter: &Limiter,
         rate: u32,

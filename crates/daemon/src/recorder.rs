@@ -17,10 +17,10 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 use tracing::{info, warn};
-use weir_engine::RecordTap;
+use weir_engine::{RecordTap, StereoFold};
 use weir_protocol::{
-    recording_files, LocalTime, NameParts, RecordFormat, RecorderSettings, RecordingStatus,
-    RecordingTrack, TrackSource,
+    recording_files, ChannelPosition, LocalTime, NameParts, RecordFormat, RecorderSettings,
+    RecordingStatus, RecordingTrack, TrackSource,
 };
 use weir_record::{Bwf, Part, Spec, TrackSpec};
 
@@ -34,8 +34,12 @@ const FIRST_CYCLE_WAIT: Duration = Duration::from_secs(3);
 /// One strip or bus to record.
 pub struct PlanTrack {
     pub source: TrackSource,
+    /// The track as written: for a folded one, stereo.
     pub spec: TrackSpec,
     pub tap: Arc<RecordTap>,
+    /// The strip's or bus's own channels, when the format holds fewer and
+    /// the track is folded into stereo, as a stereo bus would fold it.
+    pub fold_from: Option<Vec<ChannelPosition>>,
 }
 
 /// Everything a recording needs to start.
@@ -204,6 +208,10 @@ struct Writer {
     before_part: u64,
     /// Samples read but not written yet, per track.
     carry: Vec<Vec<f32>>,
+    /// Per track, its fold into stereo when it is folded.
+    folds: Vec<Option<StereoFold>>,
+    /// What a folded track's tap gave, before folding.
+    unfolded: Vec<f32>,
     /// Bytes in the parts finished.
     done_bytes: u64,
     /// When the status was last told.
@@ -225,6 +233,8 @@ impl Writer {
             split: None,
             before_part: 0,
             carry: vec![Vec::new(); n],
+            folds: (0..n).map(|_| None).collect(),
+            unfolded: Vec::new(),
             done_bytes: 0,
             told: Instant::now(),
             error: None,
@@ -240,11 +250,33 @@ impl Writer {
         }
     }
 
-    /// Take up `rate`: the length of parts goes by it.
+    /// Take up `rate`: the length of parts goes by it, and the folds into
+    /// stereo start afresh at it.
     fn set_rate(&mut self, rate: u32) {
         self.rate = rate;
         let minutes = self.plan.settings.split_minutes as u64;
         self.split = (minutes > 0).then(|| minutes * 60 * rate as u64);
+        let limit = self.plan.settings.fold_limiter;
+        self.folds = self
+            .plan
+            .tracks
+            .iter()
+            .map(|t| {
+                t.fold_from
+                    .as_ref()
+                    .map(|from| StereoFold::new(from, rate, limit))
+            })
+            .collect();
+    }
+
+    /// Take what the folds into stereo still hold back, before the part
+    /// they belong to ends.
+    fn finish_folds(&mut self) {
+        for (fold, carry) in self.folds.iter_mut().zip(&mut self.carry) {
+            if let Some(fold) = fold {
+                fold.finish(carry);
+            }
+        }
     }
 
     /// Start the next part.
@@ -333,11 +365,20 @@ impl Writer {
         result
     }
 
-    /// Read every tap, keeping what they held.
+    /// Read every tap, keeping what they held, folded where the format
+    /// holds fewer channels.
     fn read_taps(&mut self) -> usize {
         let mut got = 0;
-        for (t, carry) in self.plan.tracks.iter().zip(&mut self.carry) {
-            got += t.tap.take(carry);
+        let tracks = self.plan.tracks.iter().zip(&mut self.carry);
+        for ((t, carry), fold) in tracks.zip(&mut self.folds) {
+            match fold {
+                Some(fold) => {
+                    self.unfolded.clear();
+                    got += t.tap.take(&mut self.unfolded);
+                    fold.push(&self.unfolded, carry);
+                }
+                None => got += t.tap.take(carry),
+            }
         }
         got
     }
@@ -481,6 +522,7 @@ impl Writer {
                     quiet = 0;
                 }
             }
+            self.finish_folds();
             if let Err(e) = self.write_carried() {
                 self.error = Some(e);
             }
@@ -510,6 +552,7 @@ impl Writer {
             // A file has one sample rate: what was read goes into the part
             // under way, and a new part starts at the new rate.
             info!("the sample rate changed to {rate} Hz: starting a new part");
+            self.finish_folds();
             let limit = self.part_frames;
             self.part_frames = u64::MAX;
             self.write_carried()?;
@@ -558,6 +601,7 @@ mod tests {
                         positions: vec![ChannelPosition::FL, ChannelPosition::FR],
                     },
                     tap: tap.clone(),
+                    fold_from: None,
                 })
                 .collect(),
             settings: RecorderSettings {
@@ -608,6 +652,123 @@ mod tests {
             }
         }
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Record a 5.1 strip and a stereo bus as MP3, `seconds` long, each
+    /// channel a sine at `level` (the fronts at 440 Hz, the rest at other
+    /// pitches), with the fold's limiter as `limit`. Gives each track's
+    /// file decoded.
+    fn record_surround_mp3(name: &str, level: f32, limit: bool) -> Vec<weir_engine::SoundData> {
+        use ChannelPosition::*;
+        let dir = std::env::temp_dir().join(format!("weir-fold-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let surround = vec![FL, FR, FC, LFE, RL, RR];
+        let tracks = vec![
+            PlanTrack {
+                source: TrackSource::Strip("Movie".into()),
+                spec: TrackSpec {
+                    name: "Movie".into(),
+                    positions: vec![FL, FR],
+                },
+                tap: Arc::new(RecordTap::new(TrackSource::Strip("Movie".into()), 6)),
+                fold_from: Some(surround),
+            },
+            PlanTrack {
+                source: TrackSource::Bus("Headset".into()),
+                spec: TrackSpec {
+                    name: "Headset".into(),
+                    positions: vec![FL, FR],
+                },
+                tap: Arc::new(RecordTap::new(TrackSource::Bus("Headset".into()), 2)),
+                fold_from: None,
+            },
+        ];
+        let taps: Vec<Arc<RecordTap>> = tracks.iter().map(|t| t.tap.clone()).collect();
+        let plan = Plan {
+            tracks,
+            settings: RecorderSettings {
+                format: RecordFormat::Mp3,
+                kbps: 320,
+                names: "{track}".into(),
+                fold_limiter: limit,
+                ..Default::default()
+            },
+            folder: dir.clone(),
+            setup: None,
+            missing: Vec::new(),
+            started_ms: 1_760_000_000_000,
+        };
+        let mut writer = Writer::new(plan, Arc::new(AtomicBool::new(false)));
+        writer.set_rate(48_000);
+        writer.open_part().unwrap();
+        let block = 1024;
+        for cycle in 0..47u64 {
+            let start = cycle as usize * block;
+            let sine = |hz: f32| -> Vec<f32> {
+                (start..start + block)
+                    .map(|k| level * (std::f32::consts::TAU * hz * k as f32 / 48_000.0).sin())
+                    .collect()
+            };
+            let channels: Vec<Vec<f32>> = [440.0, 440.0, 330.0, 55.0, 220.0, 220.0]
+                .into_iter()
+                .map(sine)
+                .collect();
+            taps[0].write(cycle, block, 48_000, |c| Some(&channels[c][..]), &[]);
+            taps[1].write(cycle, block, 48_000, |c| Some(&channels[c][..]), &[]);
+            writer.step().unwrap();
+        }
+        // As the end of a recording does.
+        writer.read_taps();
+        writer.finish_folds();
+        writer.write_carried().unwrap();
+        writer.close_part().unwrap();
+        let got = ["Movie", "Headset"]
+            .iter()
+            .map(|t| crate::sounds::decode(&dir.join(format!("{t}.mp3"))).unwrap())
+            .collect();
+        let _ = std::fs::remove_dir_all(&dir);
+        got
+    }
+
+    fn peak_db(v: &[f32]) -> f32 {
+        20.0 * v.iter().fold(0f32, |m, x| m.max(x.abs())).log10()
+    }
+
+    #[test]
+    fn surround_in_an_mp3_is_as_loud_as_on_a_stereo_bus() {
+        // The fronts at -12 dB, the rest -12 dB too: folded as a stereo bus
+        // folds them, as loud as the stereo track beside it, and as long.
+        let got = record_surround_mp3("quiet", 0.25, true);
+        let (movie, headset) = (&got[0], &got[1]);
+        assert_eq!(movie.channels.len(), 2, "the MP3 is stereo");
+        assert_eq!(
+            movie.frames(),
+            headset.frames(),
+            "in step with the other track"
+        );
+        assert!(
+            movie.frames().abs_diff(47 * 1024) < 1152,
+            "{}",
+            movie.frames()
+        );
+        // Left: FL at full level, FC and RL at -3 dB, LFE left out. The
+        // sum of three sines peaks higher than the front alone.
+        let front = peak_db(&headset.channels[0]);
+        let folded = peak_db(&movie.channels[0]);
+        assert!((front - -12.04).abs() < 0.3, "the stereo track: {front}");
+        assert!(folded > front, "the folded track {folded} vs {front}");
+    }
+
+    #[test]
+    fn loud_surround_in_an_mp3_turns_down_rather_than_clips() {
+        // Every channel at -1 dB: folded, the left sums to about +6 dB.
+        let limited = record_surround_mp3("loud-limited", 0.89, true);
+        let open = record_surround_mp3("loud-open", 0.89, false);
+        let limited_db = peak_db(&limited[0].channels[0]);
+        let open_db = peak_db(&open[0].channels[0]);
+        assert!(limited_db < 0.0, "with the limiter: {limited_db} dB");
+        assert!(open_db > 3.0, "without it: {open_db} dB");
+        assert_eq!(limited[0].frames(), open[0].frames());
     }
 
     #[test]

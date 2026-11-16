@@ -100,7 +100,7 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/io.github.mour
 %doc %{_datadir}/doc/%{name}/docs/
 
 %changelog
-* Sun Nov 15 2026 Mourty <Mourt2@proton.me> - 1.4.2-1
+* Mon Nov 16 2026 Mourty <Mourt2@proton.me> - 1.4.2-1
 - Weir is now free software under the GNU GPL, version 3 or later, so a
   changed Weir that is shared must come with its source. Weir 1.4.1 and
   earlier stay under the MIT license, and the example clients keep it.
@@ -111,8 +111,15 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/io.github.mour
   used to stay silent until Weir was restarted.
 - Opening Weir while its mixer window has stopped responding replaces
   that window, where every new window used to close straight away.
-- Security updates in the libraries Weir uses to read settings files
-  and to check for updates.
+- MP3 recordings of a surround strip or bus are as loud as a stereo bus
+  plays it: surround is folded into stereo the way the mixer does, and a
+  new setting, on by default, keeps the fold from clipping. They came
+  out several dB quieter before.
+- Hotkey sounds from Ogg Vorbis files end where they should, without the
+  short bit of extra sound the encoder leaves at the end.
+- The libraries Weir is built from are up to date, with security updates
+  in those it uses to read settings files and to check for updates. MP3s
+  are now made with LAME 4.0.
 
 * Thu Nov 12 2026 Mourty <Mourt2@proton.me> - 1.4.1-1
 - Ready-made AppImages for x86_64 and 64-bit ARM, and RPM and .deb

@@ -70,15 +70,17 @@
   </provides>
 
   <releases>
-    <release version="1.4.2" date="2026-11-15">
+    <release version="1.4.2" date="2026-11-16">
       <description>
-        <p>A new license, and fixes for logging out, PipeWire restarts and a stuck window.</p>
+        <p>A new license, surround MP3 recordings at the right level, and fixes for logging out, PipeWire restarts and a stuck window.</p>
         <ul>
           <li>Weir is now free software under the GNU GPL, version 3 or later, so a changed Weir that is shared must come with its source. Weir 1.4.1 and earlier stay under the MIT license.</li>
           <li>Logging out of an X11 desktop with the mixer open no longer shows a crash report at the next login, and the mixer opens again after logging back in. Reported by haikarat.</li>
           <li>When PipeWire restarts, Weir connects again and plays on, where it used to stay silent until Weir was restarted.</li>
           <li>Opening Weir while its mixer window has stopped responding replaces that window.</li>
-          <li>Security updates in the libraries Weir uses to read settings files and to check for updates.</li>
+          <li>MP3 recordings of a surround strip or bus are as loud as a stereo bus plays it: surround is folded into stereo the way the mixer does, and a new setting, on by default, keeps the fold from clipping.</li>
+          <li>Hotkey sounds from Ogg Vorbis files end where they should, without the short bit of extra sound the encoder leaves at the end.</li>
+          <li>The libraries Weir is built from are up to date, with security updates in those it uses to read settings files and to check for updates. MP3s are now made with LAME 4.0.</li>
         </ul>
       </description>
     </release>

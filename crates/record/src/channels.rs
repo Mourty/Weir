@@ -88,52 +88,6 @@ pub(crate) fn vorbis_order(positions: &[ChannelPosition]) -> (Order, bool) {
     }
 }
 
-/// How each channel goes into a stereo mix: to the left, to the right.
-/// Centers go to both at -3 dB, surrounds to their side at -3 dB, the
-/// subwoofer nowhere; then everything is scaled so a full-scale signal in
-/// every channel cannot clip.
-pub(crate) fn stereo_weights(positions: &[ChannelPosition]) -> Vec<(f32, f32)> {
-    use ChannelPosition::*;
-    const H: f32 = std::f32::consts::FRAC_1_SQRT_2;
-    let mut w: Vec<(f32, f32)> = positions
-        .iter()
-        .map(|p| match p {
-            FL => (1.0, 0.0),
-            FR => (0.0, 1.0),
-            Mono | FC => (H, H),
-            RL | SL => (H, 0.0),
-            RR | SR => (0.0, H),
-            LFE => (0.0, 0.0),
-        })
-        .collect();
-    let left: f32 = w.iter().map(|x| x.0).sum();
-    let right: f32 = w.iter().map(|x| x.1).sum();
-    let most = left.max(right);
-    if most > 1.0 {
-        w.iter_mut().for_each(|x| {
-            x.0 /= most;
-            x.1 /= most;
-        });
-    }
-    w
-}
-
-/// Mix interleaved `samples` down to stereo with `weights`.
-pub(crate) fn mix_stereo(samples: &[f32], weights: &[(f32, f32)], out: &mut Vec<f32>) {
-    out.clear();
-    let n = weights.len();
-    out.reserve(samples.len() / n * 2);
-    for frame in samples.chunks_exact(n) {
-        let (mut l, mut r) = (0.0, 0.0);
-        for (x, (wl, wr)) in frame.iter().zip(weights) {
-            l += x * wl;
-            r += x * wr;
-        }
-        out.push(l);
-        out.push(r);
-    }
-}
-
 /// A sample as a signed integer of `bits` bits, rounded and clipped.
 #[inline]
 pub(crate) fn to_int(s: f32, bits: u32) -> i32 {
@@ -184,13 +138,7 @@ mod tests {
     }
 
     #[test]
-    fn surround_mixes_down_without_clipping() {
-        let w = stereo_weights(&[FL, FR, FC, LFE, RL, RR]);
-        let mut out = Vec::new();
-        mix_stereo(&[1.0; 6], &w, &mut out);
-        assert!((out[0] - 1.0).abs() < 1e-6 && (out[1] - 1.0).abs() < 1e-6);
-        // Stereo and mono pass as they are.
-        assert_eq!(stereo_weights(&[FL, FR]), [(1.0, 0.0), (0.0, 1.0)]);
+    fn samples_become_integers_and_bytes() {
         assert_eq!(to_int(1.0, 16), 32767);
         assert_eq!(to_int(-1.0, 24), -8_388_608);
         let mut bytes = Vec::new();

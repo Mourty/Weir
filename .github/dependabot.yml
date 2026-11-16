@@ -15,6 +15,16 @@ updates:
     # usually been pulled by then. Security fixes do not wait.
     cooldown:
       default-days: 7
+    # Room for every new major version at once; with GitHub's default of
+    # five, the rest wait for a pull request to close.
+    open-pull-requests-limit: 10
+    ignore:
+      # zbus 6: the window talks to the desktop's file dialogs with zbus
+      # 5, which egui's accessibility (accesskit) and the tray (ksni) also
+      # use. Moving the window alone would build two zbus into it. Drop
+      # this once accesskit and ksni are on zbus 6.
+      - dependency-name: "zbus"
+        update-types: ["version-update:semver-major"]
     groups:
       # The window library: its 0.x versions change in ways that need
       # code changes, so a new one comes on its own, to be taken on

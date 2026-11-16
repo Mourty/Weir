@@ -6,13 +6,13 @@
 
 use anyhow::{bail, Context, Result};
 use std::path::{Path, PathBuf};
-use symphonia::core::audio::SampleBuffer;
-use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_NULL};
+use symphonia::core::codecs::audio::AudioDecoderOptions;
+use symphonia::core::codecs::CodecParameters;
 use symphonia::core::errors::Error as DecodeError;
-use symphonia::core::formats::FormatOptions;
+use symphonia::core::formats::probe::Hint;
+use symphonia::core::formats::{FormatOptions, TrackType};
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
-use symphonia::core::probe::Hint;
 use tracing::warn;
 use weir_engine::{builtin_sound, SoundBank, SoundData};
 use weir_protocol::{
@@ -86,38 +86,44 @@ fn decode_unguarded(bytes: Vec<u8>, ext: &str) -> Result<SoundData> {
     let source = MediaSourceStream::new(Box::new(std::io::Cursor::new(bytes)), Default::default());
     let mut hint = Hint::new();
     hint.with_extension(ext);
+    let mut format = symphonia::default::get_probe()
+        .probe(
+            &hint,
+            source,
+            FormatOptions::default(),
+            MetadataOptions::default(),
+        )
+        .with_context(unreadable)?;
+    let no_sound = || format!("there is no sound in this {ext} file");
+    let track = format
+        .default_track(TrackType::Audio)
+        .with_context(no_sound)?;
+    let track_id = track.id;
+    let Some(CodecParameters::Audio(params)) = &track.codec_params else {
+        bail!(no_sound());
+    };
+    let rate = params.sample_rate.with_context(unreadable)?;
     // An MP3 starts with a few hundredths of a second of silence its
     // encoder adds, and says how much; left in, a sound meant for a key
-    // going down would come late.
-    let options = FormatOptions {
-        enable_gapless: true,
-        ..Default::default()
-    };
-    let probed = symphonia::default::get_probe()
-        .format(&hint, source, &options, &MetadataOptions::default())
-        .with_context(unreadable)?;
-    let mut format = probed.format;
-    let track = format
-        .tracks()
-        .iter()
-        .find(|t| t.codec_params.codec != CODEC_TYPE_NULL)
-        .with_context(|| format!("there is no sound in this {ext} file"))?;
-    let track_id = track.id;
-    let rate = track.codec_params.sample_rate.with_context(unreadable)?;
+    // going down would come late. Gapless decoding, on by default, cuts it.
+    let mut options = AudioDecoderOptions::default();
+    options.gapless = true;
     let mut decoder = symphonia::default::get_codecs()
-        .make(&track.codec_params, &DecoderOptions::default())
+        .make_audio_decoder(params, &options)
         .with_context(|| format!("Weir cannot play the kind of sound in this {ext} file"))?;
     let most = (SOUND_SECONDS_MAX * rate as f32) as usize;
     let mut channels: Vec<Vec<f32>> = Vec::new();
+    let mut samples: Vec<f32> = Vec::new();
     loop {
         let packet = match format.next_packet() {
-            Ok(p) => p,
-            // The end of the file.
+            Ok(Some(p)) => p,
+            // The end of the file, or of what is left of a cut one.
+            Ok(None) => break,
             Err(DecodeError::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
             Err(DecodeError::ResetRequired) => break,
             Err(e) => return Err(e).with_context(unreadable),
         };
-        if packet.track_id() != track_id {
+        if packet.track_id != track_id {
             continue;
         }
         let decoded = match decoder.decode(&packet) {
@@ -126,8 +132,7 @@ fn decode_unguarded(bytes: Vec<u8>, ext: &str) -> Result<SoundData> {
             Err(DecodeError::DecodeError(_)) => continue,
             Err(e) => return Err(e).with_context(unreadable),
         };
-        let spec = *decoded.spec();
-        let n = spec.channels.count();
+        let n = decoded.spec().channels().count();
         if n == 0 {
             continue;
         }
@@ -135,9 +140,8 @@ fn decode_unguarded(bytes: Vec<u8>, ext: &str) -> Result<SoundData> {
         if channels.is_empty() {
             channels = vec![Vec::new(); keep];
         }
-        let mut buf = SampleBuffer::<f32>::new(decoded.capacity() as u64, spec);
-        buf.copy_interleaved_ref(decoded);
-        for frame in buf.samples().chunks_exact(n) {
+        decoded.copy_to_vec_interleaved(&mut samples);
+        for frame in samples.chunks_exact(n) {
             for (c, ch) in channels.iter_mut().enumerate() {
                 ch.push(frame[c.min(keep - 1)]);
             }
@@ -264,6 +268,17 @@ pub mod tests {
         assert_eq!(s.frames(), 100);
         assert!((s.channels[0][0] - 0.5).abs() < 0.001);
         assert!((s.channels[1][0] + 0.5).abs() < 0.001);
+    }
+
+    #[test]
+    fn an_ogg_sound_ends_where_it_should() {
+        // A 400-frame stereo click at 44.1 kHz in Ogg Vorbis, whose last
+        // packet decodes to more than that: the rest is the encoder's
+        // padding, loud enough to hear, and must be cut.
+        let bytes = include_bytes!("../testdata/click.ogg").to_vec();
+        let s = decode_bytes(bytes, "ogg").unwrap();
+        assert_eq!((s.rate, s.channels.len()), (44_100, 2));
+        assert_eq!(s.frames(), 400);
     }
 
     #[test]

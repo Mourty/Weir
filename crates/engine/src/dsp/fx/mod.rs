@@ -42,7 +42,7 @@ use eq::EqRt;
 use feeds::{SubFilter, SurroundFeed, SURROUND_DELAY_LEN};
 use gate::GateRt;
 use insert::InsertRt;
-use limiter::LimiterRt;
+pub(crate) use limiter::LimiterRt;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use weir_protocol::{
     linear_to_db, Compressor, CompressorMeter, Denoise, Gate, GateMeter, InsertPoint, Limiter,

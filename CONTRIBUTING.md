@@ -48,7 +48,7 @@ GitHub runs the first three on every pull request, together with the
 checks below, and shows the result on the pull request.
 
 After adding or updating a dependency, run `make licenses` (it needs
-`cargo install cargo-about --version 0.9.2 --locked --features cli`) and
+`cargo install cargo-about --version 0.9.3 --locked --features cli`) and
 commit `packaging/licenses/THIRD-PARTY-LICENSES.txt`. Packages carry that
 file, because the libraries' licenses ask for their notices to go with
 every copy of Weir. The checks fail when a library comes under a license
@@ -66,7 +66,16 @@ of the GitHub Actions the workflows use. A new version must be a week old
 before it is offered. egui and its parts come in their own pull request,
 and so does each library's new major version, since those may need code
 changes. A pull request whose checks pass can be merged as it is; one
-that fails needs the code brought up to date in it first.
+that fails needs the code brought up to date in it first. Dependabot
+does not touch `fuzz/Cargo.lock`: after an update, give it the same
+versions as `Cargo.lock`. zbus's major versions are left out until the
+window's other users of it (accesskit, ksni) move, so the window does
+not carry two.
+
+Updating by hand (`cargo update`) takes whatever is newest, even a
+release from today: hold anything less than a week old back to an
+older release with `cargo update -p NAME@NEW --precise OLD`, as
+Dependabot would.
 
 Security fixes are separate: with **Dependabot security updates** on in
 the repository's settings, a fix arrives as its own pull request as soon

@@ -1,12 +1,12 @@
 //! MP3 through LAME, built into the program: constant bitrate at LAME's
 //! own default quality, which is as good as its slowest at these bitrates.
-//! MP3 holds stereo at most, so more channels are mixed down first.
+//! MP3 holds stereo at most: a wider track comes here already folded into
+//! stereo, as the mixer folds a strip into a stereo bus.
 //!
 //! In a `.mp3` file, LAME's tag in the first frame tells players the exact
 //! length. In a `.mka` there is no tag, and LAME's stream is cut into its
 //! frames, each with its time.
 
-use crate::channels::{mix_stereo, stereo_weights};
 use crate::TrackSpec;
 use mp3lame_encoder::{Bitrate, Builder, FlushGap, InterleavedPcm, MonoPcm, Quality};
 use std::fs::File;
@@ -28,16 +28,18 @@ fn bitrate(kbps: u32) -> Bitrate {
 /// LAME, fed a track's samples.
 pub(crate) struct Mp3Encoder {
     lame: mp3lame_encoder::Encoder,
-    /// How to mix more than two channels down, when there are more.
-    weights: Option<Vec<(f32, f32)>>,
     mono: bool,
-    mixed: Vec<f32>,
 }
 
 impl Mp3Encoder {
     /// `tag`: leave room for LAME's tag at the start, for a `.mp3` file.
     pub fn new(track: &TrackSpec, rate: u32, kbps: u32, tag: bool) -> io::Result<Self> {
         let channels = track.positions.len();
+        if channels > 2 {
+            return Err(err(format!(
+                "{channels} channels: MP3 holds two at most, so fold wider tracks first"
+            )));
+        }
         let mono = channels == 1;
         let mut b = Builder::new().ok_or_else(|| err("LAME could not start"))?;
         b.set_num_channels(if mono { 1 } else { 2 }).map_err(err)?;
@@ -47,22 +49,13 @@ impl Mp3Encoder {
         b.set_to_write_vbr_tag(tag).map_err(err)?;
         Ok(Self {
             lame: b.build().map_err(err)?,
-            weights: (channels > 2).then(|| stereo_weights(&track.positions)),
             mono,
-            mixed: Vec::new(),
         })
     }
 
     /// Encode interleaved samples, in the track's channel order, appending
     /// MP3 data to `out`.
-    pub fn encode(&mut self, samples: &[f32], out: &mut Vec<u8>) -> io::Result<()> {
-        let pcm: &[f32] = match &self.weights {
-            Some(w) => {
-                mix_stereo(samples, w, &mut self.mixed);
-                &self.mixed
-            }
-            None => samples,
-        };
+    pub fn encode(&mut self, pcm: &[f32], out: &mut Vec<u8>) -> io::Result<()> {
         let frames = if self.mono { pcm.len() } else { pcm.len() / 2 };
         out.reserve(mp3lame_encoder::max_required_buffer_size(frames));
         if self.mono {

@@ -127,7 +127,7 @@ install: build
 		$(DESTDIR)$(LICENSEDIR)/nnnoiseless-BSD-3-Clause.txt
 	install -Dm644 packaging/licenses/THIRD-PARTY-LICENSES.txt \
 		$(DESTDIR)$(LICENSEDIR)/THIRD-PARTY-LICENSES.txt
-	install -Dm644 vendor/mp3lame-sys/lame-3.100/COPYING \
+	install -Dm644 packaging/licenses/LAME-COPYING.txt \
 		$(DESTDIR)$(LICENSEDIR)/LAME-COPYING.txt
 	for d in USER_GUIDE CLI API ARCHITECTURE; do \
 		install -Dm644 docs/$$d.md $(DESTDIR)$(DOCDIR)/docs/$$d.md; done

@@ -42,10 +42,6 @@ debug-assertions = true
 overflow-checks = true
 debug-assertions = true
 
-# LAME, as the main workspace builds it.
-[patch.crates-io]
-mp3lame-sys = { path = "../vendor/mp3lame-sys" }
-
 [[bin]]
 name = "rpc"
 path = "fuzz_targets/rpc.rs"

@@ -102,6 +102,9 @@ impl Controller {
             if let Some(v) = p.split_minutes {
                 s.split_minutes = v;
             }
+            if let Some(v) = p.fold_limiter {
+                s.fold_limiter = v.apply(s.fold_limiter);
+            }
             if let Some(v) = p.bwf {
                 s.bwf = v.apply(s.bwf);
             }
@@ -212,13 +215,24 @@ impl Controller {
         let tracks: Vec<PlanTrack> = strips
             .chain(buses)
             .filter(|(_, positions)| !positions.is_empty())
-            .map(|(source, positions)| PlanTrack {
-                tap: Arc::new(RecordTap::new(source.clone(), positions.len())),
-                spec: TrackSpec {
-                    name: source.name().to_string(),
-                    positions,
-                },
-                source,
+            .map(|(source, positions)| {
+                // A track wider than the format holds (surround in an MP3)
+                // is written as stereo, folded as a stereo bus would.
+                let folded = positions.len() > settings.format.max_channels();
+                let written = if folded {
+                    vec![ChannelPosition::FL, ChannelPosition::FR]
+                } else {
+                    positions.clone()
+                };
+                PlanTrack {
+                    tap: Arc::new(RecordTap::new(source.clone(), positions.len())),
+                    spec: TrackSpec {
+                        name: source.name().to_string(),
+                        positions: written,
+                    },
+                    fold_from: folded.then_some(positions),
+                    source,
+                }
             })
             .collect();
         let missing: Vec<TrackSource> = settings

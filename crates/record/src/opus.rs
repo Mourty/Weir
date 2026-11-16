@@ -12,7 +12,8 @@ use crate::channels::Order;
 use crate::TrackSpec;
 use ogg::{PacketWriteEndInfo, PacketWriter};
 use opus::{Application, Bitrate, MSEncoder};
-use rubato::{FftFixedIn, Resampler};
+use rubato::audioadapter_buffers::direct::InterleavedSlice;
+use rubato::{Fft, FixedSync, Indexing, Resampler, WindowFunction};
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
 
@@ -264,11 +265,13 @@ impl OggOpus {
 
 /// Resampling to 48 kHz, keeping the exact length.
 struct Resample {
-    r: FftFixedIn<f32>,
+    r: Fft<f32>,
     channels: usize,
     rate: u32,
-    /// Input waiting for a full chunk, one list per channel.
-    input: Vec<Vec<f32>>,
+    /// Input waiting for a full chunk, interleaved.
+    input: Vec<f32>,
+    /// One chunk's output, interleaved.
+    chunk: Vec<f32>,
     /// Output frames still to drop: the resampler's delay.
     skip: usize,
     frames_in: u64,
@@ -277,14 +280,26 @@ struct Resample {
 
 impl Resample {
     fn new(rate: u32, channels: usize) -> io::Result<Self> {
-        let r =
-            FftFixedIn::<f32>::new(rate as usize, RATE as usize, 1024, 2, channels).map_err(err)?;
+        // Chunks of 1024 frames in two FFT sub-chunks, with the
+        // Blackman-Harris window: the filter rubato's FftFixedIn had.
+        let r = Fft::<f32>::new_custom(
+            rate as usize,
+            RATE as usize,
+            1024,
+            2,
+            channels,
+            WindowFunction::BlackmanHarris2,
+            FixedSync::Input,
+        )
+        .map_err(err)?;
         let skip = r.output_delay();
+        let chunk = vec![0.0; r.output_frames_max() * channels];
         Ok(Self {
             r,
             channels,
             rate,
-            input: vec![Vec::new(); channels],
+            input: Vec::new(),
+            chunk,
             skip,
             frames_in: 0,
             frames_out: 0,
@@ -293,20 +308,15 @@ impl Resample {
 
     fn push(&mut self, samples: &[f32]) -> io::Result<Vec<f32>> {
         let n = self.channels;
-        for (c, ch) in self.input.iter_mut().enumerate() {
-            ch.extend(samples.iter().skip(c).step_by(n));
-        }
+        self.input.extend_from_slice(samples);
         self.frames_in += (samples.len() / n) as u64;
         let mut out = Vec::new();
-        while self.input[0].len() >= self.r.input_frames_next() {
+        loop {
             let need = self.r.input_frames_next();
-            let chunk: Vec<Vec<f32>> = self
-                .input
-                .iter_mut()
-                .map(|c| c.drain(..need).collect())
-                .collect();
-            let res = self.r.process(&chunk, None).map_err(err)?;
-            self.emit(&res, &mut out, u64::MAX);
+            if self.input.len() / n < need {
+                break;
+            }
+            self.run(need, &mut out, u64::MAX)?;
         }
         Ok(out)
     }
@@ -314,40 +324,90 @@ impl Resample {
     fn finish(&mut self) -> io::Result<Vec<f32>> {
         let wanted = (self.frames_in * RATE as u64 + self.rate as u64 / 2) / self.rate as u64;
         let mut out = Vec::new();
-        let rest = std::mem::take(&mut self.input);
-        if !rest[0].is_empty() {
-            let res = self.r.process_partial(Some(&rest), None).map_err(err)?;
-            self.emit(&res, &mut out, wanted);
+        let rest = self.input.len() / self.channels;
+        if rest > 0 {
+            self.run(rest, &mut out, wanted)?;
         }
-        // Let the delay out.
+        // Let the delay out, with silence.
         let mut guard = 0;
         while self.frames_out < wanted && guard < 16 {
-            let res = self
-                .r
-                .process_partial::<Vec<f32>>(None, None)
-                .map_err(err)?;
-            self.emit(&res, &mut out, wanted);
+            self.run(0, &mut out, wanted)?;
             guard += 1;
         }
         Ok(out)
     }
 
-    /// Interleave planar output into `out`, dropping the delay and anything
-    /// past `limit` frames.
-    fn emit(&mut self, planar: &[Vec<f32>], out: &mut Vec<f32>, limit: u64) {
-        let frames = planar.first().map_or(0, Vec::len);
-        for i in 0..frames {
+    /// Resample `frames` frames from the front of the input (a full chunk,
+    /// or at the end fewer, which rubato fills out with silence) into
+    /// `out`, dropping the delay and anything past `limit` frames.
+    fn run(&mut self, frames: usize, out: &mut Vec<f32>, limit: u64) -> io::Result<()> {
+        let n = self.channels;
+        let partial_len = (frames < self.r.input_frames_next()).then_some(frames);
+        let input = InterleavedSlice::new(&self.input[..frames * n], n, frames).map_err(err)?;
+        let room = self.chunk.len() / n;
+        let mut output = InterleavedSlice::new_mut(&mut self.chunk[..], n, room).map_err(err)?;
+        let indexing = Indexing {
+            partial_len,
+            ..Default::default()
+        };
+        let (_, written) = self
+            .r
+            .process_into_buffer(&input, &mut output, Some(&indexing))
+            .map_err(err)?;
+        self.input.drain(..frames * n);
+        for frame in self.chunk[..written * n].chunks_exact(n) {
             if self.skip > 0 {
                 self.skip -= 1;
                 continue;
             }
             if self.frames_out >= limit {
-                return;
+                break;
             }
-            for ch in planar {
-                out.push(ch[i]);
-            }
+            out.extend_from_slice(frame);
             self.frames_out += 1;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::f64::consts::TAU;
+
+    /// A 1 kHz sine at `rate`, in two channels a quarter turn apart.
+    fn sine(rate: u32, frames: usize) -> Vec<f32> {
+        (0..frames)
+            .flat_map(|i| {
+                let t = TAU * 1000.0 * i as f64 / rate as f64;
+                [(0.5 * t.sin()) as f32, (0.5 * t.cos()) as f32]
+            })
+            .collect()
+    }
+
+    #[test]
+    fn resampling_keeps_the_sound_its_timing_and_its_length() {
+        for rate in [44_100, 32_000, 96_000] {
+            let frames = rate as usize * 2 + 123;
+            let input = sine(rate, frames);
+            let mut r = Resample::new(rate, 2).unwrap();
+            let mut out = Vec::new();
+            // Odd-sized pieces, as the recorder's cycles come.
+            for piece in input.chunks(2 * 701) {
+                out.extend(r.push(piece).unwrap());
+            }
+            out.extend(r.finish().unwrap());
+            let want = (frames as u64 * 48_000 + rate as u64 / 2) / rate as u64;
+            assert_eq!(out.len() as u64, 2 * want, "{rate} Hz");
+            // The same sine at 48 kHz, in step: the delay is cut exactly.
+            // The ends are left out, where the filter rings.
+            let expected = sine(48_000, want as usize);
+            let worst = out[2 * 2000..out.len() - 2 * 2000]
+                .iter()
+                .zip(&expected[2 * 2000..])
+                .map(|(a, b)| (a - b).abs())
+                .fold(0.0, f32::max);
+            assert!(worst < 1e-5, "{rate} Hz: off by {worst}");
         }
     }
 }

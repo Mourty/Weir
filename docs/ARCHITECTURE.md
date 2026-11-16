@@ -493,9 +493,15 @@ they got), so a crash leaves a file that plays up to near where it
 stopped. The `.mka` writer is Weir's own: one
 track per strip or bus, blocks interleaved in clusters of about a second,
 `CodecDelay` and `DiscardPadding` so MP3 and Opus start and end on the
-right sample. MP3 is LAME (built in, `vendor/mp3lame-sys`), FLAC is
+right sample. MP3 is LAME (built in by the `mp3lame-sys` crate), FLAC is
 flacenc in Rust, Opus and Vorbis are libopus and libvorbis, built in
-too. The recorder's settings live in the configuration; strips and buses
+too. A track wider than its format holds (surround in an MP3) is folded
+into stereo on the recorder's thread by the engine's `StereoFold`: the
+weights come from `channel_matrix` for a stereo bus with the standard
+downmix, so the file sounds as the mixer plays it, and the bus limiter
+follows unless `fold_limiter` is off. The limiter's lookahead is cut
+from the start and flushed at each file's end, so the track stays the
+same length as the others and in step with them. The recorder's settings live in the configuration; strips and buses
 are ticked by name and follow renames.
 
 **Update checks** (`updates.rs`) are Weir's only network access, and only

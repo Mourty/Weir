@@ -20,6 +20,7 @@
 //!   thread.
 
 pub mod analyzer;
+pub mod fold;
 pub mod fx;
 pub mod handoff;
 #[cfg(any(test, feature = "fuzzing"))]

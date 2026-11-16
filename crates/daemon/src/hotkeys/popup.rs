@@ -353,7 +353,7 @@ async fn plasma(connection: &zbus::Connection, popup: &Popup) -> zbus::Result<()
 /// not stay in the desktop's list. Returns its id, for the next to
 /// replace.
 async fn notify(connection: &zbus::Connection, popup: &Popup, replaces: u32) -> zbus::Result<u32> {
-    use zbus::zvariant::Value as V;
+    use zbus::Variant as V;
     let (icon, text, level) = match popup {
         Popup::Text { icon, text } => (*icon, text.as_str(), None),
         Popup::Level {

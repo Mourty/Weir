@@ -690,6 +690,25 @@ impl App {
                      recorded.",
                     );
                 }
+                if s.format.max_channels() < 3 {
+                    let mut limit = s.fold_limiter;
+                    if ui
+                        .checkbox(&mut limit, "Keep surround folded to stereo from clipping")
+                        .changed()
+                    {
+                        self.set_recorder(RecorderPatch {
+                            fold_limiter: Some(Flag::Set(limit)),
+                            ..Default::default()
+                        });
+                    }
+                    explain(
+                        ui,
+                        "A 5.1 or 7.1 track is folded into stereo as a stereo bus would \
+                     fold it, as loud as you hear it. Moments loud in every channel at \
+                     once can then go over the top; with this on, a limiter turns them \
+                     down instead of letting them crackle.",
+                    );
+                }
                 ui.add_space(8.0);
                 self.folder_row(ui, state);
                 ui.add_space(8.0);
@@ -1049,7 +1068,9 @@ fn format_words(f: RecordFormat) -> &'static str {
     match f {
         RecordFormat::Wav => "Uncompressed: the biggest files, opened by everything.",
         RecordFormat::Flac => "Lossless, about half the size of WAV.",
-        RecordFormat::Mp3 => "Small files that play anywhere. Stereo at most.",
+        RecordFormat::Mp3 => {
+            "Small files that play anywhere. Stereo at most: surround is folded into stereo."
+        }
         RecordFormat::Opus => "The smallest files for the quality.",
         RecordFormat::Vorbis => "Small files, an open format.",
     }

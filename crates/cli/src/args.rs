@@ -641,6 +641,11 @@ pub struct RecorderArgs {
     /// or off.
     #[arg(long)]
     pub bwf: Option<String>,
+    /// MP3: surround, folded into stereo as a stereo bus would, goes
+    /// through a limiter so loud moments turn down rather than clip; on,
+    /// off or toggle.
+    #[arg(long)]
+    pub fold_limiter: Option<String>,
     /// The number {number} gives the next recording.
     #[arg(long)]
     pub number: Option<u32>,

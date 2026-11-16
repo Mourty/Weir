@@ -1107,6 +1107,16 @@ pub fn recorder(s: &RecorderSettings) {
     if s.format == RecordFormat::Wav {
         println!("bwf:       {}", if s.bwf { "on" } else { "off" });
     }
+    if s.format.max_channels() < 3 {
+        println!(
+            "surround:  folded into stereo{}",
+            if s.fold_limiter {
+                ", through a limiter"
+            } else {
+                ", no limiter"
+            }
+        );
+    }
     println!("number:    {:03} next", s.next_number);
 }
 

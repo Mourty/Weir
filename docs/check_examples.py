@@ -120,7 +120,7 @@ def reset(mixer, sounds_device, workdir):
         ("set_recorder", {"tracks": [], "folder": str(workdir / "recordings"),
                           "names": "{date} {time}/{track}", "format": "flac",
                           "bit_depth": 24, "kbps": 192, "layout": "files",
-                          "split_minutes": 0, "bwf": False, "next_number": 1}),
+                          "split_minutes": 0, "bwf": False, "fold_limiter": True, "next_number": 1}),
     )
     clear_hotkeys(mixer)
     clear_sounds(mixer)

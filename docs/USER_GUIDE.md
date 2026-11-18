@@ -113,6 +113,25 @@ all; rules stay either way. The list stays on this computer and is not
 part of an export. For an application Weir has never heard, type its name
 under the rules and use **+ Rule by name**.
 
+**Everything else into one strip.** An application with no rule plays on
+the system's default output. Make one of Weir's strips the default, and
+every application without a rule plays into it, while rules still move
+the ones you name to their own strips. Two kinds slip past: an
+application you once moved by hand goes back where you moved it (move it
+onto the strip once, or give it a rule), and one that picks its own
+output in its settings, such as Discord or many games, ignores the
+default (a rule still moves it). While Weir is not running its devices
+are gone, so the system plays on your speakers or headphones until Weir
+is back.
+
+**Weir's devices in Plasma's volume icon.** System Settings › Sound lists
+Weir's devices, but the volume icon in Plasma's panel hides them until
+you ask: open it, click the menu button at its top right, and tick
+**Show virtual devices**. The round button beside a device makes it the
+default output.
+
+![Show virtual devices in Plasma's volume icon](images/plasma-virtual-devices.png)
+
 Each virtual strip lists the applications playing into it. Under each name
 is a slider for that application's own volume, with its own mute: the same
 volume the system's volume control shows for it, so the two always agree.
@@ -1230,6 +1249,8 @@ recording keeps going, without the time PipeWire was away.
 **An application plays somewhere else.** PipeWire's session manager puts
 new applications on the system's default output. Move it with the **Apps**
 menu, which the session manager remembers for next time, or give it a rule.
+To send every application without a rule to one strip, make that strip
+the default output (see [Getting sound into Weir](#getting-sound-into-weir)).
 
 **An application is quiet.** Check its own volume slider under its strip,
 and whether the strip shows a yellow "system volume" note: the system's
